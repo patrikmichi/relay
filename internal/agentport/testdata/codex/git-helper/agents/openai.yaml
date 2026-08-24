@@ -1,0 +1,12 @@
+interface:
+  display_name: Git Helper
+  short_description: Summarize git diffs
+  icon_small: git-small.png
+  icon_large: git-large.png
+  brand_color: "#f34f29"
+  default_prompt: What changed in my working tree?
+policy:
+  allow_implicit_invocation: true
+dependencies:
+  tools:
+    - git-mcp

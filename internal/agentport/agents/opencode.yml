@@ -1,0 +1,47 @@
+# opencode agent provider config — Agent IR, not Skill IR. Per the
+# relay-standalone design (§ Real agent formats), an opencode agent is a
+# flat `<name>.md` — frontmatter + markdown body — at
+# ~/.config/opencode/agent/<name>.md (user); project scope follows the same
+# `.opencode/<kind>` convention already used by opencode's SKILL provider
+# config (providers/opencode.yml: .opencode/skills), even though it is not
+# separately documented for agents — no first-class opencode subagent
+# project-scope example was found on this machine to verify against.
+#
+# Fields: description, mode (primary|subagent|all), model
+# ("provider/model" string), temperature, tools. NOT mapped here
+# (deliberately deferred, relay-standalone design §3c):
+#   - `name` — opencode agent files have no name field on disk; the
+#     first-class layout: flat Load path (config_adapter.go) already infers
+#     it from the filename when frontmatter omits it, exactly as needed.
+#   - `permission` — no Agent IR field; opencode-only, partially
+#     representable, out of scope for Phase 1 Part A.
+#
+# `tools` is declared here with the canonical Agent IR type
+# (string-or-list, matching agent_ir_fields.go's fixed descriptor — the
+# config validator requires this) even though opencode's ON-DISK shape is a
+# {tool: bool} MAP, not a list: agentConfigAdapter.Load/Project special-case
+# ir=="tools" && ID()==opencode to reshape via toolsMapToList/
+# toolsListToMap (agent_caps.go) instead of the generic flexStringList
+# codec — the same pattern Model uses (declared type "string", reshaped
+# through modelLossForTarget's alias table). toolsLossForTarget reports the
+# resulting LossDegraded.
+id: opencode
+layout: flat
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.config/opencode/agent", role: own } # dirs[0] = writable_primary
+  project:
+    - { path: ".opencode/agent", role: own }
+
+frontmatter:
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: mode, key: mode, type: string, presence: optional }
+  - { ir: model, key: model, type: string, presence: optional }
+  - { ir: temperature, key: temperature, type: float, presence: optional }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }
+
+# Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
+# YAML-driven list like skills' `capabilities:` — deliberately left unset
+# here (relay-standalone design §3c/P1.4).

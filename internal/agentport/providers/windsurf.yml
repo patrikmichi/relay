@@ -1,0 +1,27 @@
+# Windsurf provider config — added YAML-ONLY, with NO Go change, to prove
+# the config-driven refactor's central claim: a normal new platform is a
+# data edit, not a recompile.
+#
+# Provenance: Windsurf follows the common Agent-Skills convention of a
+# per-tool global skills dir under the home directory plus a project-local
+# mirror (see vault/research/repos/2026/05/02/asm-universal-skill-manager.md
+# — the ASM provider directory map this schema absorbs as data). Confirm
+# against Windsurf's own docs before relying on this in production; treat
+# as best-effort until independently verified.
+id: windsurf
+skill_file: SKILL.md
+resource_dirs: [scripts, references, assets]
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.windsurf/skills", role: own }
+  project:
+    - { path: ".windsurf/skills", role: own }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: metadata, key: metadata, type: map, presence: optional }
+
+capabilities: [Metadata]

@@ -1,0 +1,70 @@
+# .github/workflows/release.yml — relay CLI release pipeline (goreleaser).
+#
+# Lives at cli/.github/workflows/release.yml inside the monorepo today so it
+# travels untouched to the repo root once cli/ is split out into its own
+# public repo (github.com/patrikmichi/relay) — see Phase 2 of
+# vault/plans/claude-infra/relay-standalone-distribution-plan-2026-07-06.md.
+# It has NO effect inside the monorepo: GitHub Actions only reads workflows
+# from the repository root's .github/workflows/, not from nested ones, so
+# this file is inert until the split moves it to the new repo's root.
+#
+# ---------------------------------------------------------------------------
+# HUMAN SETUP STEPS (required once, before the first tagged release):
+#   1. Create the tap repo: github.com/patrikmichi/homebrew-tap (public,
+#      empty is fine — goreleaser initializes the Formula/ layout on push).
+#   2. Create a GitHub PAT (classic or fine-grained) with `repo` (or
+#      `contents:write`) scope limited to the homebrew-tap repo.
+#   3. Add it as a secret named HOMEBREW_TAP_GITHUB_TOKEN on THIS repo
+#      (github.com/patrikmichi/relay, post-split) — Settings > Secrets and
+#      variables > Actions > New repository secret.
+#   4. GITHUB_TOKEN is provided automatically by Actions for the `release`
+#      permission below; no manual secret needed for that one.
+#   5. TODO(P2.4, human-gated): code-signing / notarization for macOS
+#      binaries is NOT set up here. Darwin archives from this workflow are
+#      unsigned. See plan P2.4 for the codesign identity + notarization
+#      workflow addition — that requires a human-provisioned Apple Developer
+#      ID certificate and is deliberately out of scope for this task.
+# ---------------------------------------------------------------------------
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: goreleaser release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Test
+        run: go test ./...
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: "~> v2.16" # pinned to the minor tested locally — bump deliberately (brews deprecation may hard-fail on newer v2)
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          # RELAY_DEFAULT_GATEWAY_URL is intentionally left unset here — see
+          # the comment on the ldflags in .goreleaser.yaml. Public releases
+          # ship with an empty compiled-in gateway default.

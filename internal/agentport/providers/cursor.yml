@@ -1,0 +1,33 @@
+# Cursor provider config — replaces the shipped adapter_cursor.go.
+#
+# Skill locations: user ~/.cursor/skills/<name>/SKILL.md (also reads
+# ~/.agents/skills/ and the legacy ~/.claude/skills/, ~/.codex/skills/ for
+# compatibility); project .cursor/skills/<name>/SKILL.md (same compat
+# fallbacks, project-relative). Cursor's own discovery is recursive —
+# skills can live nested anywhere under these roots (project scope only;
+# user scope is always direct per the Adapter contract).
+id: cursor
+skill_file: SKILL.md
+resource_dirs: [scripts, references, assets]
+discovery: recursive
+
+dirs:
+  user:
+    - { path: "~/.cursor/skills", role: own } # dirs[0] = writable_primary
+    - { path: "~/.agents/skills", role: compat }
+    - { path: "~/.claude/skills", role: compat }
+    - { path: "~/.codex/skills", role: compat }
+  project:
+    - { path: ".cursor/skills", role: own }
+    - { path: ".agents/skills", role: compat }
+    - { path: ".claude/skills", role: compat }
+    - { path: ".codex/skills", role: compat }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: paths, key: paths, type: string-or-list, presence: optional }
+  - { ir: disable_model_invocation, key: disable-model-invocation, type: bool, presence: optional }
+  - { ir: metadata, key: metadata, type: map, presence: optional }
+
+capabilities: [Paths, DisableModelInvocation, Metadata]

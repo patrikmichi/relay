@@ -1,0 +1,34 @@
+# Claude Code agent provider config — Agent IR, not Skill IR (see agent.go /
+# agent_ir_fields.go). Verified against real files on-machine: a Claude
+# agent is a flat `<name>.md` — YAML frontmatter + markdown body (the system
+# prompt) — with NO containing directory and NO resources, at
+# ~/.claude/agents/<name>.md (user) or .claude/agents/<name>.md (project).
+#
+# Fields (verified against shipped claude-infra/shared-claude/agents/*.md):
+# name, description (often multiline with <example> blocks — still a plain
+# string IR-side), tools (CSV string), model (sonnet|haiku|opus), memory
+# (project|global), skills (YAML list of bundled skill ids). Real agent
+# files also carry a `hooks:` block, which is NOT part of this IR — Claude
+# agent hooks are lifecycle wiring, not portable agent-definition content
+# (relay-standalone design §3c: "Hooks: N/A — not an agent-file concern").
+id: claude
+layout: flat
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.claude/agents", role: own } # dirs[0] = writable_primary
+  project:
+    - { path: ".claude/agents", role: own }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }
+  - { ir: model, key: model, type: string, presence: optional }
+  - { ir: memory, key: memory, type: string, presence: optional }
+  - { ir: skills, key: skills, type: string-or-list, presence: optional }
+
+# Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
+# YAML-driven list like skills' `capabilities:` — deliberately left unset
+# here (relay-standalone design §3c/P1.4).

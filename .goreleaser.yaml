@@ -1,0 +1,110 @@
+# .goreleaser.yaml — release config for the `relay` CLI (goreleaser v2 schema).
+#
+# This file lives at cli/.goreleaser.yaml inside the monorepo today, but is
+# authored to work unmodified once cli/ is extracted into its own public
+# repo (github.com/patrikmichi/relay) — see Phase 2 of
+# vault/plans/claude-infra/relay-standalone-distribution-plan-2026-07-06.md.
+# Until the split, run goreleaser from inside cli/ (`cd cli && goreleaser ...`)
+# so relative paths (README.md, dist/) resolve correctly.
+version: 2
+
+project_name: relay
+
+# Explicit owner/repo so `goreleaser release` always targets the eventual
+# public split repo, regardless of what `git remote` currently resolves to
+# (this file is developed inside the private monorepo before extraction).
+release:
+  github:
+    owner: patrikmichi
+    name: relay
+
+builds:
+  - id: relay
+    main: ./cmd/relay
+    binary: relay
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Public-build gateway default (design D4b): release artifacts must NOT
+    # bake in the owner's gateway host. internal/config.DefaultGatewayURL
+    # defaults to "https://gw.atlashub.dev" in source, so we override it here
+    # via -X. The value comes from the RELAY_DEFAULT_GATEWAY_URL env var. We
+    # use the `index` template func (not `.Env.KEY` dot access) because
+    # goreleaser's template engine runs with missingkey=error for `.Env` —
+    # `.Env.KEY` on an unset key hard-fails the build ("map has no entry for
+    # key"), while `index .Env "KEY"` returns the zero value ("") for a
+    # missing key with no error. So by default this bakes in an EMPTY
+    # DefaultGatewayURL (offline-first: users run `relay config set-gateway`
+    # or export GATEWAY_URL). An owner build that wants a baked-in default
+    # can opt in without editing this file:
+    #   RELAY_DEFAULT_GATEWAY_URL=https://gw.example.dev goreleaser release --clean
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }} -X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL={{ index .Env "RELAY_DEFAULT_GATEWAY_URL" }}
+
+archives:
+  - id: relay
+    ids:
+      - relay
+    formats:
+      - tar.gz
+    name_template: "relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]-]+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+
+snapshot:
+  version_template: "{{ .Version }}-next+{{ .ShortCommit }}"
+
+brews:
+  - name: relay
+    ids:
+      - relay
+    repository:
+      owner: patrikmichi
+      name: homebrew-tap
+      # Push auth: CI exports HOMEBREW_TAP_GITHUB_TOKEN (a PAT with `repo`
+      # scope on the tap repo) as GITHUB_TOKEN-alike for this specific
+      # goreleaser pipe — see .github/workflows/release.yml.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: patrikmichi
+      email: yay@patrikmichalicka.com
+    homepage: "https://github.com/patrikmichi/relay"
+    description: "relay — unified CLI client for the Atlas gateway (multi-service integration hub)."
+    install: |
+      bin.install "relay"
+    test: |
+      system "#{bin}/relay", "--version"
+    # Never let a --snapshot build push to the tap; only real, tagged
+    # releases (goreleaser sets this automatically for snapshots too, but
+    # `auto` makes the intent explicit and covers prerelease/dirty states).
+    skip_upload: auto

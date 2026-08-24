@@ -1,0 +1,28 @@
+# opencode provider config — replaces the shipped adapter_opencode.go.
+#
+# Skill locations: user ~/.config/opencode/skills/<name>/SKILL.md (also
+# reads ~/.claude/skills/ and ~/.agents/skills/ for compatibility); project
+# .opencode/skills/<name>/SKILL.md (same compat fallbacks, project-relative).
+id: opencode
+skill_file: SKILL.md
+resource_dirs: [scripts, references, assets]
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.config/opencode/skills", role: own } # dirs[0] = writable_primary
+    - { path: "~/.claude/skills", role: compat }
+    - { path: "~/.agents/skills", role: compat }
+  project:
+    - { path: ".opencode/skills", role: own }
+    - { path: ".claude/skills", role: compat }
+    - { path: ".agents/skills", role: compat }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: license, key: license, type: string, presence: optional }
+  - { ir: compatibility, key: compatibility, type: string, presence: optional }
+  - { ir: metadata, key: metadata, type: map, presence: optional }
+
+capabilities: [License, Compatibility, Metadata]
