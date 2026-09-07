@@ -19,7 +19,7 @@ import (
 // aggregateMcpPath is the aggregate MCP JSON-RPC endpoint. management.* tools
 // (get_skill, search_skills, publish_status, ...) are ONLY registered here —
 // unlike built-in services, there is no per-service /api/management/mcp
-// route (design spec §5.1). This endpoint is gated server-side by the
+// route. This endpoint is gated server-side by the
 // AGGREGATE_MCP_ENABLED kill-switch (default off outside preview/opt-in
 // environments) — see searchSkillsDegradationHint for the guidance shown
 // when that surfaces as a 503.

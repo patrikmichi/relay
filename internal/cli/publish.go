@@ -305,25 +305,23 @@ func SkillCmd() *cobra.Command {
 	return skill
 }
 
-// AgentCmd returns the `relay agent` parent command with `publish`, and the
-// offline agent-manager sub-commands (migrate) — mirroring SkillCmd's
-// shape for the Agent IR. Supported agent providers: claude and opencode
-// (both flat frontmatter+body markdown files). Codex has no single
-// agent-file primitive (a TOML profile plus a decoupled prompt file is not
-// equivalent to a markdown agent) and Cursor has no subagent primitive at
-// all — neither is a supported agent migration target.
+// AgentCmd returns the `relay agent` parent command with `publish`, the
+// offline agent-manager sub-commands (migrate, list, diff, scan, uninstall,
+// rollback), and the gateway-catalog `install` sub-command (D5) —
+// mirroring SkillCmd's shape for the Agent IR. Supported agent providers are
+// whatever agentport.AllAgentAdapters() currently loads (see
+// agentProviderIDsCSV).
 func AgentCmd() *cobra.Command {
 	agent := &cobra.Command{
 		Use:   "agent",
 		Short: "Agent commands",
-		Long: `Agent commands.
+		Long: fmt.Sprintf(`Agent commands.
 
-Supported agent providers: claude, opencode. Codex (TOML profile != md
-agent) and Cursor (no subagent primitive) are not supported as agent
-migration targets.`,
+Supported agent providers: %s.`, agentProviderIDsCSV()),
 	}
 	agent.AddCommand(agentPublishCmd())
 	agent.AddCommand(AgentMigrateCmd())
+	agent.AddCommand(AgentInstallCmd())
 	agent.AddCommand(AgentListCmd())
 	agent.AddCommand(AgentDiffCmd())
 	agent.AddCommand(AgentScanCmd())
@@ -332,13 +330,24 @@ migration targets.`,
 	return agent
 }
 
-// MCPCmd returns the `relay mcp` parent command with a `publish` sub-command.
+// MCPCmd returns the `relay mcp` parent command with `publish` and the
+// read-only `list` sub-command (D6). `install`/`remove` are deliberately
+// NOT implemented — see McpListCmd's doc comment and the README's MCP
+// section for the descope rationale.
 func MCPCmd() *cobra.Command {
 	mcp := &cobra.Command{
 		Use:   "mcp",
 		Short: "MCP server commands",
+		Long: `MCP server commands.
+
+'relay mcp install'/'relay mcp remove' are NOT implemented: writing an
+MCP-server registration into per-provider client config (~/.claude.json,
+~/.codex/config.toml, .cursor/mcp.json, ...) is a separate artifact kind
+with its own IR and per-provider codecs — a distinct design from anything
+this CLI currently ships. 'relay mcp list' is read-only.`,
 	}
 	mcp.AddCommand(mcpPublishCmd())
+	mcp.AddCommand(McpListCmd())
 	return mcp
 }
 

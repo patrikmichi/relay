@@ -54,8 +54,7 @@ type Doer interface {
 // to exercise the bounded-timeout path without a slow test.
 var downloadTimeout = 120 * time.Second
 
-// Response header names the download endpoint is contracted to set. See
-// vault/plans/claude-infra/relay-gateway-source-install-2026-07-05.md §4.6.
+// Response header names the download endpoint is contracted to set.
 const (
 	headerContentSha256 = "X-Skill-Content-Sha256"
 	headerVersion       = "X-Skill-Version"
@@ -71,18 +70,18 @@ const (
 )
 
 // Size/entry caps mirrored from the gateway's own BUNDLE_ENTRY_LIMIT /
-// BUNDLE_TOTAL_LIMIT (design spec §6.2 step 5) — enforced client-side too so
-// a compromised, buggy, or MITM'd gateway response can't gzip/entry-bomb the
-// local extraction. MaxBundleBytes bounds BOTH the on-wire (still-gzipped)
-// response body and the total decompressed bytes written to disk.
+// BUNDLE_TOTAL_LIMIT — enforced client-side too so a compromised, buggy,
+// or MITM'd gateway response can't gzip/entry-bomb the local extraction.
+// MaxBundleBytes bounds BOTH the on-wire (still-gzipped) response body and
+// the total decompressed bytes written to disk.
 const (
 	MaxBundleEntries = 500
 	MaxBundleBytes   = 50 << 20 // 50 MiB
 )
 
-// Sentinel errors — distinguished by the CLI for its exit messaging (design
-// spec §6.6 degradation table). Wrapped with additional context via %w, so
-// errors.Is still matches these after wrapping.
+// Sentinel errors — distinguished by the CLI for its exit messaging.
+// Wrapped with additional context via %w, so errors.Is still matches
+// these after wrapping.
 var (
 	ErrUnauthorized      = errors.New("unauthorized (401)")
 	ErrNoAccess          = errors.New("access denied (403)")
@@ -184,7 +183,19 @@ func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error
 // downloadPath builds the download endpoint request path, URL-escaping id
 // and attaching ?version=/&channel= when set.
 func downloadPath(id, version, channel string) string {
-	p := downloadPathPrefix + url.PathEscape(id) + downloadPathSuffix
+	return buildDownloadPath(downloadPathPrefix, id, version, channel)
+}
+
+// buildDownloadPath is the prefix-parameterized path builder shared by
+// downloadPath (this file, the legacy skill-only endpoint) and
+// resourceDownloadPath (agent_source.go, the generalized skill+agent
+// endpoint added by gateway D2) — lifted out so both FetchSkill and
+// FetchAgent build query strings identically without duplicating the
+// escaping/query-encoding logic. Behavior-identical to the pre-D4 inline
+// downloadPath body; FetchSkill's own tests (gateway_source_test.go) pass
+// unchanged after this refactor.
+func buildDownloadPath(prefix, id, version, channel string) string {
+	p := prefix + url.PathEscape(id) + downloadPathSuffix
 	q := url.Values{}
 	if version != "" {
 		q.Set("version", version)
