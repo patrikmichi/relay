@@ -186,8 +186,8 @@ func TestSaveManifest_UsesUniqueTempFile(t *testing.T) {
 
 // TestLoadManifest_PreKindFixtureDecodesAsSkill loads a manifest JSON file
 // written before the Kind field existed (no "kind" key at all) and confirms
-// every entry normalizes to KindSkill — the back-compat guarantee P1.5
-// exists for (relay-standalone design §3e: "Decode default = skill").
+// every entry normalizes to KindSkill — the back-compat guarantee that an
+// absent Kind decodes to skill.
 func TestLoadManifest_PreKindFixtureDecodesAsSkill(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

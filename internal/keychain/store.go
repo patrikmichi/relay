@@ -75,8 +75,8 @@ func DeleteToken(email string) error {
 	return nil
 }
 
-// accountKey returns the keychain account name for an email address.
-// Format matches the plan spec: oauth-refresh-token:<email>
+// accountKey returns the keychain account name for an email address:
+// oauth-refresh-token:<email>
 func accountKey(email string) string {
 	return "oauth-refresh-token:" + email
 }

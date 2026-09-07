@@ -10,8 +10,7 @@ import (
 // offlineGuidance is the fail-closed degradation message shown whenever a
 // gateway-touching (catalog) command is attempted with no gateway reachable
 // — no gateway configured, --offline, or an auth failure client.Resolve
-// can't recover from. Mirrors the design spec's §6.1/§6.6 degradation
-// table. Every catalog verb (skill install <catalog-id>, skill search,
+// can't recover from. Every catalog verb (skill install <catalog-id>, skill search,
 // publish, sync, services, call, help-tools, tokens, whoami, login,
 // logout, authorize) surfaces this single message so the guidance is
 // consistent CLI-wide. Local-only verbs (skill install <path>, skill

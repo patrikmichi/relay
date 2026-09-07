@@ -2,8 +2,7 @@
 #
 # Lives at cli/.github/workflows/release.yml inside the monorepo today so it
 # travels untouched to the repo root once cli/ is split out into its own
-# public repo (github.com/patrikmichi/relay) — see Phase 2 of
-# vault/plans/claude-infra/relay-standalone-distribution-plan-2026-07-06.md.
+# public repo (github.com/patrikmichi/relay).
 # It has NO effect inside the monorepo: GitHub Actions only reads workflows
 # from the repository root's .github/workflows/, not from nested ones, so
 # this file is inert until the split moves it to the new repo's root.
@@ -19,11 +18,10 @@
 #      variables > Actions > New repository secret.
 #   4. GITHUB_TOKEN is provided automatically by Actions for the `release`
 #      permission below; no manual secret needed for that one.
-#   5. TODO(P2.4, human-gated): code-signing / notarization for macOS
-#      binaries is NOT set up here. Darwin archives from this workflow are
-#      unsigned. See plan P2.4 for the codesign identity + notarization
-#      workflow addition — that requires a human-provisioned Apple Developer
-#      ID certificate and is deliberately out of scope for this task.
+#   5. Code-signing / notarization for macOS binaries is NOT set up here.
+#      Darwin archives from this workflow are unsigned, since the codesign
+#      identity + notarization workflow requires a human-provisioned Apple
+#      Developer ID certificate (human-gated, out of scope here).
 # ---------------------------------------------------------------------------
 
 name: Release

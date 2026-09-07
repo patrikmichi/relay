@@ -3,13 +3,13 @@ package agentport
 import "testing"
 
 // TestAgentIrFieldDescriptors_Complete asserts every field agent.go
-// declares as part of the Agent IR (per relay-standalone design §3b) has a
-// corresponding agentIrFieldDescriptors entry — catches a field added to
-// the struct without wiring its name->field binding.
+// declares as part of the Agent IR has a corresponding
+// agentIrFieldDescriptors entry — catches a field added to the struct
+// without wiring its name->field binding.
 func TestAgentIrFieldDescriptors_Complete(t *testing.T) {
 	want := []string{
 		"name", "description", "metadata", "model", "tools",
-		"temperature", "mode", "memory", "skills",
+		"temperature", "mode", "memory", "skills", "body",
 	}
 	for _, ir := range want {
 		if _, ok := agentIrFieldDescriptors[ir]; !ok {
@@ -49,7 +49,7 @@ func TestCanonicalIRFieldType_UnionsSkillAndAgent(t *testing.T) {
 func TestDecodeAgentIRField_PropagatesDecodeErrors(t *testing.T) {
 	a := &Agent{}
 	node := yamlNodeFor(t, "key: value\n") // mapping node, not a scalar
-	for _, ir := range []string{"name", "description", "model", "temperature", "mode", "memory"} {
+	for _, ir := range []string{"name", "description", "model", "temperature", "mode", "memory", "body"} {
 		if err := decodeAgentIRField(a, ir, node); err == nil {
 			t.Errorf("decodeAgentIRField(%s, <mapping>): expected an error, got nil", ir)
 		}

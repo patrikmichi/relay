@@ -32,7 +32,7 @@ func TestAgentDiff_ReportsDroppedFieldsAndWritesNothing(t *testing.T) {
 	}
 
 	// Nothing should have been written to the REAL opencode target directory.
-	realTarget := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	realTarget := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	if _, err := os.Stat(realTarget); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written to %s, stat err = %v", realTarget, err)
 	}
@@ -94,17 +94,17 @@ func TestAgentDiff_UnknownProvidersError(t *testing.T) {
 	cmd := AgentDiffCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"reviewer", "--from", "codex", "--to", "opencode"})
+	cmd.SetArgs([]string{"reviewer", "--from", "cline", "--to", "opencode"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error for an unsupported --from provider")
+		t.Fatalf("expected an error for an unsupported --from provider (cline has no agent-file primitive)")
 	}
 
 	cmd2 := AgentDiffCmd()
 	var buf2 bytes.Buffer
 	cmd2.SetOut(&buf2)
-	cmd2.SetArgs([]string{"reviewer", "--from", "claude", "--to", "cursor"})
+	cmd2.SetArgs([]string{"reviewer", "--from", "claude", "--to", "cline"})
 	if err := cmd2.Execute(); err == nil {
-		t.Fatalf("expected an error for an unsupported --to provider")
+		t.Fatalf("expected an error for an unsupported --to provider (cline has no agent-file primitive)")
 	}
 }
 

@@ -155,8 +155,8 @@ func classifyInstallSource(arg string) (isLocal bool, err error) {
 
 // fetchFromGateway resolves an authenticated gateway client and fetches
 // catalogID via catalog.FetchSkill, translating auth/offline/gateway-error
-// failures into the fail-closed degradation guidance (design spec
-// §6.1/§6.6). No files are ever written on any of these paths.
+// failures into the fail-closed degradation guidance. No files are ever
+// written on any of these paths.
 // resolveGatewayURLOrFailClosed itself checks the root --offline flag
 // (cli.Offline()) and refuses with offlineGuidance before this ever reaches
 // client.Resolve.
@@ -182,7 +182,7 @@ func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill
 }
 
 // translateGatewayFetchError maps catalog.FetchSkill's sentinel errors to
-// the user-facing guidance from the design spec's §6.6 degradation table.
+// user-facing degradation guidance.
 func translateGatewayFetchError(catalogID string, err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrNoAccess):
@@ -202,7 +202,7 @@ func translateGatewayFetchError(catalogID string, err error) error {
 // --to was omitted — every detected provider. Unlike
 // resolveMigrateTargets, there's no --from adapter to exclude: an install's
 // source is an arbitrary local path or a gateway catalog id, never one of
-// the 4 providers itself.
+// the loaded skill providers itself.
 func resolveInstallTargets(to []string) ([]agentport.Adapter, error) {
 	if len(to) == 0 {
 		targets := agentport.DetectedProviders()

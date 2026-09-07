@@ -10,8 +10,7 @@ import (
 // passingVerdicts / passingGateVerdicts are the case-insensitive values that
 // count as "this artifact is safe to install". "na"/"skip" are accepted at
 // the per-gate level (a gate that legitimately doesn't apply to this
-// resource type), mirroring the gateway's own getPublishStatus semantics
-// (design spec §4.3 step 5 / §6.2 step 4b).
+// resource type), mirroring the gateway's own getPublishStatus semantics.
 var passingVerdicts = map[string]bool{
 	"pass":     true,
 	"passed":   true,

@@ -8,10 +8,10 @@ import (
 
 func float64Ptr(v float64) *float64 { return &v }
 
-// TestComputeAgentLoss_MatrixRows exercises every §3c matrix row that
-// computeAgentLoss is responsible for (Temperature/Mode dropped on claude;
-// Memory/Skills dropped on opencode) plus the "preserved" rows (no loss
-// item when the target's cap covers the field).
+// TestComputeAgentLoss_MatrixRows exercises every capability-matrix row
+// that computeAgentLoss is responsible for (Temperature/Mode dropped on
+// claude; Memory/Skills dropped on opencode) plus the "preserved" rows (no
+// loss item when the target's cap covers the field).
 func TestComputeAgentLoss_MatrixRows(t *testing.T) {
 	full := Agent{
 		Temperature: float64Ptr(0.5),
@@ -57,7 +57,7 @@ func TestComputeAgentLoss_MatrixRows(t *testing.T) {
 // Description/Body/Model/Tools never appear in computeAgentLoss's output
 // regardless of target — Model/Tools loss is reported by
 // modelLossForTarget/toolsLossForTarget instead (degraded, not dropped),
-// and Name/Description/Body are universally preserved (§3c: "preserved").
+// and Name/Description/Body are universally preserved.
 func TestComputeAgentLoss_PreservedFieldsProduceNoLoss(t *testing.T) {
 	a := Agent{
 		Name:        "reviewer",
@@ -106,8 +106,7 @@ func TestModelLossForTarget_KnownAlias(t *testing.T) {
 
 // TestModelLossForTarget_UnrecognizedModelPassesThroughDegraded confirms an
 // unmapped model string is never silently dropped — it passes through
-// unchanged with a LossDegraded note, per the design's "unmapped ->
-// degraded" rule (§3c).
+// unchanged with a LossDegraded note, per the "unmapped -> degraded" rule.
 func TestModelLossForTarget_UnrecognizedModelPassesThroughDegraded(t *testing.T) {
 	mapped, loss := modelLossForTarget("some-custom-finetune", ProviderClaude, ProviderOpencode)
 	if mapped != "some-custom-finetune" {

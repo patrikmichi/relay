@@ -30,7 +30,13 @@ func AgentScan(a *Agent) AgentScanResult {
 		}
 	}
 
-	scanText(a.Name+".md", a.Body)
+	ext := ".md"
+	if a.Provenance.SourceProvider != "" {
+		if adapter, ok := AgentAdapterByID(a.Provenance.SourceProvider); ok {
+			ext = adapter.FileExt()
+		}
+	}
+	scanText(a.Name+ext, a.Body)
 
 	return AgentScanResult{Findings: findings, Score: agentQualityScore(a, findings)}
 }

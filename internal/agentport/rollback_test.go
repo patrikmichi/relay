@@ -123,11 +123,11 @@ func TestRollback_RefusesModifiedFileWithoutForce(t *testing.T) {
 }
 
 // TestRollback_RoutesByKind_AgentEntryDoesNotTouchSkillFiles is the
-// Rollback-level proof of P1.6's resolver (extended by the relay-standalone
-// design §3e agent-write-path closure): an agent-kind manifest entry and a
-// skill-kind manifest entry for the SAME provider+scope+name resolve to
-// DIFFERENT target directories, so rolling back the agent entry never
-// touches the skill's files, and vice versa.
+// Rollback-level proof of resolveTargetForEntry's kind-aware resolution:
+// an agent-kind manifest entry and a skill-kind manifest entry for the
+// SAME provider+scope+name resolve to DIFFERENT target directories, so
+// rolling back the agent entry never touches the skill's files, and vice
+// versa.
 //
 // This now exercises the REAL on-disk flat `<name>.md` convention
 // Claude/opencode agent files use: a skill's target dir is its own

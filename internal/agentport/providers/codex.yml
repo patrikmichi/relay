@@ -3,10 +3,16 @@
 # Skill locations: user ~/.agents/skills/<name>/SKILL.md (plus the read-only
 # admin scope /etc/codex/skills), project .agents/skills/<name>/SKILL.md.
 #
-# SKILL.md frontmatter is exactly name + description. An optional sidecar
-# file at <skill-dir>/agents/openai.yaml carries Codex-only extras, owned by
-# the codex-openai named codec (nested interface/policy/dependencies shape
-# — not a flat field map, so it isn't declared via `frontmatter`).
+# SKILL.md frontmatter is exactly name + description — confirmed against
+# the vendor docs (the two ONLY documented, both-required frontmatter
+# keys). An optional sidecar file at <skill-dir>/agents/openai.yaml carries
+# Codex-only extras, owned by the codex-openai named codec (nested
+# interface/policy/dependencies shape — not a flat field map, so it isn't
+# declared via `frontmatter`); the research note confirms this sidecar
+# exists but notes its full schema beyond interface/policy/dependencies is
+# not published in more detail.
+#
+# verified: 2026-09-05 against https://learn.chatgpt.com/docs/build-skills
 id: codex
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]

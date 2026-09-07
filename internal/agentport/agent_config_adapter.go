@@ -10,13 +10,12 @@ import (
 
 // agentConfigAdapter is the Agent-IR analogue of configAdapter: one generic
 // AgentAdapter implementation driven by a validated ProviderConfig loaded
-// from agents/<id>.yml. Every shipped agent provider (claude, opencode) is
-// one agentConfigAdapter instance — the same "config-driven, not
-// hard-coded per platform" shape the Skill side already uses. Reuses the
-// kind-agnostic machinery lifted in P1.1 (expandDirs/expandHome,
-// detectDirs, ownDirCount, splitFrontmatter, mappingLookup) wholesale,
-// exactly as the relay-standalone design's §3a describes — only the IR
-// binding (agentFieldValue/decodeAgentIRField vs irFieldValue/
+// from agents/<id>.yml. Every shipped agent provider (claude, opencode,
+// codex, cursor, gemini-cli) is one agentConfigAdapter instance — the same
+// "config-driven, not hard-coded per platform" shape the Skill side already
+// uses. Reuses the kind-agnostic machinery (expandDirs/expandHome,
+// detectDirs, ownDirCount, splitFrontmatter, mappingLookup) wholesale —
+// only the IR binding (agentFieldValue/decodeAgentIRField vs irFieldValue/
 // decodeIRField) and the on-disk shape (always layout: flat; no resources,
 // no sidecar) differ from configAdapter.
 type agentConfigAdapter struct {
@@ -60,6 +59,10 @@ func (a *agentConfigAdapter) Capabilities() AgentCapSet { return a.caps }
 func (a *agentConfigAdapter) OwnUserDirCount() int    { return ownDirCount(a.cfg.Dirs.User) }
 func (a *agentConfigAdapter) OwnProjectDirCount() int { return ownDirCount(a.cfg.Dirs.Project) }
 
+// FileExt implements AgentAdapter.FileExt — delegates to the config's
+// format-derived extension (config.go).
+func (a *agentConfigAdapter) FileExt() string { return a.cfg.FileExt() }
+
 // validateName validates name against this provider's configured
 // name_regex — mirrors configAdapter.validateName. Neither shipped agent
 // config sets a custom name_regex today, so this always delegates to the
@@ -84,6 +87,10 @@ func (a *agentConfigAdapter) validateName(name string) error {
 // configAdapter.loadFlatFile exactly, but decodes into *Agent via
 // decodeAgentIRField instead of *Skill via decodeIRField.
 func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
+	if a.cfg.Format == AgentFormatTOML {
+		return a.loadTOML(path)
+	}
+
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -161,6 +168,10 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 		return nil, nil, err
 	}
 
+	if a.cfg.Format == AgentFormatTOML {
+		return a.projectTOML(ag)
+	}
+
 	var modelLoss *LossItem
 	mapping := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	for _, f := range a.cfg.Frontmatter {
@@ -205,7 +216,7 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 	}
 	content := joinFrontmatter(fmBytes, ag.Body)
 
-	files := map[string][]byte{ag.Name + ".md": content}
+	files := map[string][]byte{ag.Name + a.FileExt(): content}
 
 	loss := computeAgentLoss(ag, a.caps)
 	if modelLoss != nil {

@@ -29,19 +29,19 @@ func SkillMigrateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate <name>",
 		Short: "Migrate a skill from one agent-skill provider to another",
-		Long: `Load a skill by name from --from's directory (in the given --scope),
+		Long: fmt.Sprintf(`Load a skill by name from --from's directory (in the given --scope),
 project it to one or more --to providers, print a fidelity-loss report, and
 (unless --dry-run) write the projected files and record a manifest entry.
 
 If --to is omitted, migrates to every provider detected as installed on this
 machine (excluding --from).
 
-Supported providers: claude, codex, opencode, cursor.
+Supported providers: %s.
 
 Examples:
   relay skill migrate my-skill --from claude --to codex
   relay skill migrate my-skill --from cursor --scope project --dry-run
-  relay skill migrate my-skill --from claude --strict`,
+  relay skill migrate my-skill --from claude --strict`, providerIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillMigrate(cmd, args[0], skillMigrateOpts{
@@ -54,7 +54,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&fromFlag, "from", "", "Source provider: claude, codex, opencode, or cursor (required)")
+	cmd.Flags().StringVar(&fromFlag, "from", "", fmt.Sprintf("Source provider: %s (required)", providerIDsOxford()))
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected providers except --from")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search/write: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write files")
@@ -78,7 +78,7 @@ func runSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts) err
 	}
 
 	if opts.from == "" {
-		return fmt.Errorf("--from is required (claude, codex, opencode, or cursor)")
+		return fmt.Errorf("--from is required (%s)", providerIDsOxford())
 	}
 	fromAdapter, ok := agentport.AdapterByID(agentport.ProviderID(opts.from))
 	if !ok {

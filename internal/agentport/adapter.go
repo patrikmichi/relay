@@ -14,7 +14,7 @@ const (
 	// LossPreserved means the field round-trips exactly.
 	LossPreserved LossKind = "preserved"
 	// LossDegraded means the field is represented, but not exactly (e.g. a
-	// best-effort synthesized mapping).
+	// synthesized approximate mapping).
 	LossDegraded LossKind = "degraded"
 	// LossDropped means the target format has no equivalent for the field.
 	LossDropped LossKind = "dropped"
@@ -105,7 +105,7 @@ func dirExists(path string) bool {
 // computeLoss inspects a Skill for populated fields the target adapter's
 // CapSet cannot represent, returning a LossDropped LossItem for each.
 // Adapters call this from Project() and may layer their own additional
-// LossItems (e.g. LossDegraded for a best-effort synthesized mapping) on
+// LossItems (e.g. LossDegraded for a synthesized approximate mapping) on
 // top of what this returns.
 func computeLoss(s *Skill, caps CapSet) []LossItem {
 	var loss []LossItem

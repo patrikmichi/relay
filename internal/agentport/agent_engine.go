@@ -25,7 +25,7 @@ type AgentPlan struct {
 	TargetPaths string
 }
 
-// HasDropped reports whether the plan's loss report contains any
+// HasDropped reports whether this AgentPlan's loss report contains any
 // LossDropped item (used by `--strict`) — the AgentPlan analogue of
 // Plan.HasDropped.
 func (p *AgentPlan) HasDropped() bool {

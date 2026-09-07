@@ -67,7 +67,7 @@ func loadSkillFromProvider(from, scopeStr, name string) (*agentport.Skill, error
 		return nil, err
 	}
 	if from == "" {
-		return nil, fmt.Errorf("--from is required (claude, codex, opencode, or cursor)")
+		return nil, fmt.Errorf("--from is required (%s)", providerIDsOxford())
 	}
 	a, ok := agentport.AdapterByID(agentport.ProviderID(from))
 	if !ok {

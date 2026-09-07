@@ -5,7 +5,15 @@
 # compatibility); project .cursor/skills/<name>/SKILL.md (same compat
 # fallbacks, project-relative). Cursor's own discovery is recursive —
 # skills can live nested anywhere under these roots (project scope only;
-# user scope is always direct per the Adapter contract).
+# user scope is always direct per the Adapter contract). Confirmed against
+# the research note: ~/.agents/skills stays a COMPAT read (Cursor's
+# vendor-documented distinction is "syncs to Cloud Agents" for
+# ~/.cursor/skills vs. "local-only" for ~/.agents/skills — not two
+# equal-priority own roots), and recursive project-scope discovery is
+# vendor-confirmed (skill name = the immediate folder containing SKILL.md,
+# not any parent category folder).
+#
+# verified: 2026-09-05 against https://cursor.com/help/customization/skills
 id: cursor
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]

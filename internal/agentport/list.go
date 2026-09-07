@@ -16,9 +16,9 @@ type SkillRef struct {
 	Path     string // skill directory (containing SKILL.md), or a legacy flat <name>.md file
 }
 
-// recursiveDiscoverer is an additive, OPTIONAL capability interface (§2.4
-// of the config-driven-adapters design) List uses instead of a hard-coded
-// `a.(cursorAdapter)` type assertion — the one coupling to a concrete
+// recursiveDiscoverer is an additive, OPTIONAL capability interface List
+// uses instead of a hard-coded `a.(cursorAdapter)` type assertion — the
+// one coupling to a concrete
 // adapter type this package had. configAdapter implements it from its
 // `discovery` config field; the Adapter interface itself is unchanged.
 type recursiveDiscoverer interface {

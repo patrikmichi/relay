@@ -23,12 +23,12 @@ func AgentDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <name>",
 		Short: "Preview an agent migration: field-level differences + fidelity-loss report, without writing",
-		Long: `Load <name> from --from's directory (in the given --scope), project it
+		Long: fmt.Sprintf(`Load <name> from --from's directory (in the given --scope), project it
 to --to, and print the field-level differences plus the fidelity-loss
 report — without writing anything to --to's real agent directory or
 recording a manifest entry. This is a preview of 'relay agent migrate'.
 
-Supported providers: claude, opencode.`,
+Supported providers: %s.`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentDiff(cmd, args[0], agentDiffOpts{from: fromFlag, to: toFlag, scope: scopeFlag})
@@ -59,11 +59,11 @@ func runAgentDiff(cmd *cobra.Command, name string, opts agentDiffOpts) error {
 
 	fromAdapter, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.from))
 	if !ok {
-		return fmt.Errorf("unknown --from agent provider %q", opts.from)
+		return unsupportedAgentProviderError(opts.from)
 	}
 	toAdapter, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.to))
 	if !ok {
-		return fmt.Errorf("unknown --to agent provider %q", opts.to)
+		return unsupportedAgentProviderError(opts.to)
 	}
 
 	agentPath, err := agentport.ResolveAgentPath(fromAdapter, scope, name)
@@ -98,7 +98,7 @@ func runAgentDiff(cmd *cobra.Command, name string, opts agentDiffOpts) error {
 		return fmt.Errorf("write scratch files: %w", err)
 	}
 
-	projected, err := toAdapter.Load(filepath.Join(tmp, src.Name+".md"))
+	projected, err := toAdapter.Load(filepath.Join(tmp, src.Name+toAdapter.FileExt()))
 	if err != nil {
 		return fmt.Errorf("re-load projected agent: %w", err)
 	}

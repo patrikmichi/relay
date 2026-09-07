@@ -22,20 +22,20 @@ func AgentListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List installed agents across agent providers",
-		Long: `Enumerate agents present in each provider's agent directory: name,
+		Long: fmt.Sprintf(`Enumerate agents present in each provider's agent directory: name,
 provider, and scope. With --provenance, joins the manifest ledger to show
 where each agent was installed/migrated from (when relay recorded it).
 
 Scope 'project' is resolved relative to the current working directory only
 (no parent-directory search, unlike 'relay agent migrate --from').
 
-Supported providers: claude, opencode.`,
+Supported providers: %s.`, agentProviderIDsCSV()),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runAgentList(cmd, agentListOpts{provider: providerFlag, scope: scopeFlag, provenance: provenance})
 		},
 	}
 
-	cmd.Flags().StringVar(&providerFlag, "provider", "", "Restrict to one provider: claude or opencode (default: all)")
+	cmd.Flags().StringVar(&providerFlag, "provider", "", fmt.Sprintf("Restrict to one provider: %s (default: all)", agentProviderIDsOxford()))
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to list: user or project")
 	cmd.Flags().BoolVar(&provenance, "provenance", false, "Show where each agent was installed/migrated from")
 
@@ -58,7 +58,7 @@ func runAgentList(cmd *cobra.Command, opts agentListOpts) error {
 	if opts.provider != "" {
 		a, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.provider))
 		if !ok {
-			return fmt.Errorf("unknown --provider %q", opts.provider)
+			return unsupportedAgentProviderError(opts.provider)
 		}
 		adapters = []agentport.AgentAdapter{a}
 	} else {

@@ -51,7 +51,7 @@ func (*testBoomErr) Error() string { return "boom: unrelated error" }
 // than being imported) so this package's e2e tests don't need to export
 // catalog's test helpers — a real gzipped tarball of a canonical
 // Agent-Skills bundle (SKILL.md + a scripts/ resource), exactly the shape
-// the gateway's download endpoint is contracted to serve (design spec §4.6).
+// the gateway's download endpoint is contracted to serve.
 
 func buildCanonicalSkillBundle(t *testing.T, name string) []byte {
 	t.Helper()
@@ -88,8 +88,8 @@ func sha256HexOfBundle(b []byte) string {
 
 // newMockCatalogGateway stands up an httptest.Server that serves bundle at
 // GET /api/catalog/skills/<id>/download with the real X-Skill-* headers the
-// design spec's download endpoint is contracted to set (§4.6) — sha256,
-// version, scan verdict. Requires a bearer Authorization header (any
+// gateway's download endpoint is contracted to set — sha256, version, scan
+// verdict. Requires a bearer Authorization header (any
 // non-empty value — GATEWAY_API_KEY bearer auth, matching client.New).
 func newMockCatalogGateway(t *testing.T, wantID string, bundle []byte, version string) *httptest.Server {
 	t.Helper()

@@ -10,8 +10,8 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport"
 )
 
-// TestAgentMigrate_ClaudeToOpencodeAndBack exercises the full round trip
-// P1.7 requires: migrate a claude agent to opencode, then migrate the
+// TestAgentMigrate_ClaudeToOpencodeAndBack exercises the full round trip:
+// migrate a claude agent to opencode, then migrate the
 // opencode-projected agent back to claude, asserting the on-disk file
 // shape at each step (flat "<name>.md", opencode's {tool: bool} map),
 // the manifest entry's Kind: agent, and that a lossiness report is shown.
@@ -35,7 +35,7 @@ func TestAgentMigrate_ClaudeToOpencodeAndBack(t *testing.T) {
 	}
 
 	// Flat "<name>.md" file shape — no per-agent subdirectory.
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	content, err := os.ReadFile(opencodePath)
 	if err != nil {
 		t.Fatalf("expected %s to exist: %v", opencodePath, err)
@@ -107,9 +107,9 @@ func TestAgentMigrate_UnknownFromProviderErrors(t *testing.T) {
 	cmd := AgentMigrateCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"reviewer", "--from", "codex"})
+	cmd.SetArgs([]string{"reviewer", "--from", "cline"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error for an unsupported --from provider (codex has no agent-file primitive)")
+		t.Fatalf("expected an error for an unsupported --from provider (cline has no agent-file primitive)")
 	}
 }
 
@@ -121,9 +121,9 @@ func TestAgentMigrate_UnknownToProviderErrors(t *testing.T) {
 	cmd := AgentMigrateCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--to", "cursor"})
+	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--to", "cline"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error for an unsupported --to provider (cursor has no subagent primitive)")
+		t.Fatalf("expected an error for an unsupported --to provider (cline has no subagent primitive)")
 	}
 }
 
@@ -155,7 +155,7 @@ func TestAgentMigrate_DryRunWritesNothing(t *testing.T) {
 		t.Errorf("expected a dry-run marker, got:\n%s", buf.String())
 	}
 
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written under --dry-run, stat err = %v", err)
 	}
@@ -192,7 +192,7 @@ func TestAgentMigrate_StrictAbortsOnDroppedFields(t *testing.T) {
 		t.Fatalf("expected --strict to abort on a dropped field (Memory)")
 	}
 
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written when --strict aborts, stat err = %v", err)
 	}
@@ -203,7 +203,7 @@ func TestAgentMigrate_DefaultToAllDetectedExceptFrom(t *testing.T) {
 	t.Setenv("HOME", home)
 	writeClaudeUserAgent(t, home)
 	// Detect() for opencode requires its own user dir to exist.
-	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode", "agent"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode", "agents"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
@@ -328,7 +328,7 @@ func TestAgentMigrate_InteractivePromptDeclines(t *testing.T) {
 	if !strings.Contains(buf.String(), "skipped") {
 		t.Errorf("expected 'skipped' after declining the prompt, got:\n%s", buf.String())
 	}
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written after declining, stat err = %v", err)
 	}
@@ -355,7 +355,7 @@ func TestAgentMigrate_InteractivePromptAccepts(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v\noutput:\n%s", err, buf.String())
 	}
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); err != nil {
 		t.Fatalf("expected %s written after accepting the prompt: %v", opencodePath, err)
 	}

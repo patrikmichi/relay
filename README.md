@@ -1,10 +1,15 @@
 # relay
 
 `relay` is a CLI for managing AI agent skills (Claude, Codex, OpenCode,
-Cursor) and agent definitions (Claude, opencode) across providers, and, when
-you're connected to a gateway, for pulling skills/agents/MCP servers from a
-shared catalog. Every command works fully offline against your local
-machine; a handful of catalog commands need a gateway to reach.
+Cursor, Cline, Gemini CLI, Windsurf — see [Skill provider
+support](#skill-provider-support)) and agent definitions (Claude, opencode,
+Codex, Cursor, Gemini CLI — see [Agent provider
+support](#agent-provider-support)) across providers, and, when you're
+connected to a gateway, for pulling skills/agents/MCP servers from a shared
+catalog. Every command works fully offline against your local machine; a
+handful of catalog commands need a gateway to reach. `relay providers` is
+the live, authoritative list of loaded providers — it never goes stale as
+new providers are added.
 
 ## Install
 
@@ -39,28 +44,106 @@ relay skill install pr-triage --to claude
 ```bash
 # Fully offline: migrate an installed agent from one provider to another.
 relay agent migrate reviewer --from claude --to opencode
+
+# Requires a gateway: install an agent by catalog id/slug.
+relay agent install res_abc123 --to claude
 ```
 
-> MCP-server management verbs (`relay mcp ...` beyond `publish`) are not
-> yet part of this CLI.
+> `relay mcp list` reads the catalog's MCP-server resources (read-only).
+> `relay mcp install`/`relay mcp remove` — writing an MCP-server registration
+> into a per-provider client config — are deliberately NOT part of this CLI;
+> see [MCP server support](#mcp-server-support) for why.
+
+## Skill provider support
+
+`relay skill migrate/install/list/diff/scan/score/uninstall/rollback` work
+offline against 7 providers, every one vendor-verified against its own
+docs (run `relay providers` for the live, detected list — this table is a
+point-in-time summary, not the source of truth). "Extra fields" is what
+that provider's on-disk format can carry beyond the universal name +
+description; migrating a skill that uses one of them onto a provider whose
+column doesn't list it reports that field `[dropped]` in the fidelity
+report (verified 2026-09-05 against a real 7-way `skill migrate` run):
+
+| Provider | Format status | Extra fields carried |
+|---|---|---|
+| **Claude Code** | supported | allowed-tools, disable-model-invocation, license |
+| **Codex** | supported | (name + description only; sidecar `agents/openai.yaml` carries Codex-only interface/policy/dependency extras) |
+| **opencode** | supported | license, compatibility, metadata |
+| **Cursor** | supported | paths, disable-model-invocation, metadata |
+| **Cline** | supported | metadata |
+| **Gemini CLI** | supported | metadata |
+| **Windsurf** | supported | metadata |
 
 ## Agent provider support
 
 `relay agent migrate/list/diff/scan/uninstall/rollback` work offline against
-two providers:
+5 providers; `relay agent install <catalog-id>` (gateway-only — installs an
+agent definition from the catalog, same fan-out/`--to`/manifest/rollback
+model as `relay skill install`) projects onto the same 5:
 
 | Provider | Shape | Support |
 |---|---|---|
 | **Claude Code** | flat `<name>.md` (frontmatter + body) at `~/.claude/agents/` (user) / `.claude/agents/` (project) | **Supported** |
-| **opencode** | flat `<name>.md` (frontmatter + body) at `~/.config/opencode/agent/` (user) / `.opencode/agent/` (project); `tools` is reshaped to/from opencode's `{tool: bool}` map | **Supported** |
-| **Codex** | a `[profiles.*]` TOML block in `~/.codex/config.toml` plus a decoupled prompt file in `~/.codex/prompts/*.md` — no single agent-definition file | **Unsupported** — a TOML profile is not equivalent to a markdown agent |
-| **Cursor** | rules (`.cursor/rules/*.mdc`) and settings-defined "modes" | **Unsupported** — Cursor has no first-class subagent primitive |
+| **opencode** | flat `<name>.md` (frontmatter + body) at `~/.config/opencode/agents/` (user) / `.opencode/agents/` (project); `tools` is reshaped to/from opencode's `{tool: bool}` map | **Supported** |
+| **Codex** | flat `<name>.toml` (GA 2026-03-16 custom-agent format — NOT the deprecated `[profiles.*]` block) at `~/.codex/agents/` (user) / `.codex/agents/` (project); no frontmatter/body split — the instructions live in a `developer_instructions` TOML string key | **Supported** — via a stdlib-only flat-TOML codec, no new dependency |
+| **Cursor** | flat `<name>.md` (frontmatter + body) at `~/.cursor/agents/` (user) / `.cursor/agents/` (project, also reads `.claude/agents/`/`.codex/agents/` for compat) | **Supported** — no `tools` allowlist key (subagents inherit the parent's tools) |
+| **Gemini CLI** | flat `<name>.md` (frontmatter + body) at `~/.gemini/agents/` (user) / `.gemini/agents/` (project) | **Supported** — `tools` carried as a real list |
+| **Cline**, **Windsurf** | no subagent/custom-agent file primitive published | **Unsupported** — `agent migrate --to cline` (or windsurf) errors naming the supported agent providers instead of silently no-op'ing |
 
-Migrating between claude and opencode preserves Name/Description/Body/Model
-(alias-mapped)/Tools (reshaped); Claude's `memory`/`skills` and opencode's
-`temperature`/`mode` have no equivalent on the other side and are reported
-as dropped in the fidelity report. Skill management (`relay skill ...`)
-supports all 4 providers (Claude, Codex, OpenCode, Cursor).
+Fidelity matrix (verified 2026-09-05 against a real 5-way `agent migrate`
+run) — `x` = preserved/carried, `~` = degraded (reshaped or alias-mapped,
+not silently identical), `-` = dropped, reported in the fidelity report:
+
+| Field | claude | opencode | codex | cursor | gemini-cli |
+|---|---|---|---|---|---|
+| Name/Description/Body | x | x | x | x | x |
+| Model | x | ~ (alias-mapped) | ~ (passthrough, no alias table) | ~ (passthrough, no alias table) | ~ (passthrough, no alias table) |
+| Tools | x | ~ (list ↔ `{tool: bool}` map) | - (no tools key) | - (no tools key) | x (real list) |
+| Temperature | - | x | - | - | x |
+| Mode | - | x | - | - | - |
+| Memory | x | - | - | - | - |
+| Skills | x | - | - | - | - |
+
+Skill management (`relay skill ...`) supports 7 providers — see [Skill
+provider support](#skill-provider-support) above.
+
+## MCP server support
+
+`relay mcp list` is read-only: it prints the gateway catalog's `mcp_server`
+resources (id, slug, name, registration source, current published version).
+That's the full extent of MCP-server management this CLI ships.
+
+`relay mcp install`/`relay mcp remove` are **deliberately NOT implemented.**
+Unlike a skill or agent (both project onto a single markdown-shaped file per
+provider), registering an MCP server means writing into a fourth, genuinely
+different artifact kind — a per-provider client config file
+(`~/.claude.json`, `~/.codex/config.toml`, `.cursor/mcp.json`, ...) — each
+with its own schema and its own IR, so it's out of scope for this CLI;
+`relay mcp list` gives you the id/slug to register a server manually today.
+
+`relay sync` is **also NOT** a portable way to distribute MCP servers,
+skills, or agents to non-Claude-Code providers — see the next paragraph.
+
+## `relay sync` is Claude-Code-only — no `--to <provider>`
+
+`relay sync` materializes a Claude-Code-specific plugin **marketplace**
+(`marketplace.json` + plugin bundles + a managed-settings fragment) — a
+distribution format with no analogue in codex/cursor/gemini-cli/opencode.
+`relay sync --to <provider>` is rejected outright rather than silently
+no-op'ing or guessing at an unsupported projection:
+
+```
+$ relay sync --to cursor
+relay sync --to cursor is not supported: sync materializes a
+Claude-Code-specific plugin marketplace with no per-provider equivalent —
+use `relay skill install <catalog-id> --to cursor` and
+`relay agent install <catalog-id> --to cursor` instead
+```
+
+The portable path to the other providers is per-artifact catalog install:
+`relay skill install <catalog-id> --to <provider>` and
+`relay agent install <catalog-id> --to <provider>`.
 
 ## The offline-vs-gateway model
 
@@ -68,9 +151,9 @@ Every `relay` command falls into exactly one of two buckets:
 
 | | LOCAL | GATEWAY |
 |---|---|---|
-| Touches | Only files on this machine (`~/.claude/skills/`, `~/.claude/agents/`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, and relay's own manifest) | A configured gateway over HTTP |
+| Touches | Only files on this machine (`~/.claude/skills/`, `~/.claude/agents/`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, and relay's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `relay login` or `GATEWAY_API_KEY` |
-| Examples | `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers` | `relay skill install <catalog-id>`, `relay skill search`, `relay publish`, `relay sync`, `relay services`, `relay call`, `relay help-tools`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay publish`, `relay sync`, `relay services`, `relay call`, `relay help-tools`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -102,14 +185,16 @@ scripts/CI that must never make a network call.
 | `relay services` | gateway | List services available on the configured gateway |
 | `relay help-tools [service]` | gateway | List tools for one or all services |
 | `relay call <service> <tool> [--arg k=v]` | gateway | Call a tool on a gateway service |
-| `relay sync [--dir] [--dry-run]` | gateway | Pull your marketplace manifest into a local Claude Code plugin directory |
+| `relay sync [--dir] [--dry-run]` | gateway | Pull your marketplace manifest into a local Claude Code plugin directory (Claude-Code-only — `--to <provider>` errors naming the portable alternative) |
 | `relay publish <path> [--type] [--watch]` | gateway | Publish a skill/agent/MCP server/prompt/plugin to the catalog |
 | `relay publish status <versionId> [--watch]` | gateway | Poll a publish's review status |
 | `relay skill publish <path>` | gateway | Alias for `relay publish` scoped to skills |
 | `relay agent publish <path>` | gateway | Publish an agent definition |
 | `relay mcp publish [--descriptor]` | gateway | Publish an MCP server descriptor |
+| `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only; `install`/`remove` are not implemented) |
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
 | `relay skill install <catalog-id>` | gateway | Install a skill by catalog id/slug into one or more providers |
+| `relay agent install <catalog-id> [--to <p>...]` | gateway | Install an agent by catalog id/slug into one or more agent providers |
 | `relay skill search [query]` | gateway | Search the catalog for installable skills |
 | `relay skill migrate <name> --from <p> [--to <p>...]` | local | Project an installed skill from one provider to another |
 | `relay skill list` | local | List installed skills across providers |
@@ -117,7 +202,7 @@ scripts/CI that must never make a network call.
 | `relay skill scan <name>` / `relay skill score <name>` | local | Inspect a skill's manifest/fidelity |
 | `relay skill uninstall <name>` | local | Remove an installed skill |
 | `relay skill rollback [manifest-entry-id]` | local | Revert to a prior manifest entry |
-| `relay agent migrate <name> --from <p> [--to <p>...]` | local | Project an installed agent from one provider to another (claude, opencode) |
+| `relay agent migrate <name> --from <p> [--to <p>...]` | local | Project an installed agent from one provider to another (claude, opencode, codex, cursor, gemini-cli) |
 | `relay agent list` | local | List installed agents across agent providers |
 | `relay agent diff <name>` | local | Diff an agent's projection across providers |
 | `relay agent scan <name>` | local | Inspect an agent for dangerous shell patterns/hardcoded secrets |

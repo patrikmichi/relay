@@ -11,7 +11,7 @@ import (
 // AgentScanCmd returns the `relay agent scan <name>` cobra command — a
 // thin wrapper over agentport.AgentScan, the Agent-IR analogue of
 // SkillScanCmd. There is deliberately no `relay agent score` companion
-// command (unlike skills' scan/score pair) — see relay-standalone P1.9.
+// command (unlike skills' scan/score pair).
 func AgentScanCmd() *cobra.Command {
 	var (
 		fromFlag  string
@@ -20,13 +20,13 @@ func AgentScanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scan <name>",
 		Short: "Scan an agent for dangerous shell patterns and hardcoded secrets",
-		Long: `Load <name> from --from's directory (in the given --scope) and run a
+		Long: fmt.Sprintf(`Load <name> from --from's directory (in the given --scope) and run a
 deterministic, local, no-network scan of its body for dangerous shell
 patterns (curl|bash, rm -rf, ...) and obvious hardcoded credentials. Prints
 findings and a quality score; exits non-zero if any finding has "high"
 severity.
 
-Supported providers: claude, opencode.`,
+Supported providers: %s.`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentScan(cmd, args[0], fromFlag, scopeFlag)
@@ -46,7 +46,7 @@ func loadAgentFromProvider(from, scopeStr, name string) (*agentport.Agent, error
 		return nil, err
 	}
 	if from == "" {
-		return nil, fmt.Errorf("--from is required (claude or opencode)")
+		return nil, fmt.Errorf("--from is required (%s)", agentProviderIDsOxford())
 	}
 	a, ok := agentport.AgentAdapterByID(agentport.ProviderID(from))
 	if !ok {

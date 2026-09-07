@@ -39,6 +39,7 @@ func AgentList(a AgentAdapter, scope Scope) ([]AgentRef, error) {
 		}
 	}
 
+	ext := a.FileExt()
 	seen := map[string]bool{}
 	var out []AgentRef
 	for _, d := range dirs {
@@ -50,10 +51,10 @@ func AgentList(a AgentAdapter, scope Scope) ([]AgentRef, error) {
 			return nil, fmt.Errorf("scan %s: %w", d, err)
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ext) {
 				continue
 			}
-			name := strings.TrimSuffix(e.Name(), ".md")
+			name := strings.TrimSuffix(e.Name(), ext)
 			if seen[name] {
 				continue
 			}

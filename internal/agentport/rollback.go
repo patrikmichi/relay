@@ -28,8 +28,7 @@ func Rollback(entry ManifestEntry, force bool) error {
 	// relative to its own "<dir>/<name>/" subdirectory (TargetDir), while an
 	// agent's are relative to the provider's directory ITSELF — every
 	// shipped agent provider is layout: flat, a single "<name>.md" with no
-	// per-agent containing subdirectory (AgentTargetDir; see
-	// relay-standalone design §3e).
+	// per-agent containing subdirectory (AgentTargetDir).
 	var dir string
 	if entry.Kind == KindAgent {
 		dir, err = AgentTargetDir(target, entry.Scope)

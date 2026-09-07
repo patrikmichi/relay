@@ -25,7 +25,7 @@ func yamlNodeFor(t *testing.T, raw string) *yaml.Node {
 // TestAgent_RoundTripGetSet exercises decodeAgentIRField -> agentFieldValue
 // for every declared agentIrFieldDescriptors name — the Agent-IR analogue
 // of the Skill IR's get/set round trip, proving the two functions agree on
-// every field's shape (§P1.2).
+// every field's shape.
 func TestAgent_RoundTripGetSet(t *testing.T) {
 	cases := []struct {
 		ir       string
@@ -76,6 +76,16 @@ func TestAgent_RoundTripGetSet(t *testing.T) {
 		{"skills", "[api-design, error-handling]", false, func(t *testing.T, a *Agent) {
 			if !reflect.DeepEqual(a.Skills, []string{"api-design", "error-handling"}) {
 				t.Errorf("Skills = %#v", a.Skills)
+			}
+		}},
+		// "body" is normally only reached via a format: toml config's own
+		// TOML-value codepath (decodeAgentTOMLField, agent_toml.go) — never
+		// through this YAML-node path today, since no markdown-format
+		// config maps IR "body" in its "frontmatter" list. Still exercised
+		// here directly since it's a registered, generic IR name.
+		{"body", "the system prompt text", false, func(t *testing.T, a *Agent) {
+			if a.Body != "the system prompt text" {
+				t.Errorf("Body = %q", a.Body)
 			}
 		}},
 	}

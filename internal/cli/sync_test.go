@@ -7,6 +7,7 @@ package cli
 // All tests use an httptest.Server — no real gateway is ever contacted.
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -338,6 +339,28 @@ func TestResolveSyncDoer_NoToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "relay login") {
 		t.Errorf("error should mention `relay login`, got: %v", err)
+	}
+}
+
+// TestSync_ToFlag_ErrorsNamingPortableAlternative is relay-cli-completion
+// plan D7's unit test: `relay sync --to <provider>` must error naming the
+// portable alternative (skill install / agent install --to), and must do
+// so WITHOUT ever resolving a gateway doer — no HOME/GATEWAY_API_KEY is set
+// up for this test, so a doer-resolution attempt would fail with a
+// different (offline-guidance) message instead.
+func TestSync_ToFlag_ErrorsNamingPortableAlternative(t *testing.T) {
+	cmd := syncCmdWithDoer(nil)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--to", "cursor"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected an error for --to cursor")
+	}
+	for _, want := range []string{"skill install", "agent install", "--to cursor"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to mention %q, got: %v", want, err)
+		}
 	}
 }
 

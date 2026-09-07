@@ -12,11 +12,10 @@ import (
 // The Agent IR shape itself is fixed Go code (agent.go) — only the mapping
 // from a provider's on-disk KEY to one of these fixed IR names is data.
 // Kept as a distinct switch/map pair from ir_fields.go (rather than a
-// unified, kind-parameterized function) per design §3b Option A: the
-// byte-exact Skill path (config_adapter_parity_test.go) must never be put
-// at risk by agent-only field additions, and a small, reviewable,
-// per-kind switch is the codebase's stated non-goal-compliant alternative
-// to reflection (see ir_fields.go's doc comment).
+// unified, kind-parameterized function): the byte-exact Skill path
+// (config_adapter_parity_test.go) must never be put at risk by agent-only
+// field additions, and a small, reviewable, per-kind switch avoids
+// reflection (see ir_fields.go's doc comment).
 //
 // agentIrFieldDescriptors is unioned into config.go's validate() via
 // canonicalIRFieldType (ir_fields.go) — an unrecognized ir name (in either
@@ -31,6 +30,15 @@ var agentIrFieldDescriptors = map[string]FieldType{
 	"mode":        FieldString,
 	"memory":      FieldString,
 	"skills":      FieldStringOrList,
+	// "body" is the canonical IR name for Agent.Body — normally never
+	// listed in a config's "frontmatter" (the markdown-format Load/Project
+	// path always treats Body as the free-text content after the "---"
+	// frontmatter separator, never a frontmatter key). It exists as a
+	// registered IR name so a format: toml config (agents/codex.yml) CAN
+	// map it to an actual on-disk key ("developer_instructions") — Codex's
+	// flat TOML has no frontmatter/body split, so the instructions have to
+	// be an ordinary mapped field like any other. See agent_toml.go.
+	"body": FieldString,
 }
 
 // agentFieldValue returns the current value of ir on a, and whether it is
@@ -59,6 +67,8 @@ func agentFieldValue(a *Agent, ir string) (value interface{}, isZero bool) {
 		return a.Memory, a.Memory == ""
 	case "skills":
 		return flexStringList(a.Skills), len(a.Skills) == 0
+	case "body":
+		return a.Body, a.Body == ""
 	default:
 		return nil, true
 	}
@@ -126,6 +136,12 @@ func decodeAgentIRField(a *Agent, ir string, node *yaml.Node) error {
 		if len(v) > 0 {
 			a.Skills = []string(v)
 		}
+	case "body":
+		var v string
+		if err := node.Decode(&v); err != nil {
+			return err
+		}
+		a.Body = v
 	default:
 		return fmt.Errorf("unknown canonical IR field %q", ir)
 	}

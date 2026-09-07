@@ -75,9 +75,9 @@ func TestAgentList_UnknownProviderErrors(t *testing.T) {
 	cmd := AgentListCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--provider", "cursor"})
+	cmd.SetArgs([]string{"--provider", "cline"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error for an unknown/unsupported --provider")
+		t.Fatalf("expected an error for an unknown/unsupported --provider (cline has no agent-file primitive)")
 	}
 }
 

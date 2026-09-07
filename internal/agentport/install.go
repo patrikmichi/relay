@@ -43,8 +43,8 @@ type genericFrontmatter struct {
 // there's no round-trip invariant to enforce there.
 //
 // A gateway-sourced install (catalog resource id / semver — see
-// Provenance.CatalogID/Version) is a later phase and is NOT implemented
-// here; this function only ever reads from the local filesystem.
+// Provenance.CatalogID/Version) is out of scope here; this function only
+// ever reads from the local filesystem.
 func LoadGenericSkill(path string) (*Skill, error) {
 	fi, err := os.Stat(path)
 	if err != nil {

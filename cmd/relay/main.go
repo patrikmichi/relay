@@ -112,8 +112,14 @@ func newRootCmd() *cobra.Command {
 		Use:     "relay",
 		Short:   "Gateway CLI — unified access to integrated services",
 		Version: buildVersionString(version, commit, date),
-		// Don't print usage on error (cleaner output for auth errors).
-		SilenceUsage: true,
+		// Don't print usage on error (cleaner output for auth errors), and
+		// don't let cobra print the error itself — main() below prints it
+		// exactly once (after rewriteOfflineUnknownCommandErr has a chance
+		// to rewrite it). Without SilenceErrors, cobra's own Execute()
+		// prints the error to stderr AND main() prints it again, so every
+		// failing command's message appeared twice.
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	// --offline is a cross-cutting root flag: every catalog-touching verb's

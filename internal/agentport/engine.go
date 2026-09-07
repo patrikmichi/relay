@@ -20,7 +20,7 @@ type Plan struct {
 	TargetPaths string // absolute directory the files would be written under (<dir>/<name>/)
 }
 
-// HasDropped reports whether the plan's loss report contains any
+// HasDropped reports whether this Plan's loss report contains any
 // LossDropped item (used by `--strict`).
 func (p *Plan) HasDropped() bool {
 	for _, l := range p.Loss {
@@ -51,8 +51,8 @@ type pathAdapter interface {
 // ProjectDirs()[0] resolved against the current working directory for
 // ScopeProject. Shared by Migrate (to compute Plan.TargetPaths) and
 // Rollback (to relocate the files a manifest entry recorded without
-// re-deriving this logic) — kind-agnostic since P1.6: target may be a Skill
-// Adapter or an AgentAdapter.
+// re-deriving this logic) — kind-agnostic: target may be a Skill Adapter
+// or an AgentAdapter.
 func TargetDir(target pathAdapter, scope Scope, name string) (string, error) {
 	if target == nil {
 		return "", fmt.Errorf("nil target adapter")
@@ -78,13 +78,12 @@ func TargetDir(target pathAdapter, scope Scope, name string) (string, error) {
 
 // resolveTargetForEntry picks the correctly-kinded adapter for a manifest
 // entry's Provider: an AgentAdapter when entry.Kind == KindAgent, a Skill
-// Adapter otherwise (KindSkill, or the pre-P1.5 default LoadManifest
-// normalizes absent Kind to). This is the "resolver that picks which
-// adapter to load-back" relay-standalone design §3e calls out —
-// TargetPaths hashing, Write, withManifestLock, atomic save, and
-// rollback.go's hash-verify-then-remove are already kind-agnostic (they
-// operate on map[relpath]sha256); only adapter SELECTION needed to become
-// kind-aware.
+// Adapter otherwise (KindSkill, or the default LoadManifest normalizes an
+// absent Kind to). This is the resolver that picks which adapter to
+// load-back — TargetPaths hashing, Write, withManifestLock, atomic save,
+// and rollback.go's hash-verify-then-remove are already kind-agnostic
+// (they operate on map[relpath]sha256); only adapter SELECTION needed to
+// become kind-aware.
 func resolveTargetForEntry(entry ManifestEntry) (pathAdapter, error) {
 	if entry.Kind == KindAgent {
 		a, ok := AgentAdapterByID(entry.Provider)

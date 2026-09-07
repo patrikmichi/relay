@@ -72,6 +72,7 @@ func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 		customDir  string
 		dryRun     bool
 		gatewayURL string
+		toFlag     string
 	)
 
 	cmd := &cobra.Command{
@@ -81,11 +82,17 @@ func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 Claude Code marketplace under ~/.config/relay/marketplace/<name>/.
 
 The directory is namespaced by the marketplace name so multiple orgs never collide.
+This materializes a CLAUDE-CODE-SPECIFIC plugin-marketplace distribution
+format (marketplace.json + plugin bundles + managed-settings) — there is no
+per-provider equivalent, so --to <provider> is NOT supported (see below).
 
 Flags:
   --dir <path>   Override the default output directory.
   --dry-run      Fetch and report what WOULD be written/removed — write nothing.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if toFlag != "" {
+				return errSyncToUnsupported(toFlag)
+			}
 			// Resolve doer (real gateway client) when not injected by tests.
 			d := doer
 			if d == nil {
@@ -102,7 +109,17 @@ Flags:
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
 	cmd.Flags().StringVar(&customDir, "dir", "", "Local marketplace directory (default: ~/.config/relay/marketplace/<name>/)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Fetch and report changes without writing anything")
+	cmd.Flags().StringVar(&toFlag, "to", "", "NOT supported — relay-cli-completion plan D7 descope; errors naming the portable alternative")
 	return cmd
+}
+
+// errSyncToUnsupported is `relay sync --to <provider>`'s descope error
+// (relay-cli-completion plan D7): sync materializes a Claude-Code-specific
+// plugin-marketplace distribution format with no per-provider analogue.
+// Checked BEFORE any doer/gateway resolution so it never depends on
+// network/auth state — a plain, always-reachable usage error.
+func errSyncToUnsupported(provider string) error {
+	return fmt.Errorf("relay sync --to %s is not supported: sync materializes a Claude-Code-specific plugin marketplace with no per-provider equivalent — use `relay skill install <catalog-id> --to %s` and `relay agent install <catalog-id> --to %s` instead", provider, provider, provider)
 }
 
 // resolveSyncDoer reads the gateway URL and resolves an authenticated
