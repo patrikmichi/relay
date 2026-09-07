@@ -14,11 +14,16 @@ import (
 // GATEWAY_URL env var and no config file value are set. It is a var (not a
 // const) so it can be overridden per-build via
 // -ldflags "-X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL=...".
-// Public builds may set this to "" — every consumer of GatewayURL() (and,
+// The public source default is "" (no owner-infrastructure hostname
+// baked into a public build) — every consumer of GatewayURL() (and,
 // downstream, every catalog verb) must treat an empty result as "no gateway
 // configured" and fail closed rather than silently dialing an empty/relative
-// URL. See resolveGatewayURLOrFailClosed in internal/cli/gateway.go.
-var DefaultGatewayURL = "https://gw.atlashub.dev"
+// URL. See resolveGatewayURLOrFailClosed in internal/cli/gateway.go. An
+// owner build that wants a baked-in default sets
+// RELAY_DEFAULT_GATEWAY_URL when running `make build` (Makefile) or
+// `goreleaser release` (.goreleaser.yaml) — both inject it via the same
+// -ldflags -X mechanism.
+var DefaultGatewayURL = ""
 
 // Config holds all persisted CLI settings.
 type Config struct {

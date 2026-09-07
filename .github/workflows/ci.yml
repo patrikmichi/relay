@@ -1,0 +1,57 @@
+# .github/workflows/ci.yml — relay CLI build/vet/test + public-source hygiene guard.
+#
+# Lives at cli/.github/workflows/ci.yml inside the monorepo today so it
+# travels untouched to the repo root once cli/ is split out into its own
+# public repo (github.com/patrikmichi/relay) — see release.yml's header
+# comment for the same rationale. Has NO effect inside the monorepo: GitHub
+# Actions only reads workflows from the repository root's
+# .github/workflows/, not nested ones — inert until the split.
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  no-owner-host:
+    name: guard against a baked-in owner hostname
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Grep for atlashub in tracked Go/YAML source
+        run: |
+          if grep -rn "atlashub" --include='*.go' --include='*.yml' --include='*.yaml' --exclude-dir=.github . ; then
+            echo "::error::found an 'atlashub' reference in tracked source — the public repo must not bake in an owner-infrastructure hostname (see internal/config.DefaultGatewayURL)"
+            exit 1
+          fi
+          echo "no owner-host literal found"
