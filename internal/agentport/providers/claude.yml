@@ -4,7 +4,16 @@
 # .claude/skills/<name>/SKILL.md. Also loads the legacy flat-command form
 # (~/.claude/commands/<name>.md / .claude/commands/<name>.md) via the
 # claude-legacy-commands load hook — a bare markdown file with the same
-# frontmatter shape works as a "skill" with no resources.
+# frontmatter shape works as a "skill" with no resources. Dirs and the five
+# mapped frontmatter keys (name/description/allowed-tools/
+# disable-model-invocation/license — the Agent-Skills spec-conformant
+# subset the research note lists) confirmed unchanged against the vendor
+# docs; the many Claude-Code-only extra frontmatter keys the note also
+# documents (when_to_use, argument-hint, model, effort, etc.) are
+# deliberately not added here — out of scope for this pass, matching the
+# pre-existing capability set.
+#
+# verified: 2026-09-05 against https://code.claude.com/docs/en/skills
 id: claude
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]

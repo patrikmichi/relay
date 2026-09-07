@@ -2,10 +2,16 @@
 # config-driven refactor's central claim: a normal new platform is a data
 # edit, not a recompile.
 #
-# Provenance: best-effort per the common Agent-Skills global+project
-# convention (see vault/research/repos/2026/05/02/asm-universal-skill-manager.md,
-# which lists Cline among ASM's 18 built-in provider configs). Confirm
-# against Cline's own docs before relying on this in production.
+# Skill locations: global ~/.cline/skills/<name>/SKILL.md (primary — on
+# conflict, GLOBAL wins over project, the opposite of every other provider
+# here; relay has no cross-provider precedence concept, so this is a
+# documented note, not something this config encodes); project
+# .cline/skills/<name>/SKILL.md (primary/recommended) and
+# .clinerules/skills/<name>/SKILL.md (Cline's own alternate project root —
+# both "own", not compat, since both are genuinely Cline's own directories);
+# also reads .claude/skills for compatibility.
+#
+# verified: 2026-09-05 against https://docs.cline.bot/customization/skills
 id: cline
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]
@@ -13,9 +19,11 @@ discovery: direct
 
 dirs:
   user:
-    - { path: "~/.cline/skills", role: own }
+    - { path: "~/.cline/skills", role: own } # dirs[0] = writable_primary
   project:
-    - { path: ".cline/skills", role: own }
+    - { path: ".cline/skills", role: own } # dirs[0] = writable_primary
+    - { path: ".clinerules/skills", role: own } # Cline's own alternate project root
+    - { path: ".claude/skills", role: compat }
 
 frontmatter:
   - { ir: name, key: name, type: string, presence: required }

@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestNewPlatforms_NoGoChange is the "prove add-a-platform-with-no-Go"
-// acceptance test (design §5.3): Windsurf, Gemini CLI, and Cline exist ONLY
-// as providers/{windsurf,gemini-cli,cline}.yml — no adapter_windsurf.go, no
+// TestNewPlatforms_NoGoChange proves adding a platform needs no Go change:
+// Windsurf, Gemini CLI, and Cline exist ONLY as
+// providers/{windsurf,gemini-cli,cline}.yml — no adapter_windsurf.go, no
 // switch-statement addition anywhere in this package. AdapterByID/
 // AllAdapters resolving them, and a normal Load/Project/Migrate round trip
 // working, demonstrates a new platform is a data edit, not a recompile.
@@ -34,8 +34,15 @@ func TestNewPlatforms_NoGoChange(t *testing.T) {
 			if len(dirs) == 0 {
 				t.Fatalf("UserDirs() = %v, want at least one entry", dirs)
 			}
-			if a.OwnUserDirCount() != 1 || a.OwnProjectDirCount() != 1 {
-				t.Fatalf("Own*DirCount() = (%d, %d), want (1, 1)", a.OwnUserDirCount(), a.OwnProjectDirCount())
+			// cline has 2 own project dirs (.cline/skills + its own
+			// .clinerules/skills alternate root); every other
+			// new-platform provider here has exactly 1.
+			wantOwnProject := 1
+			if id == "cline" {
+				wantOwnProject = 2
+			}
+			if a.OwnUserDirCount() != 1 || a.OwnProjectDirCount() != wantOwnProject {
+				t.Fatalf("Own*DirCount() = (%d, %d), want (1, %d)", a.OwnUserDirCount(), a.OwnProjectDirCount(), wantOwnProject)
 			}
 		})
 	}
@@ -97,7 +104,7 @@ func TestNewPlatforms_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestNewPlatforms_MigrateFromClaude is the acceptance test's `relay skill
+// TestNewPlatforms_MigrateFromClaude is the `relay skill
 // migrate x --from claude --to windsurf`-equivalent: a Claude skill
 // migrated to the new, YAML-only Windsurf provider projects a valid
 // SKILL.md with a correct lossiness report — Claude-only fields

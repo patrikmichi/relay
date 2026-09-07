@@ -3,6 +3,11 @@
 # Skill locations: user ~/.config/opencode/skills/<name>/SKILL.md (also
 # reads ~/.claude/skills/ and ~/.agents/skills/ for compatibility); project
 # .opencode/skills/<name>/SKILL.md (same compat fallbacks, project-relative).
+# Dirs and frontmatter (name, description, license, compatibility,
+# metadata — exactly opencode's documented schema, name+description
+# required, the rest optional) confirmed unchanged against the vendor docs.
+#
+# verified: 2026-09-05 against https://opencode.ai/docs/skills/
 id: opencode
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]

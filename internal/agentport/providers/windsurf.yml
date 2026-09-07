@@ -1,13 +1,22 @@
-# Windsurf provider config — added YAML-ONLY, with NO Go change, to prove
-# the config-driven refactor's central claim: a normal new platform is a
-# data edit, not a recompile.
+# Windsurf (Cascade) provider config.
 #
-# Provenance: Windsurf follows the common Agent-Skills convention of a
-# per-tool global skills dir under the home directory plus a project-local
-# mirror (see vault/research/repos/2026/05/02/asm-universal-skill-manager.md
-# — the ASM provider directory map this schema absorbs as data). Confirm
-# against Windsurf's own docs before relying on this in production; treat
-# as best-effort until independently verified.
+# Skill locations: user ~/.codeium/windsurf/skills/<name>/SKILL.md (the
+# legacy Codeium-branded path — still Windsurf's own primary global root,
+# NOT ~/.windsurf/skills, which does not exist); project
+# .windsurf/skills/<name>/SKILL.md. Also reads a read-only admin/enterprise
+# scope (Linux/WSL /etc/windsurf/skills — macOS/Windows equivalents are not
+# expressible on this schema's single-path-per-role model and are therefore
+# not listed) plus the open Agent-Skills-standard compat paths
+# (.agents/skills / ~/.agents/skills) and Claude Code's compat paths
+# (.claude/skills / ~/.claude/skills).
+#
+# Frontmatter: name, description — the only two documented fields (both
+# required); no fixed resource-subfolder scheme is documented (supporting
+# files sit as flat siblings of SKILL.md per the vendor's own example
+# tree), so resource_dirs below is descriptive/conservative, matching the
+# other minimal (cline/gemini-cli) configs, not vendor-mandated.
+#
+# verified: 2026-09-05 against https://docs.devin.ai/desktop/cascade/skills
 id: windsurf
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]
@@ -15,9 +24,14 @@ discovery: direct
 
 dirs:
   user:
-    - { path: "~/.windsurf/skills", role: own }
+    - { path: "~/.codeium/windsurf/skills", role: own } # dirs[0] = writable_primary
+    - { path: "/etc/windsurf/skills", role: admin } # Linux/WSL read-only enterprise scope — never a write/delete target
+    - { path: "~/.agents/skills", role: compat }
+    - { path: "~/.claude/skills", role: compat }
   project:
     - { path: ".windsurf/skills", role: own }
+    - { path: ".agents/skills", role: compat }
+    - { path: ".claude/skills", role: compat }
 
 frontmatter:
   - { ir: name, key: name, type: string, presence: required }
