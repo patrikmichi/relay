@@ -13,10 +13,10 @@ import (
 )
 
 // ArtifactKind discriminates which canonical IR a ManifestEntry records —
-// Skill (the only kind that existed before this field) or Agent
-// (relay-standalone design §3e). A single manifest file holds entries of
-// both kinds, discriminated by this field, rather than a parallel ledger —
-// simpler and preserves the one-lock invariant (withManifestLock).
+// Skill (the only kind that existed before this field) or Agent. A single
+// manifest file holds entries of both kinds, discriminated by this field,
+// rather than a parallel ledger — simpler and preserves the one-lock
+// invariant (withManifestLock).
 type ArtifactKind string
 
 const (
@@ -259,8 +259,7 @@ func LastEntry(m Manifest) (ManifestEntry, bool) {
 // matches kind (scanning from the end), or ok=false if none match. Used by
 // `relay agent rollback --last` so it rolls back the most recent AGENT
 // entry specifically, never a skill entry that happens to sort later in
-// the single shared ledger (relay-standalone design §3e: one manifest file
-// holds both kinds).
+// the single shared ledger (one manifest file holds both kinds).
 func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
 	for i := len(m.Entries) - 1; i >= 0; i-- {
 		if m.Entries[i].Kind == kind {
@@ -273,7 +272,7 @@ func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
 // LastEntryFor returns the most recent entry matching name+provider+scope+
 // kind (scanning from the end), or ok=false if none match. Used by
 // `relay skill list --provenance` to join manifest provenance onto
-// discovered skills. kind-aware since P1.5: a skill entry and an agent
+// discovered skills. kind-aware: a skill entry and an agent
 // entry can legitimately share name+provider+scope (e.g. a "reviewer"
 // skill and a "reviewer" agent both targeting claude/user) without one
 // masking the other.
@@ -315,8 +314,8 @@ func RemoveEntry(id string) error {
 // RemoveEntriesFor deletes every entry matching name+provider+scope+kind,
 // returning the count removed (0 if none matched — not an error, so
 // callers like `skill uninstall` can treat "no manifest record" as a
-// harmless no-op rather than a failure). kind-aware since P1.5, for the
-// same reason as LastEntryFor: uninstalling a skill must never remove an
+// harmless no-op rather than a failure). kind-aware, for the same reason
+// as LastEntryFor: uninstalling a skill must never remove an
 // agent entry (or vice versa) that happens to share name+provider+scope.
 func RemoveEntriesFor(name string, provider ProviderID, scope Scope, kind ArtifactKind) (int, error) {
 	var removed int

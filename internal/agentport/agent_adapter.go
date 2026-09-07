@@ -3,13 +3,12 @@ package agentport
 // AgentAdapter converts between one provider's on-disk agent format and the
 // canonical Agent IR — the Agent-IR analogue of Adapter (adapter.go).
 // Deliberately a SEPARATE interface (not a type parameter / generic
-// Adapter[T]) per relay-standalone design §3b Option A: the byte-exact
-// Skill path (config_adapter_parity_test.go) must never be put at risk by
-// agent-only plumbing, and every Skill call site keeps using the exact
-// Adapter/*Skill signatures it always has.
+// Adapter[T]): the byte-exact Skill path (config_adapter_parity_test.go)
+// must never be put at risk by agent-only plumbing, and every Skill call
+// site keeps using the exact Adapter/*Skill signatures it always has.
 type AgentAdapter interface {
-	// ID returns the provider identifier (claude|opencode today — Codex and
-	// Cursor have no agent-file primitive; see relay-standalone design §3d).
+	// ID returns the provider identifier (claude, opencode, codex, cursor,
+	// or gemini-cli).
 	ID() ProviderID
 
 	// UserDirs returns the per-user (global) directories this provider
@@ -34,7 +33,7 @@ type AgentAdapter interface {
 	// layout. files is keyed by path relative to the agent's target
 	// directory (a single "<name>.md" entry — agents carry no resources).
 	// loss reports, per IR field the target format can't fully represent
-	// or can only represent via a best-effort mapping/reshape, what
+	// or can only represent via an approximate mapping/reshape, what
 	// happened to it.
 	Project(a *Agent) (files map[string][]byte, loss []LossItem, err error)
 
@@ -53,4 +52,11 @@ type AgentAdapter interface {
 	// OwnProjectDirCount is the ProjectDirs() analogue of
 	// OwnUserDirCount.
 	OwnProjectDirCount() int
+
+	// FileExt returns this provider's on-disk agent-file extension —
+	// ".md" for every markdown-format provider (claude, opencode, cursor,
+	// gemini-cli), ".toml" for a format: toml provider (codex). Added so
+	// agent_resolve.go/agent_list.go never hardcode ".md" — see
+	// config.go's ProviderConfig.FileExt.
+	FileExt() string
 }

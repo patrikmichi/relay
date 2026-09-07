@@ -103,9 +103,9 @@ func TestLoadResources_SkipsSymlinkedDirectory(t *testing.T) {
 
 // TestLoadResources_ScopesToDeclaredResourceDirs is the regression test for
 // ProviderConfig.ResourceDirs actually being consulted (previously a
-// no-op TODO — see config.go). A stray top-level file, and an entire
-// top-level directory not in resourceDirs, must both be excluded — while a
-// nested file inside a declared resource dir still loads.
+// no-op). A stray top-level file, and an entire top-level directory not in
+// resourceDirs, must both be excluded — while a nested file inside a
+// declared resource dir still loads.
 func TestLoadResources_ScopesToDeclaredResourceDirs(t *testing.T) {
 	skillDir := t.TempDir()
 

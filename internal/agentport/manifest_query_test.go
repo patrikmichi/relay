@@ -84,7 +84,7 @@ func TestManifest_LastEntryFor(t *testing.T) {
 // TestManifest_LastEntryFor_KindDistinguishesEntries confirms a skill entry
 // and an agent entry sharing the same name+provider+scope never mask each
 // other — LastEntryFor(..., KindAgent) must not return the skill entry, and
-// vice versa (relay-standalone design §3e).
+// vice versa.
 func TestManifest_LastEntryFor_KindDistinguishesEntries(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

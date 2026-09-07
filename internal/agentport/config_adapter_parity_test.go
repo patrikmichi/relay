@@ -6,16 +6,15 @@ import (
 	"testing"
 )
 
-// This file is the byte-exact PARITY HARNESS (design §5.1/§5.2/R1): golden
-// output captured from the ORIGINAL hard-coded adapter_{claude,codex,
-// cursor,opencode}.go implementations — before they were deleted — for the
-// git-helper fixture each provider's *_test.go already exercises. Every
-// assertion below runs against NewClaudeAdapter()/NewCodexAdapter()/
-// NewCursorAdapter()/NewOpencodeAdapter(), which now return *configAdapter
-// (built from providers/<id>.yml); byte-for-byte equality with these
-// golden constants is the proof the generic serializer reproduces the
-// deleted structs' Marshal output exactly (key order + universal
-// `,omitempty` semantics — R1).
+// This file is the byte-exact PARITY HARNESS: golden output captured from
+// the ORIGINAL hard-coded adapter_{claude,codex,cursor,opencode}.go
+// implementations — before they were deleted — for the git-helper fixture
+// each provider's *_test.go already exercises. Every assertion below runs
+// against NewClaudeAdapter()/NewCodexAdapter()/NewCursorAdapter()/
+// NewOpencodeAdapter(), which now return *configAdapter (built from
+// providers/<id>.yml); byte-for-byte equality with these golden constants
+// is the proof the generic serializer reproduces the deleted structs'
+// Marshal output exactly (key order + universal `,omitempty` semantics).
 //
 // Golden bytes were captured by running the pre-refactor
 // claudeAdapter/codexAdapter/cursorAdapter/opencodeAdapter's own

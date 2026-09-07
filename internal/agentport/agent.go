@@ -1,18 +1,18 @@
 package agentport
 
 // Agent is the canonical, provider-agnostic in-memory representation of an
-// agent definition (relay-standalone design §3b) — the Agent-IR analogue of
-// Skill. Common fields (Name, Description, Body, Metadata) are understood
-// by more than one provider; the typed-optional extension fields below
-// belong to a single provider's format and are preserved on the IR only so
-// a later migrate back to that same provider (or an explicit provider that
-// also understands the field) doesn't lose them — see the agent CapSet /
-// computeAgentLoss (agent_caps.go) for how Project() reports fields a
-// target can't represent.
+// agent definition — the Agent-IR analogue of Skill. Common fields (Name,
+// Description, Body, Metadata) are understood by more than one provider;
+// the typed-optional extension fields below belong to a single provider's
+// format and are preserved on the IR only so a later migrate back to that
+// same provider (or an explicit provider that also understands the field)
+// doesn't lose them — see the agent CapSet / computeAgentLoss
+// (agent_caps.go) for how Project() reports fields a target can't
+// represent.
 //
-// Unlike Skill, Agent carries no Resources: every supported agent format
-// (Claude, opencode) is a single flat `<name>.md` file with no containing
-// resource directory — a structural simplification over skills.
+// Unlike Skill, Agent carries no Resources: every supported agent format is
+// a single flat `<name>.md` file with no containing resource directory —
+// a structural simplification over skills.
 type Agent struct {
 	Name        string
 	Description string

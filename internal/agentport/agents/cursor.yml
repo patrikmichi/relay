@@ -1,0 +1,39 @@
+# Cursor subagent provider config — Agent IR, not Skill IR. Verified
+# against the vendor's subagent docs: a Cursor subagent is a flat
+# `<name>.md` (YAML frontmatter + markdown body) at
+# `.cursor/agents/<name>.md` (project — also reads `.claude/agents/`,
+# `.codex/agents/` for cross-tool compat) / `~/.cursor/agents/<name>.md`
+# (user). This is a first-class subagent primitive, distinct from
+# `.cursor/rules/*.mdc`, which is a separate, unrelated primitive — not a
+# subagent format at all.
+#
+# Documented frontmatter: name, description, model, readonly, is_background.
+# No `tools` allowlist/denylist key exists for Cursor subagents (subagents
+# inherit the parent agent's tools wholesale, per the vendor docs) — mapped
+# here as a data-only config with NO Go change (opencode/claude precedent):
+# `readonly`/`is_background` have no Agent IR field (would need an IR
+# extension) and are deliberately omitted; `tools`/`memory`/`skills` have no
+# on-disk equivalent and are reported LossDropped by computeAgentLoss /
+# agent_caps.go's AgentCapSet row for this provider.
+#
+# verified: 2026-09-05 against https://cursor.com/docs/subagents
+id: cursor
+layout: flat
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.cursor/agents", role: own } # dirs[0] = writable_primary
+  project:
+    - { path: ".cursor/agents", role: own }
+    - { path: ".claude/agents", role: compat }
+    - { path: ".codex/agents", role: compat }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: optional }
+  - { ir: description, key: description, type: string, presence: optional }
+  - { ir: model, key: model, type: string, presence: optional }
+
+# Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
+# YAML-driven list like skills' `capabilities:` — deliberately left unset
+# here, matching claude.yml/opencode.yml.

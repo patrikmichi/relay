@@ -1,0 +1,40 @@
+# Codex custom-agent provider config — Agent IR, not Skill IR. Verified
+# against the vendor's custom-agent docs (GA'd 2026-03-16): a Codex custom
+# agent is a flat, single TOML file per agent —
+# `~/.codex/agents/<name>.toml` (global) / `.codex/agents/<name>.toml`
+# (project) — with NO frontmatter/body split at all: the instructions live
+# in a `developer_instructions` TOML STRING key, not a markdown body after a
+# "---" separator. This is why `format: toml` exists (config.go/agent_toml.go)
+# instead of the markdown flat-file path claude/opencode use.
+#
+# Required keys per the vendor docs: name, description,
+# developer_instructions. Optional keys documented on the vendor page:
+# model, model_reasoning_effort, sandbox_mode, mcp_servers, skills.config —
+# only `model` is mapped here (no Agent IR field exists for reasoning
+# effort/sandbox mode/MCP servers/skills config; adding one is an IR
+# extension out of scope for this pass, so those keys are simply never
+# emitted and, on Load, fall through relay's flat-TOML parser's
+# table/dotted-key skip path with a recorded warning rather than an error —
+# see agent_toml.go's parseFlatTOML doc comment).
+#
+# verified: 2026-09-05 against https://learn.chatgpt.com/docs/agent-configuration/subagents
+id: codex
+layout: flat
+format: toml
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.codex/agents", role: own } # dirs[0] = writable_primary
+  project:
+    - { path: ".codex/agents", role: own }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: body, key: developer_instructions, type: string, presence: required }
+  - { ir: model, key: model, type: string, presence: optional }
+
+# Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
+# YAML-driven list like skills' `capabilities:` — deliberately left unset
+# here, matching claude.yml/opencode.yml.

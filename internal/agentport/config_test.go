@@ -8,7 +8,7 @@ import (
 
 // TestEmbeddedConfigsValid asserts every embedded providers/*.yml parses
 // and validates cleanly — a malformed shipped config must fail CI, not a
-// user's first `relay providers` invocation (§4.4).
+// user's first `relay providers` invocation.
 func TestEmbeddedConfigsValid(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -37,7 +37,7 @@ func TestEmbeddedConfigsValid(t *testing.T) {
 	}
 }
 
-// TestLoadedProviderConfigs_UserOverrideWholeReplace exercises §4.2's
+// TestLoadedProviderConfigs_UserOverrideWholeReplace exercises the
 // whole-provider-replace-by-id override semantics at the user tier.
 func TestLoadedProviderConfigs_UserOverrideWholeReplace(t *testing.T) {
 	home := t.TempDir()
@@ -79,7 +79,7 @@ capabilities: []
 	}
 }
 
-// TestLoadedProviderConfigs_InvalidOverrideFallsBackToEmbedded is §4.4's
+// TestLoadedProviderConfigs_InvalidOverrideFallsBackToEmbedded is the
 // fail-safe: a broken user override for an id that already has an embedded
 // config must not brick that provider — it's reported (to stderr) and
 // skipped, falling back to the embedded config.
@@ -164,7 +164,7 @@ frontmatter:
 }
 
 // TestLoadedProviderConfigs_ExtendsShallowOverlay exercises the opt-in
-// `extends` partial-patch mechanism (§4.2).
+// `extends` partial-patch mechanism.
 func TestLoadedProviderConfigs_ExtendsShallowOverlay(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

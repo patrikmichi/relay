@@ -1,0 +1,40 @@
+# Gemini CLI subagent provider config — Agent IR, not Skill IR. Verified
+# against the vendor's subagent docs: a Gemini CLI subagent is a flat
+# `<name>.md` (YAML frontmatter + markdown body) at
+# `.gemini/agents/<name>.md` (project) / `~/.gemini/agents/<name>.md`
+# (user).
+#
+# Documented frontmatter: name, description (required), kind (local|remote),
+# tools (array, wildcards), mcpServers, model, temperature, max_turns,
+# timeout_mins. Mapped here (data-only, NO Go change — opencode/claude
+# precedent): name, description, tools (carried as a real list — Gemini
+# CLI's on-disk shape already matches the canonical Agent IR's
+# string-or-list `tools` type, unlike opencode's {tool: bool} map, so no
+# reshape hook is needed), model, temperature. `kind`/`mcpServers`/
+# `max_turns`/`timeout_mins` have no Agent IR field (an IR extension is out
+# of scope for this pass) and are simply never emitted/read.
+# `memory`/`skills` (Claude-only IR fields) have no Gemini CLI equivalent —
+# reported LossDropped by computeAgentLoss / agent_caps.go's AgentCapSet row
+# for this provider.
+#
+# verified: 2026-09-05 against https://geminicli.com/docs/core/subagents/
+id: gemini-cli
+layout: flat
+discovery: direct
+
+dirs:
+  user:
+    - { path: "~/.gemini/agents", role: own } # dirs[0] = writable_primary
+  project:
+    - { path: ".gemini/agents", role: own }
+
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }
+  - { ir: model, key: model, type: string, presence: optional }
+  - { ir: temperature, key: temperature, type: float, presence: optional }
+
+# Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
+# YAML-driven list like skills' `capabilities:` — deliberately left unset
+# here, matching claude.yml/opencode.yml.

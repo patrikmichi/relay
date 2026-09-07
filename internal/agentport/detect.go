@@ -60,10 +60,10 @@ func DetectedProviders() []Adapter {
 
 // NewClaudeAdapter returns the Claude Code Adapter — a thin, named wrapper
 // around the embedded claude.yml config. Kept for back-compat with every
-// existing call site and test: the Strangler-Fig migration (design §5.2)
-// deliberately never changes this constructor's signature, only what it
-// returns internally (a *configAdapter instead of the deleted claudeAdapter
-// struct).
+// existing call site and test: the Strangler-Fig migration to a
+// config-driven adapter deliberately never changes this constructor's
+// signature, only what it returns internally (a *configAdapter instead of
+// the deleted claudeAdapter struct).
 func NewClaudeAdapter() Adapter { return mustBuiltinAdapter("claude") }
 
 // NewCodexAdapter returns the Codex Adapter.

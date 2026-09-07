@@ -9,8 +9,8 @@ import (
 )
 
 // TestAgentConfigAdapter_ClaudeRoundTrip exercises Load -> Project for the
-// claude agent adapter against a realistic fixture (mirroring
-// claude-infra/shared-claude/agents/*.md's verified shape).
+// claude agent adapter against a realistic fixture in the documented
+// Claude Code subagent shape (frontmatter + system-prompt body).
 func TestAgentConfigAdapter_ClaudeRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string][]byte{
@@ -242,23 +242,53 @@ func TestAgentConfigAdapter_Detect(t *testing.T) {
 	}
 }
 
-// TestAgentConfigAdapter_DirsAndCapabilities exercises ProjectDirs,
-// Capabilities, and Own*DirCount — every shipped agent provider has
-// exactly one own user/project dir (no legacy/compat agent dirs yet).
+// TestAgentConfigAdapter_DirsAndCapabilities exercises ProjectDirs and
+// Own*DirCount against the exact, per-provider expected values — codex,
+// cursor, and gemini-cli each have own-dir counts and capability sets that
+// differ from claude/opencode (see agents/*.yml and agent_caps.go).
 func TestAgentConfigAdapter_DirsAndCapabilities(t *testing.T) {
+	wantOwnDirs := map[ProviderID]int{
+		ProviderClaude:           1,
+		ProviderOpencode:         2, // plural "agents" dirs[0] + legacy singular "agent" fallback
+		ProviderCodex:            1,
+		ProviderCursor:           1, // dirs.project also has 2 trailing compat entries, not counted
+		ProviderID("gemini-cli"): 1,
+	}
 	for _, a := range AllAgentAdapters() {
-		if got := a.OwnUserDirCount(); got != 1 {
-			t.Errorf("%s: OwnUserDirCount() = %d, want 1", a.ID(), got)
+		want, ok := wantOwnDirs[a.ID()]
+		if !ok {
+			t.Fatalf("%s: no expected own-dir-count entry in this test — add one", a.ID())
 		}
-		if got := a.OwnProjectDirCount(); got != 1 {
-			t.Errorf("%s: OwnProjectDirCount() = %d, want 1", a.ID(), got)
+		if got := a.OwnUserDirCount(); got != want {
+			t.Errorf("%s: OwnUserDirCount() = %d, want %d", a.ID(), got, want)
+		}
+		if got := a.OwnProjectDirCount(); got != want {
+			t.Errorf("%s: OwnProjectDirCount() = %d, want %d", a.ID(), got, want)
 		}
 		if len(a.ProjectDirs()) == 0 {
 			t.Errorf("%s: ProjectDirs() is empty", a.ID())
 		}
+	}
+
+	// Model is representable by every shipped provider (claude, opencode,
+	// codex, cursor, gemini-cli all have a "model" frontmatter/TOML key).
+	// Tools is representable only by claude/opencode/gemini-cli — codex has
+	// no tools key at all, cursor's subagents inherit tools implicitly with
+	// no per-agent allowlist key (see agents/cursor.yml's doc comment).
+	wantTools := map[ProviderID]bool{
+		ProviderClaude:           true,
+		ProviderOpencode:         true,
+		ProviderCodex:            false,
+		ProviderCursor:           false,
+		ProviderID("gemini-cli"): true,
+	}
+	for _, a := range AllAgentAdapters() {
 		caps := a.Capabilities()
-		if !caps.Model || !caps.Tools {
-			t.Errorf("%s: Capabilities() = %#v, want Model and Tools both true for every shipped provider", a.ID(), caps)
+		if !caps.Model {
+			t.Errorf("%s: Capabilities().Model = false, want true for every shipped provider", a.ID())
+		}
+		if want := wantTools[a.ID()]; caps.Tools != want {
+			t.Errorf("%s: Capabilities().Tools = %v, want %v", a.ID(), caps.Tools, want)
 		}
 	}
 
@@ -308,11 +338,14 @@ func TestAllAgentAdapters_StableOrder(t *testing.T) {
 }
 
 // TestAgentAdapterByID_UnknownReturnsFalse confirms an unregistered
-// provider id (e.g. codex/cursor — no agent-file primitive) reports
-// ok=false rather than a zero-value adapter.
+// provider id (a skill-only provider with no agent-file primitive, e.g.
+// cline/windsurf) reports ok=false rather than a zero-value adapter.
 func TestAgentAdapterByID_UnknownReturnsFalse(t *testing.T) {
-	if _, ok := AgentAdapterByID(ProviderCodex); ok {
-		t.Fatalf("AgentAdapterByID(codex): ok = true, want false (no agent provider config)")
+	if _, ok := AgentAdapterByID(ProviderID("cline")); ok {
+		t.Fatalf("AgentAdapterByID(cline): ok = true, want false (no agent provider config)")
+	}
+	if _, ok := AgentAdapterByID(ProviderID("windsurf")); ok {
+		t.Fatalf("AgentAdapterByID(windsurf): ok = true, want false (no agent provider config)")
 	}
 }
 

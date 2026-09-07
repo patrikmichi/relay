@@ -36,21 +36,19 @@ func AgentMigrateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate <name>",
 		Short: "Migrate an agent from one provider to another",
-		Long: `Load an agent by name from --from's directory (in the given --scope),
+		Long: fmt.Sprintf(`Load an agent by name from --from's directory (in the given --scope),
 project it to one or more --to providers, print a fidelity-loss report, and
 (unless --dry-run) write the projected file and record a manifest entry.
 
 If --to is omitted, migrates to every agent provider detected as installed
 on this machine (excluding --from).
 
-Supported providers: claude, opencode. Codex has no single agent-file
-primitive (TOML profile != md agent) and Cursor has no subagent primitive —
-neither is supported as an agent migration target.
+Supported providers: %s.
 
 Examples:
   relay agent migrate reviewer --from claude --to opencode
   relay agent migrate reviewer --from opencode --scope project --dry-run
-  relay agent migrate reviewer --from claude --strict`,
+  relay agent migrate reviewer --from claude --strict`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentMigrate(cmd, args[0], agentMigrateOpts{
@@ -63,7 +61,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&fromFlag, "from", "", "Source provider: claude or opencode (required)")
+	cmd.Flags().StringVar(&fromFlag, "from", "", fmt.Sprintf("Source provider: %s (required)", agentProviderIDsOxford()))
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected agent providers except --from")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search/write: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write the file")
@@ -87,11 +85,11 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 	}
 
 	if opts.from == "" {
-		return fmt.Errorf("--from is required (claude or opencode)")
+		return fmt.Errorf("--from is required (%s)", agentProviderIDsOxford())
 	}
 	fromAdapter, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.from))
 	if !ok {
-		return fmt.Errorf("unknown --from agent provider %q", opts.from)
+		return unsupportedAgentProviderError(opts.from)
 	}
 
 	agentPath, err := agentport.ResolveAgentPath(fromAdapter, scope, name)
@@ -171,9 +169,21 @@ func resolveAgentMigrateTargets(from agentport.AgentAdapter, to []string) ([]age
 	for _, t := range to {
 		a, ok := agentport.AgentAdapterByID(agentport.ProviderID(t))
 		if !ok {
-			return nil, fmt.Errorf("unknown --to agent provider %q", t)
+			return nil, unsupportedAgentProviderError(t)
 		}
 		targets = append(targets, a)
 	}
 	return targets, nil
+}
+
+// unsupportedAgentProviderError names why a provider id has no agent
+// adapter — distinguishing "a real skill provider with no agent-management
+// support" (cline, windsurf) from "not a provider id at all" — and lists
+// the valid agent targets (agentProviderIDsOxford(), a live-derived
+// helper) either way, rather than a bare cobra usage dump.
+func unsupportedAgentProviderError(id string) error {
+	if _, isSkillProvider := agentport.AdapterByID(agentport.ProviderID(id)); isSkillProvider {
+		return fmt.Errorf("provider %q supports skills but has no agent-management support; supported agent providers: %s", id, agentProviderIDsOxford())
+	}
+	return fmt.Errorf("unknown provider %q; supported agent providers: %s", id, agentProviderIDsOxford())
 }

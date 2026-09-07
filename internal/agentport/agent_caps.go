@@ -6,9 +6,8 @@ import (
 )
 
 // This file is the Agent-IR analogue of the CapSet/computeLoss mechanism in
-// adapter.go (relay-standalone design §3c). Providers: claude (primary),
-// opencode (primary) — Codex/Cursor have no agent-file primitive and are
-// out of scope (design §3d/Risks).
+// adapter.go, covering the 5 shipped agent providers: claude, opencode,
+// codex, cursor, gemini-cli.
 //
 // Unlike skills' CapSet (config-driven via a provider config's
 // `capabilities:` list — see config.go/buildCapSet), agent capability sets
@@ -50,16 +49,16 @@ type AgentCapSet struct {
 	Skills      bool
 }
 
-// agentCapsByProviderID is the fixed, reviewed capability table for the 2
-// shipped agent providers (relay-standalone design §3c matrix):
+// agentCapsByProviderID is the fixed, reviewed capability table for the 5
+// shipped agent providers:
 //
-//	IR field     claude      opencode
-//	Model        preserved   degraded (both can represent it; see modelLossForTarget)
-//	Tools        preserved   degraded (both can represent it; see toolsLossForTarget)
-//	Temperature  dropped     preserved
-//	Mode         dropped     preserved
-//	Memory       preserved   dropped
-//	Skills       preserved   dropped
+//	IR field     claude      opencode    codex       cursor      gemini-cli
+//	Model        preserved   degraded    degraded    degraded    degraded  (all 5 can represent it; see modelLossForTarget)
+//	Tools        preserved   degraded    dropped     dropped     degraded  (codex/cursor have no tools key at all — see toolsLossForTarget)
+//	Temperature  dropped     preserved   dropped     dropped     preserved
+//	Mode         dropped     preserved   dropped     dropped     dropped
+//	Memory       preserved   dropped     dropped     dropped     dropped
+//	Skills       preserved   dropped     dropped     dropped     dropped
 var agentCapsByProviderID = map[ProviderID]AgentCapSet{
 	ProviderClaude: {
 		Model:       true,
@@ -74,6 +73,40 @@ var agentCapsByProviderID = map[ProviderID]AgentCapSet{
 		Tools:       true,
 		Temperature: true,
 		Mode:        true,
+		Memory:      false,
+		Skills:      false,
+	},
+	// ProviderCodex: agents/codex.yml (format: toml) declares name,
+	// description, developer_instructions (body), model only — no
+	// tools/temperature/mode/memory/skills key exists in Codex's
+	// custom-agent TOML shape.
+	ProviderCodex: {
+		Model:       true,
+		Tools:       false,
+		Temperature: false,
+		Mode:        false,
+		Memory:      false,
+		Skills:      false,
+	},
+	// ProviderCursor: agents/cursor.yml declares name, description, model
+	// only — Cursor subagents have no tools-allowlist, temperature, mode,
+	// memory, or bundled-skills key.
+	ProviderCursor: {
+		Model:       true,
+		Tools:       false,
+		Temperature: false,
+		Mode:        false,
+		Memory:      false,
+		Skills:      false,
+	},
+	// ProviderID("gemini-cli"): agents/gemini-cli.yml declares name,
+	// description, tools (real list, carried), model, temperature —
+	// no mode/memory/skills equivalent.
+	ProviderID("gemini-cli"): {
+		Model:       true,
+		Tools:       true,
+		Temperature: true,
+		Mode:        false,
 		Memory:      false,
 		Skills:      false,
 	},
@@ -119,7 +152,7 @@ func computeAgentLoss(a *Agent, caps AgentCapSet) []LossItem {
 
 // claudeOpencodeModelAlias maps a Claude short model alias (as used in
 // Claude agent frontmatter's `model:` key) to an opencode "provider/model"
-// string. This is a best-effort, explicitly reviewed table (never inferred
+// string. This is an explicitly reviewed table (never inferred
 // or reflection-derived) — an unmapped alias degrades to a synthesized
 // passthrough (the raw alias string, so nothing is silently dropped) with a
 // LossDegraded note explaining the mapping is inexact/unmapped.
@@ -255,16 +288,23 @@ func deniedTools(tools map[string]bool) []string {
 // provider:
 //   - projecting a non-empty Tools allowlist onto opencode is always a
 //     LossDegraded reshape (list -> map), even when denied is empty;
-//   - projecting a non-empty DeniedTools onto any target OTHER than
-//     opencode is a LossDropped item — an allowlist-only shape (claude)
-//     cannot express "explicitly denied" at all, so unlike the opencode
-//     case above this is a genuine loss of semantics, not just a shape
-//     change.
+//   - projecting onto codex or cursor — neither has a tools key at all
+//     (agent_caps.go's AgentCapSet.Tools == false for both) — is a
+//     LossDropped item whenever there's anything to drop (either the
+//     allowlist itself or any denied entries): unlike opencode's map
+//     reshape, there is no partial representation to fall back to;
+//   - projecting a non-empty DeniedTools onto any OTHER target (claude,
+//     gemini-cli — both carry the Tools allowlist itself natively) is a
+//     LossDropped item — an allowlist-only/plain-list shape cannot express
+//     "explicitly denied" at all, so unlike the opencode case above this is
+//     a genuine loss of semantics, not just a shape change.
 //
 // Returns nil when there is nothing to report for the given target (e.g.
-// claude with no DeniedTools — no reshape needed and nothing dropped).
+// claude/gemini-cli with no DeniedTools — no reshape needed and nothing
+// dropped).
 func toolsLossForTarget(tools []string, denied []string, target ProviderID) *LossItem {
-	if target == ProviderOpencode {
+	switch target {
+	case ProviderOpencode:
 		if len(tools) == 0 {
 			return nil
 		}
@@ -273,13 +313,23 @@ func toolsLossForTarget(tools []string, denied []string, target ProviderID) *Los
 			Kind:  LossDegraded,
 			Note:  "reshaped CSV/list tools allowlist into opencode's {tool: bool} map (each listed tool set to true)",
 		}
-	}
-	if len(denied) == 0 {
-		return nil
-	}
-	return &LossItem{
-		Field: "Tools",
-		Kind:  LossDropped,
-		Note:  "explicitly-denied tools {" + strings.Join(denied, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost",
+	case ProviderCodex, ProviderCursor:
+		if len(tools) == 0 && len(denied) == 0 {
+			return nil
+		}
+		return &LossItem{
+			Field: "Tools",
+			Kind:  LossDropped,
+			Note:  string(target) + " has no tools-allowlist equivalent — tools list dropped",
+		}
+	default:
+		if len(denied) == 0 {
+			return nil
+		}
+		return &LossItem{
+			Field: "Tools",
+			Kind:  LossDropped,
+			Note:  "explicitly-denied tools {" + strings.Join(denied, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost",
+		}
 	}
 }

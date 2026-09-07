@@ -204,7 +204,7 @@ func TestResolveOwnSkillPath_ClaudeOwnsBothItsDirs(t *testing.T) {
 	}
 }
 
-// --- P1.6: kind-based load-back adapter resolution ---
+// --- kind-based load-back adapter resolution ---
 
 // TestResolveTargetForEntry_SkillKindResolvesSkillAdapter confirms a
 // KindSkill (or default-normalized) manifest entry resolves to the Skill
@@ -254,14 +254,14 @@ func TestResolveTargetForEntry_AgentKindResolvesAgentAdapter(t *testing.T) {
 }
 
 // TestResolveTargetForEntry_UnknownAgentProviderErrors confirms a KindAgent
-// entry for a provider with no agent config (codex/cursor have no
-// agent-file primitive — design §3d) errors rather than silently
-// falling back to the skill adapter.
+// entry for a provider with no agent config (cline/windsurf have no
+// agent-file primitive) errors rather than silently falling back to the
+// skill adapter.
 func TestResolveTargetForEntry_UnknownAgentProviderErrors(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if _, err := resolveTargetForEntry(ManifestEntry{Provider: ProviderCodex, Kind: KindAgent}); err == nil {
-		t.Fatalf("resolveTargetForEntry(codex, KindAgent): expected an error (codex has no agent provider config)")
+	if _, err := resolveTargetForEntry(ManifestEntry{Provider: ProviderID("cline"), Kind: KindAgent}); err == nil {
+		t.Fatalf("resolveTargetForEntry(cline, KindAgent): expected an error (cline has no agent provider config)")
 	}
 }
 

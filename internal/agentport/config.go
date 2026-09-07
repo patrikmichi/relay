@@ -9,13 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file defines the provider-config YAML schema (§1 of the
-// config-driven-adapters design): the data shape that replaces the 4
-// hard-coded adapter_{claude,codex,cursor,opencode}.go implementations.
-// See providers/*.yml for the shipped configs and config_adapter.go for the
-// generic Adapter implementation built from a parsed ProviderConfig.
+// This file defines the provider-config YAML schema: the data shape that
+// replaces the 4 hard-coded adapter_{claude,codex,cursor,opencode}.go
+// implementations. See providers/*.yml for the shipped configs and
+// config_adapter.go for the generic Adapter implementation built from a
+// parsed ProviderConfig.
 
-// DirRole classifies one entry of a provider's dirs list — see §1.2.
+// DirRole classifies one entry of a provider's dirs list.
 type DirRole string
 
 const (
@@ -70,8 +70,8 @@ var validFieldTypes = map[FieldType]bool{
 	FieldFloat:        true,
 }
 
-// Presence declares whether a frontmatter field is required or optional —
-// see §1.3. (Load never hard-fails on an absent key purely because of this
+// Presence declares whether a frontmatter field is required or optional.
+// (Load never hard-fails on an absent key purely because of this
 // declaration; it documents intent and is validated for shape. The one
 // exception, "name", falls back to the skill directory's base name when
 // absent from frontmatter — a fixed IR-level rule, identical across every
@@ -84,7 +84,7 @@ const (
 )
 
 // FrontmatterField maps one canonical-IR field to a platform frontmatter
-// key — see §1.3. Frontmatter is an ORDERED list: order = serialized key
+// key. Frontmatter is an ORDERED list: order = serialized key
 // order, which is what makes Project() byte-exact with the pre-refactor
 // per-provider structs.
 type FrontmatterField struct {
@@ -106,7 +106,7 @@ type SidecarFieldSpec struct {
 }
 
 // SidecarConfig declares a provider's optional secondary file (Codex's
-// agents/openai.yaml) — see §1.4.
+// agents/openai.yaml).
 type SidecarConfig struct {
 	Path   string             `yaml:"path"`
 	Format string             `yaml:"format"`
@@ -115,8 +115,8 @@ type SidecarConfig struct {
 }
 
 // DiscoveryMode selects how project-scope List()/list.go discovery walks a
-// provider's directories — see §2.4. User scope is always direct,
-// regardless of this setting.
+// provider's directories. User scope is always direct, regardless of this
+// setting.
 type DiscoveryMode string
 
 const (
@@ -124,8 +124,8 @@ const (
 	DiscoveryRecursive DiscoveryMode = "recursive"
 )
 
-// Layout classifies a provider's on-disk artifact shape (relay-standalone
-// design §3a). "dir" is the standard Agent Skills shape — a resource-
+// Layout classifies a provider's on-disk artifact shape. "dir" is the
+// standard Agent Skills shape — a resource-
 // bearing directory `<name>/<skill_file>` — and is every shipped skill
 // provider's layout today. "flat" is a single markdown file `<name>.md`
 // with no containing directory and no resources; this is the native shape
@@ -141,9 +141,29 @@ const (
 	LayoutFlat Layout = "flat"
 )
 
+// AgentFormat selects the on-disk ENCODING for a layout: flat agent
+// provider's primary file — orthogonal to Layout, which only distinguishes
+// dir-vs-flat shape. "" (default, AgentFormatMarkdown) is the existing
+// shape every skill provider and the claude/opencode agent providers use:
+// YAML frontmatter + a free-text markdown body after a "---" separator.
+// "toml" (AgentFormatTOML) is a flat TOML document with NO frontmatter/body
+// split at all — added for Codex's custom-agent format
+// (`~/.codex/agents/<name>.toml`), which encodes the agent's instructions
+// via a designated IR field (canonical IR name "body", mapped to Codex's
+// `developer_instructions` TOML key) rather than a markdown body. Only
+// meaningful for agent providers today; no shipped skill config sets it.
+// Implemented entirely with the stdlib (agent_toml.go) — this package's
+// stdlib+yaml.v3-only dependency invariant is unaffected.
+type AgentFormat string
+
+const (
+	AgentFormatMarkdown AgentFormat = "markdown"
+	AgentFormatTOML     AgentFormat = "toml"
+)
+
 // ProviderConfig is the parsed+validated shape of one providers/<id>.yml —
 // everything the generic configAdapter needs to implement the Adapter
-// interface for one platform. See §1.1.
+// interface for one platform.
 type ProviderConfig struct {
 	ID        string `yaml:"id"`
 	SkillFile string `yaml:"skill_file"`
@@ -156,7 +176,11 @@ type ProviderConfig struct {
 	// ("dir", the default) and a single flat `<name>.md` file with no
 	// resources ("flat") — see the Layout doc comment. Defaults to
 	// LayoutDir when omitted.
-	Layout       Layout             `yaml:"layout"`
+	Layout Layout `yaml:"layout"`
+	// Format selects the on-disk encoding for a layout: flat provider's
+	// primary file — see the AgentFormat doc comment. Defaults to
+	// AgentFormatMarkdown when omitted.
+	Format       AgentFormat        `yaml:"format"`
 	Dirs         DirsConfig         `yaml:"dirs"`
 	Frontmatter  []FrontmatterField `yaml:"frontmatter"`
 	Sidecar      *SidecarConfig     `yaml:"sidecar"`
@@ -165,8 +189,8 @@ type ProviderConfig struct {
 
 	// Extends names another provider config (already loaded at a lower
 	// tier) whose fields this config shallow-overlays on top of, for
-	// partial-patch overrides (§4.2). Only meaningful for override tiers,
-	// not the embedded defaults.
+	// partial-patch overrides. Only meaningful for override tiers, not
+	// the embedded defaults.
 	Extends string `yaml:"extends"`
 
 	// nameRe is the compiled NameRegex (or the package default), set by
@@ -176,7 +200,7 @@ type ProviderConfig struct {
 
 // parseProviderConfig unmarshals and validates one provider config document.
 // registeredHooks/registeredCodecs are the load-hook/sidecar-codec registry
-// key sets, used to validate load_hooks/sidecar.codec references — see §4.4.
+// key sets, used to validate load_hooks/sidecar.codec references.
 func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[string]bool) (*ProviderConfig, error) {
 	var cfg ProviderConfig
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
@@ -188,7 +212,7 @@ func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[strin
 	return &cfg, nil
 }
 
-// validate enforces §4.4's schema rules: required fields present,
+// validate enforces the config schema's rules: required fields present,
 // dirs[scope][0].role == own, every dir path is traversal-safe and
 // scope/role-appropriate (own/compat dirs are "~/..." for user scope or
 // relative for project scope; only role admin may be absolute — see the
@@ -215,6 +239,13 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 	}
 	if c.Layout != LayoutDir && c.Layout != LayoutFlat {
 		return fmt.Errorf("layout: must be %q or %q, got %q", LayoutDir, LayoutFlat, c.Layout)
+	}
+
+	if c.Format == "" {
+		c.Format = AgentFormatMarkdown
+	}
+	if c.Format != AgentFormatMarkdown && c.Format != AgentFormatTOML {
+		return fmt.Errorf("format: must be %q or %q, got %q", AgentFormatMarkdown, AgentFormatTOML, c.Format)
 	}
 
 	if c.NameRegex == "" {
@@ -377,7 +408,7 @@ func sortedKeys(m map[string]bool) []string {
 }
 
 // validCapNames is the set of CapSet field names a config's "capabilities"
-// list may reference — see §1.5.
+// list may reference.
 var validCapNames = map[string]bool{
 	"AllowedTools":            true,
 	"Paths":                   true,
@@ -419,7 +450,7 @@ func buildCapSet(names []string) CapSet {
 }
 
 // ownDirCount returns the count of leading contiguous DirRoleOwn entries —
-// the derivation backing OwnUserDirCount()/OwnProjectDirCount() (§1.2).
+// the derivation backing OwnUserDirCount()/OwnProjectDirCount().
 func ownDirCount(entries []DirEntry) int {
 	n := 0
 	for _, d := range entries {
@@ -431,9 +462,23 @@ func ownDirCount(entries []DirEntry) int {
 	return n
 }
 
+// FileExt returns the on-disk file extension for this config's primary
+// file: ".toml" for format: toml (Codex custom agents), ".md" for the
+// default markdown format — every skill provider and the claude/opencode
+// agent providers. Used by the layout: flat agent path
+// (agentConfigAdapter.Project, agent_resolve.go, agent_list.go,
+// agent_scan.go) instead of hardcoding ".md", so a non-markdown agent
+// provider's file extension is data, not a recompile.
+func (c *ProviderConfig) FileExt() string {
+	if c.Format == AgentFormatTOML {
+		return ".toml"
+	}
+	return ".md"
+}
+
 // detectDirs returns the paths (still containing "~", unexpanded — callers
 // expand at call time) of every entry whose role is own or admin — the
-// derivation backing Detect() (§1.2): "any dir with role in {own, admin}
+// derivation backing Detect(): "any dir with role in {own, admin}
 // exists".
 func detectDirs(entries []DirEntry) []DirEntry {
 	var out []DirEntry

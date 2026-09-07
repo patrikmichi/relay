@@ -13,7 +13,7 @@ import (
 // by a validated ProviderConfig (config.go) plus whatever named hooks it
 // references (hooks.go). Every provider — the 4 originally hard-coded
 // platforms and any new platform added purely via a providers/<id>.yml file
-// — is one configAdapter instance. See design §2.
+// — is one configAdapter instance.
 type configAdapter struct {
 	cfg          ProviderConfig
 	caps         CapSet
@@ -60,7 +60,7 @@ func (a *configAdapter) ProjectDirs() []string {
 }
 
 // Detect reports whether any dir with role own|admin exists — the
-// derivation replacing each shipped adapter's hand-written Detect() (§1.2).
+// derivation replacing each shipped adapter's hand-written Detect().
 func (a *configAdapter) Detect() bool {
 	for _, d := range detectDirs(a.cfg.Dirs.User) {
 		if dirExists(expandHome(d.Path)) {
@@ -73,13 +73,13 @@ func (a *configAdapter) Detect() bool {
 func (a *configAdapter) Capabilities() CapSet { return a.caps }
 
 // OwnUserDirCount/OwnProjectDirCount are the leading-contiguous-"own"-count
-// derivation (§1.2): 2 for Claude (skills/ + legacy commands/, both own), 1
-// for everyone else.
+// derivation: 2 for Claude (skills/ + legacy commands/, both own), 1 for
+// everyone else.
 func (a *configAdapter) OwnUserDirCount() int    { return ownDirCount(a.cfg.Dirs.User) }
 func (a *configAdapter) OwnProjectDirCount() int { return ownDirCount(a.cfg.Dirs.Project) }
 
 // DiscoversRecursively implements the additive recursiveDiscoverer
-// interface (§2.4) — list.go uses this instead of a hard-coded
+// interface — list.go uses this instead of a hard-coded
 // `a.(cursorAdapter)` type assertion. User scope is always direct,
 // regardless of config, matching the shipped behavior exactly.
 func (a *configAdapter) DiscoversRecursively(scope Scope) bool {
@@ -130,7 +130,7 @@ func (a *configAdapter) validateName(name string) error {
 // (the standard case for every provider), or, if skillDir is NOT a
 // directory, a flat-file form recognized only if one of this provider's
 // load_hooks claims it (Claude's legacy `commands/<name>.md` form; see
-// hooks.go). See design §2.2.
+// hooks.go).
 //
 // A provider config declaring `layout: flat` takes a distinct, first-class
 // path (loadFlatFile) instead: skillDir is treated as the flat file itself
@@ -285,7 +285,7 @@ func (a *configAdapter) loadFlatFile(path string) (*Skill, error) {
 // value is the Go zero value — which reproduces the pre-refactor per-
 // provider structs' field order + universal `,omitempty` tag byte-for-byte
 // (verified in config_adapter_parity_test.go against captured golden
-// output from the original hard-coded adapters). See design §2.3.
+// output from the original hard-coded adapters).
 func (a *configAdapter) Project(s *Skill) (map[string][]byte, []LossItem, error) {
 	if err := a.validateName(s.Name); err != nil {
 		return nil, nil, err

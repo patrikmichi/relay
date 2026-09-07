@@ -8,7 +8,7 @@ import (
 
 // TestParseProviderConfig_ValidationErrors exercises config.go's validate()
 // error branches — every failure must be a clear, field-scoped error, never
-// a panic (§4.4).
+// a panic.
 func TestParseProviderConfig_ValidationErrors(t *testing.T) {
 	hooks := registeredHookNames()
 	codecs := registeredCodecNames()
@@ -409,8 +409,7 @@ frontmatter:
 
 // TestParseProviderConfig_LayoutDefaultsToDir confirms an omitted `layout`
 // defaults to "dir" — every existing provider config predates this field
-// and must be unaffected (§P1.1: "no behavior change for existing dir
-// providers").
+// and must see no behavior change.
 func TestParseProviderConfig_LayoutDefaultsToDir(t *testing.T) {
 	raw := []byte(`
 id: x

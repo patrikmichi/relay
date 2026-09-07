@@ -10,18 +10,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the packaging + override layer (§4 of the
-// config-driven-adapters design): go:embed bakes the shipped provider
-// configs into the binary so it works standalone with zero external files,
-// exactly like today's hard-coded behavior; user and (opt-in) project tiers
-// let a provider be added or patched without a new binary.
+// This file is the packaging + override layer: go:embed bakes the shipped
+// provider configs into the binary so it works standalone with zero
+// external files, exactly like today's hard-coded behavior; user and
+// (opt-in) project tiers let a provider be added or patched without a new
+// binary.
 
 //go:embed providers/*.yml
 var embeddedProviderFS embed.FS
 
 // embeddedAgentProviderFS is the Agent-IR analogue of embeddedProviderFS:
-// go:embed for agents/*.yml (relay-standalone design §3c/P1.3) — a
-// separate embedded directory (not providers/*.yml) so skill and agent
+// go:embed for agents/*.yml — a separate embedded directory (not
+// providers/*.yml) so skill and agent
 // provider configs never collide by id, and so TestEmbeddedConfigsValid's
 // skill-scoped assertions are untouched by the new agent configs.
 //
@@ -29,8 +29,8 @@ var embeddedProviderFS embed.FS
 var embeddedAgentProviderFS embed.FS
 
 // AllowProjectProviderOverrides gates whether .relay/providers/*.yml
-// (repo-local, untrusted-input provider overrides — see §4.2/R6) are loaded
-// at all. Off by default. A caller (e.g. the CLI, after an explicit user
+// (repo-local, untrusted-input provider overrides) are loaded at all.
+// Off by default. A caller (e.g. the CLI, after an explicit user
 // opt-in flag or config setting) may set this to true before invoking any
 // agentport provider-resolution function (AllAdapters, AdapterByID,
 // DetectedProviders, New*Adapter).
@@ -40,7 +40,7 @@ var AllowProjectProviderOverrides = false
 // embedded defaults, overlaid by ~/.config/relay/providers/*.yml (user
 // tier), overlaid by .relay/providers/*.yml (project tier, gated by
 // AllowProjectProviderOverrides) — whole-provider replacement by id,
-// precedence project > user > embedded (§4.2).
+// precedence project > user > embedded.
 //
 // Deliberately NOT memoized: re-scanned on every call so tests that change
 // $HOME (t.Setenv("HOME", ...)) or the working directory per test case
@@ -153,11 +153,11 @@ func mustParseEmbeddedAgentConfigs(hookNames, codecNames map[string]bool) map[st
 
 // applyOverrideTier scans dir for *.yml provider config files and merges
 // them into configs (whole-provider replace by id, with an optional
-// `extends` shallow-overlay onto an already-present config of the same id
-// — §4.2). A missing dir is not an error (no overrides at this tier). An
+// `extends` shallow-overlay onto an already-present config of the same
+// id). A missing dir is not an error (no overrides at this tier). An
 // invalid file is reported to stderr and skipped, leaving whatever was
 // already in configs for that id untouched (embedded, or a lower override
-// tier) — §4.4's fail-safe, so a typo in a user override can never brick a
+// tier) — a fail-safe, so a typo in a user override can never brick a
 // shipped provider.
 func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames, codecNames map[string]bool) {
 	entries, err := os.ReadDir(dir)
@@ -224,8 +224,8 @@ func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames,
 // shallowOverlay applies override's top-level keys (except "extends"
 // itself) onto a copy of base, then re-validates the merged result. This is
 // an explicit, shallow, named-key overlay — never a deep merge — so a user
-// authoring a partial patch config gets predictable behavior (§4.2: "so
-// users don't get surprised by deep-merge").
+// authoring a partial patch config gets predictable behavior and isn't
+// surprised by a deep-merge.
 func shallowOverlay(base ProviderConfig, overrideRaw []byte, hookNames, codecNames map[string]bool) (*ProviderConfig, error) {
 	baseRaw, err := yaml.Marshal(base)
 	if err != nil {

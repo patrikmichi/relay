@@ -9,14 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the named-transform-hook registry (§3 of the
-// config-driven-adapters design): the bounded, reviewed set of Go functions
-// a provider config may reference by name for the ~10% of behavior that
-// isn't a flat frontmatter field map. Exactly 2 hooks exist for the 4
-// shipped platforms — codex-openai (a SidecarCodec) and
-// claude-legacy-commands (a LoadHook) — see §3.1. Adding a hook is a
-// deliberate, reviewed action (§3.2); config `type`/`discovery` enums are
-// always preferred over a new hook.
+// This file is the named-transform-hook registry: the bounded, reviewed
+// set of Go functions a provider config may reference by name for the
+// ~10% of behavior that isn't a flat frontmatter field map. Exactly 2
+// hooks exist for the 4 shipped platforms — codex-openai (a SidecarCodec)
+// and claude-legacy-commands (a LoadHook). Adding a hook is a deliberate,
+// reviewed action; config `type`/`discovery` enums are always preferred
+// over a new hook.
 
 // HookCtx is the context passed to every hook invocation.
 type HookCtx struct {

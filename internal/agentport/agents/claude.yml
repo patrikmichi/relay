@@ -4,13 +4,12 @@
 # prompt) — with NO containing directory and NO resources, at
 # ~/.claude/agents/<name>.md (user) or .claude/agents/<name>.md (project).
 #
-# Fields (verified against shipped claude-infra/shared-claude/agents/*.md):
+# Fields (verified 2026-09-05 against https://code.claude.com/docs/en/sub-agents):
 # name, description (often multiline with <example> blocks — still a plain
 # string IR-side), tools (CSV string), model (sonnet|haiku|opus), memory
 # (project|global), skills (YAML list of bundled skill ids). Real agent
 # files also carry a `hooks:` block, which is NOT part of this IR — Claude
-# agent hooks are lifecycle wiring, not portable agent-definition content
-# (relay-standalone design §3c: "Hooks: N/A — not an agent-file concern").
+# agent hooks are lifecycle wiring, not portable agent-definition content.
 id: claude
 layout: flat
 discovery: direct
@@ -31,4 +30,4 @@ frontmatter:
 
 # Agent CapSet/capabilities are Go-code tables (agent_caps.go), not a
 # YAML-driven list like skills' `capabilities:` — deliberately left unset
-# here (relay-standalone design §3c/P1.4).
+# here.
