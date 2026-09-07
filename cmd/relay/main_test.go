@@ -121,3 +121,30 @@ func TestRootCmd_Offline_SkipsDynamicRegistration_NoNetworkCall(t *testing.T) {
 		t.Fatalf("expected zero network calls under --offline, but got a dial error: err=%v output=%s", err, out.String())
 	}
 }
+
+// TestNewRootCmd_SilenceErrors_NoAutoPrint is the direct regression test
+// for A4 (the double-error-print fix): the root command must set
+// SilenceErrors so cobra's own Execute() never writes the error to
+// out/err itself — main() is the single place that prints it (after
+// rewriteOfflineUnknownCommandErr gets a chance to rewrite it). Before
+// this fix, a failing command's message was written once here by cobra
+// and a second time by main(), so main()'s own fmt.Fprintln is the only
+// print — this test proves Execute() contributes none.
+func TestNewRootCmd_SilenceErrors_NoAutoPrint(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"skill", "migrate", "nope", "--from", "claude"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected an error for a missing skill, got none")
+	}
+	if strings.Contains(out.String(), "not found") {
+		t.Fatalf("cobra's own Execute() printed the error (SilenceErrors not effective); output:\n%s", out.String())
+	}
+	if !root.SilenceErrors {
+		t.Errorf("root command SilenceErrors = false, want true")
+	}
+}

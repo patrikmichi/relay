@@ -32,7 +32,7 @@ Scope 'project' is resolved relative to the current working directory only
 		},
 	}
 
-	cmd.Flags().StringVar(&providerFlag, "provider", "", "Restrict to one provider: claude, codex, opencode, or cursor (default: all)")
+	cmd.Flags().StringVar(&providerFlag, "provider", "", fmt.Sprintf("Restrict to one provider: %s (default: all)", providerIDsOxford()))
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to list: user or project")
 	cmd.Flags().BoolVar(&provenance, "provenance", false, "Show where each skill was installed/migrated from")
 

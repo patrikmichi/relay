@@ -202,7 +202,7 @@ func translateGatewayFetchError(catalogID string, err error) error {
 // --to was omitted — every detected provider. Unlike
 // resolveMigrateTargets, there's no --from adapter to exclude: an install's
 // source is an arbitrary local path or a gateway catalog id, never one of
-// the 4 providers itself.
+// the loaded skill providers itself.
 func resolveInstallTargets(to []string) ([]agentport.Adapter, error) {
 	if len(to) == 0 {
 		targets := agentport.DetectedProviders()

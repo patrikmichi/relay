@@ -48,7 +48,7 @@ func runSkillUninstall(cmd *cobra.Command, name string, opts skillUninstallOpts)
 		return err
 	}
 	if opts.from == "" {
-		return fmt.Errorf("--from is required (claude, codex, opencode, or cursor)")
+		return fmt.Errorf("--from is required (%s)", providerIDsOxford())
 	}
 	a, ok := agentport.AdapterByID(agentport.ProviderID(opts.from))
 	if !ok {
