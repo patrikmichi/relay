@@ -327,6 +327,131 @@ func TestLoad_RefusesFutureSchema(t *testing.T) {
 	}
 }
 
+// TestApply_RemovalMidwayFailure_DiscardRestores mirrors
+// TestDiscard_MidApplyFailureRestoresAppliedFile but for StageRemoval —
+// Rollback's mechanism. Two files are staged for removal in a fixed
+// order; the second's verify is forced to fail after the first has
+// already been removed. Discard must bring the first file back exactly
+// as it was.
+func TestApply_RemovalMidwayFailure_DiscardRestores(t *testing.T) {
+	isolate(t)
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	if err := os.WriteFile(firstPath, []byte("keep me safe"), 0o644); err != nil {
+		t.Fatalf("seed first.txt: %v", err)
+	}
+	if err := os.WriteFile(secondPath, []byte("also here"), 0o644); err != nil {
+		t.Fatalf("seed second.txt: %v", err)
+	}
+
+	tx, err := Begin(context.Background(), "test rollback", []string{"rollback:demo"})
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	if err := tx.StageRemoval(root, "first.txt"); err != nil {
+		t.Fatalf("StageRemoval first: %v", err)
+	}
+	if err := tx.StageRemoval(root, "second.txt"); err != nil {
+		t.Fatalf("StageRemoval second: %v", err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatalf("Persist: %v", err)
+	}
+
+	verify := func(_, rel string) error {
+		if rel == "second.txt" {
+			return errors.New("injected failure")
+		}
+		return nil
+	}
+	applyErr := tx.Apply(verify)
+	if applyErr == nil {
+		t.Fatal("Apply should have failed on second.txt")
+	}
+	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
+		t.Fatalf("first.txt should have been removed by Apply before the failure, stat err = %v", err)
+	}
+
+	if err := tx.Discard(applyErr); !errors.Is(err, applyErr) {
+		t.Fatalf("Discard = %v, want it to wrap %v", err, applyErr)
+	}
+
+	got := mustRead(t, firstPath)
+	if string(got) != "keep me safe" {
+		t.Fatalf("first.txt = %q, want restored %q", got, "keep me safe")
+	}
+	got = mustRead(t, secondPath)
+	if string(got) != "also here" {
+		t.Fatalf("second.txt = %q, want untouched %q", got, "also here")
+	}
+
+	j, err := Load(tx.ID())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if j.State != StateRestored {
+		t.Fatalf("journal state = %q, want %q", j.State, StateRestored)
+	}
+}
+
+// TestRecover_AfterProcessDeathMidRemoval is
+// TestRecover_AfterProcessDeathMidApply's removal analogue — the process
+// dies after the first file's removal lands but before Discard/Commit
+// ever runs. A fresh Recover call must still restore it.
+func TestRecover_AfterProcessDeathMidRemoval(t *testing.T) {
+	isolate(t)
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	if err := os.WriteFile(firstPath, []byte("keep me safe"), 0o644); err != nil {
+		t.Fatalf("seed first.txt: %v", err)
+	}
+	if err := os.WriteFile(secondPath, []byte("also here"), 0o644); err != nil {
+		t.Fatalf("seed second.txt: %v", err)
+	}
+
+	tx, err := Begin(context.Background(), "test rollback", []string{"rollback:demo"})
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	if err := tx.StageRemoval(root, "first.txt"); err != nil {
+		t.Fatalf("StageRemoval first: %v", err)
+	}
+	if err := tx.StageRemoval(root, "second.txt"); err != nil {
+		t.Fatalf("StageRemoval second: %v", err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatalf("Persist: %v", err)
+	}
+	id := tx.ID()
+
+	verify := func(_, rel string) error {
+		if rel == "second.txt" {
+			return errors.New("injected failure")
+		}
+		return nil
+	}
+	_ = tx.Apply(verify) // first.txt removed, second.txt fails — process "dies" right here
+	tx.locks.Unlock()    // simulate the OS releasing the flock on process exit
+
+	j, err := Recover(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	if j.State != StateRestored {
+		t.Fatalf("journal state = %q, want %q", j.State, StateRestored)
+	}
+	got := mustRead(t, firstPath)
+	if string(got) != "keep me safe" {
+		t.Fatalf("first.txt = %q, want restored %q", got, "keep me safe")
+	}
+	got = mustRead(t, secondPath)
+	if string(got) != "also here" {
+		t.Fatalf("second.txt = %q, want untouched %q", got, "also here")
+	}
+}
+
 func TestBegin_AcquiresLocksInDeterministicOrder(t *testing.T) {
 	isolate(t)
 	// Two overlapping requests submitted with keys in opposite order must

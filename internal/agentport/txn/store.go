@@ -61,10 +61,16 @@ type FileState struct {
 	// directory (Dir()) — never the destination tree — so recovery never
 	// needs anything but the journal id to find them.
 	BackupPath string      `json:"backupPath,omitempty"` // prior bytes; empty when !Existed
-	StagedPath string      `json:"stagedPath"`           // new bytes, persisted before any write
-	NewMode    fs.FileMode `json:"newMode"`
-	NewHash    string      `json:"newHash"`
-	Applied    bool        `json:"applied"` // set once this specific file's write has landed
+	StagedPath string      `json:"stagedPath,omitempty"` // new bytes, persisted before any write; empty when Remove
+	NewMode    fs.FileMode `json:"newMode,omitempty"`
+	NewHash    string      `json:"newHash,omitempty"`
+	Applied    bool        `json:"applied"` // set once this specific file's write/removal has landed
+	// Remove marks this entry as a deletion rather than a replacement — the
+	// mechanism Rollback uses to undo a fresh install's files (there is no
+	// "new content" to stage, only a prior state to either delete down to
+	// or restore back to). Compensating an applied removal restores the
+	// same backup bytes a replacement's compensation would.
+	Remove bool `json:"remove,omitempty"`
 }
 
 // Journal is the durable record of one mutation. Op is a short human label

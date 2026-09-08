@@ -145,6 +145,46 @@ func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error 
 	return nil
 }
 
+// StageRemoval records that root/rel should be deleted rather than
+// replaced — Rollback's mechanism for undoing a fresh install (there is
+// no "new content," only whatever was there before this transaction,
+// which may be nothing). Backing up the current bytes first (when the
+// destination exists) means an interrupted or ledger-failed removal
+// compensates exactly like a replacement's would: restore the backup.
+// A destination that doesn't exist yet is a valid no-op target — Apply
+// will find nothing to remove and mark it applied anyway.
+func (t *Tx) StageRemoval(root, rel string) error {
+	dest := filepath.Join(root, filepath.FromSlash(rel))
+	idx := len(t.j.Files)
+	fstate := FileState{Root: root, Rel: rel, Dest: dest, Remove: true}
+
+	info, err := os.Lstat(dest)
+	switch {
+	case err == nil && info.Mode()&os.ModeSymlink != 0:
+		return fmt.Errorf("stage removal %s: destination is a symlink", dest)
+	case err == nil && info.Mode().IsRegular():
+		old, rerr := os.ReadFile(dest)
+		if rerr != nil {
+			return fmt.Errorf("read existing %s: %w", dest, rerr)
+		}
+		backupRel := filepath.Join("backup", fmt.Sprintf("%04d", idx))
+		if werr := writeFileDurable(filepath.Join(t.dir, backupRel), old, 0o600); werr != nil {
+			return werr
+		}
+		fstate.Existed = true
+		fstate.OldMode = info.Mode().Perm()
+		fstate.OldHash = sha256Hex(old)
+		fstate.BackupPath = backupRel
+	case err == nil:
+		return fmt.Errorf("stage removal %s: existing destination is not a regular file", dest)
+	case !errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("stat %s: %w", dest, err)
+	}
+
+	t.j.Files = append(t.j.Files, fstate)
+	return nil
+}
+
 // Persist durably writes the prepared journal — the point after which an
 // interrupted process leaves something `relay recover` can find and act
 // on. Must be called after every Stage and before Apply.
@@ -175,6 +215,16 @@ func (t *Tx) Apply(verify func(root, rel string) error) error {
 		}
 		if err := verify(fstate.Root, fstate.Rel); err != nil {
 			return fmt.Errorf("apply %s: %w", fstate.Dest, err)
+		}
+		if fstate.Remove {
+			if err := os.Remove(fstate.Dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("remove %s: %w", fstate.Dest, err)
+			}
+			fstate.Applied = true
+			if err := t.j.save(); err != nil {
+				return err
+			}
+			continue
 		}
 		data, err := os.ReadFile(filepath.Join(t.dir, fstate.StagedPath))
 		if err != nil {
