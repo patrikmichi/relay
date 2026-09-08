@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 	"github.com/patrikmichi/relay/internal/client"
 )
 
@@ -170,12 +173,11 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		return fmt.Errorf("create marketplace dir %s: %w", localDir, err)
 	}
 
-	// Step 4: write marketplace.json.
-	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
-		return fmt.Errorf("write marketplace.json: %w", err)
-	}
-
-	// Step 5: fetch and write each plugin.
+	// Step 4: fetch and write each plugin. marketplace.json is deliberately
+	// NOT written yet — it's the last thing this function writes, so a
+	// failure partway through plugin/settings fetching leaves the manifest
+	// Claude Code actually reads pointing at the last fully-synced state,
+	// never a mix of old and new plugin revisions (R09).
 	for _, p := range manifest.Plugins {
 		// C1: validate id before using it in filesystem paths.
 		id, err := safePluginID(p.Source)
@@ -197,15 +199,12 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 			return fmt.Errorf("fetch plugin %s: %w — re-run `relay sync` to retry", id, err)
 		}
 
-		if err := os.MkdirAll(pluginDir, 0o700); err != nil {
-			return fmt.Errorf("create plugin dir %s: %w", pluginDir, err)
-		}
-		if err := writePluginBundle(pluginDir, rawPlugin); err != nil {
+		if err := writePluginBundle(localDir, id, pluginDir, rawPlugin); err != nil {
 			return fmt.Errorf("write plugin files for %s: %w", id, err)
 		}
 	}
 
-	// Step 6: revocation — remove stale plugin dirs.
+	// Step 5: revocation — remove stale plugin dirs.
 	stale, err := stalePluginDirs(localDir, manifest)
 	if err != nil {
 		return fmt.Errorf("list stale plugins: %w", err)
@@ -218,13 +217,19 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		fmt.Printf("Removed revoked plugin: plugins/%s/\n", s)
 	}
 
-	// Step 7: fetch and write managed-settings.
+	// Step 6: fetch and write managed-settings.
 	rawSettings, err := fetchManagedSettings(d, localDir)
 	if err != nil {
 		return fmt.Errorf("fetch managed-settings: %w", err)
 	}
 	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
 		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
+	}
+
+	// Step 7: write marketplace.json last — only once every plugin and
+	// managed-settings write it references has actually landed.
+	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
+		return fmt.Errorf("write marketplace.json: %w", err)
 	}
 
 	// Step 8: print summary.
@@ -314,40 +319,87 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
 	return raw, nil
 }
 
-// writePluginBundle validates and writes every artifact returned by the
-// gateway. Before the bundle contract existed, the endpoint returned a raw
-// plugin manifest; accept that legacy shape and place it at Claude Code's
-// required .claude-plugin/plugin.json path so older gateways remain usable.
-func writePluginBundle(pluginDir string, raw []byte) error {
+// syncTxnTimeout bounds how long a plugin bundle write waits for another
+// `relay sync` process's lock on the same plugin — local disk contention,
+// never a network wait.
+const syncTxnTimeout = 30 * time.Second
+
+// writePluginBundle validates every artifact returned by the gateway and
+// applies it through the same durable transaction engine
+// install/migrate/rollback use: stage the complete new file set, remove
+// whatever this plugin previously owned that the new bundle no longer
+// includes (R09 — a script dropped from a newer version actually
+// disappears), and only record the new owned-file set once every write
+// has landed. A file under pluginDir the user added by hand — never
+// recorded in a prior sync's owned set — is never a removal candidate,
+// regardless of what the new bundle contains. Before the bundle contract
+// existed, the endpoint returned a raw plugin manifest; accept that
+// legacy shape and place it at Claude Code's required
+// .claude-plugin/plugin.json path so older gateways remain usable.
+func writePluginBundle(localDir, pluginID, pluginDir string, raw []byte) error {
 	var bundle pluginBundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {
 		return fmt.Errorf("decode plugin bundle: %w", err)
 	}
+
+	newFiles := map[string][]byte{}
 	if len(bundle.Files) == 0 {
-		manifestDir := filepath.Join(pluginDir, ".claude-plugin")
-		if err := os.MkdirAll(manifestDir, 0o700); err != nil {
-			return fmt.Errorf("create legacy manifest directory: %w", err)
+		newFiles[filepath.ToSlash(filepath.Join(".claude-plugin", "plugin.json"))] = raw
+	} else {
+		for rel, contents := range bundle.Files {
+			clean := filepath.Clean(rel)
+			if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+				return fmt.Errorf("plugin bundle contains unsafe path %q", rel)
+			}
+			target := filepath.Join(pluginDir, clean)
+			if !strings.HasPrefix(target+string(os.PathSeparator), pluginDir+string(os.PathSeparator)) {
+				return fmt.Errorf("plugin bundle path %q escapes plugin directory", rel)
+			}
+			newFiles[filepath.ToSlash(clean)] = []byte(contents)
 		}
-		return writeFile(filepath.Join(manifestDir, "plugin.json"), raw)
 	}
 
-	for rel, contents := range bundle.Files {
-		clean := filepath.Clean(rel)
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("plugin bundle contains unsafe path %q", rel)
-		}
-		target := filepath.Join(pluginDir, clean)
-		if !strings.HasPrefix(target+string(os.PathSeparator), pluginDir+string(os.PathSeparator)) {
-			return fmt.Errorf("plugin bundle path %q escapes plugin directory", rel)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create directory for %q: %w", rel, err)
-		}
-		if err := writeFile(target, []byte(contents)); err != nil {
-			return fmt.Errorf("write %q: %w", rel, err)
+	ownedBefore, err := loadOwnedFiles(localDir, pluginID)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), syncTxnTimeout)
+	defer cancel()
+	tx, err := txn.Begin(ctx, fmt.Sprintf("sync plugin %s", pluginID), []string{"sync-plugin:" + localDir + ":" + pluginID})
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
+		return tx.Discard(fmt.Errorf("create plugin dir %s: %w", pluginDir, err))
+	}
+	for rel, contents := range newFiles {
+		if err := tx.Stage(pluginDir, filepath.FromSlash(rel), contents, 0o644); err != nil {
+			return tx.Discard(err)
 		}
 	}
-	return nil
+	for _, rel := range ownedBefore {
+		if _, keep := newFiles[rel]; keep {
+			continue
+		}
+		if err := tx.StageRemoval(pluginDir, filepath.FromSlash(rel)); err != nil {
+			return tx.Discard(err)
+		}
+	}
+
+	if err := tx.Persist(); err != nil {
+		return tx.Discard(err)
+	}
+	if err := tx.Apply(txn.VerifyNoSymlinks); err != nil {
+		return tx.Discard(err)
+	}
+
+	newOwned := make([]string, 0, len(newFiles))
+	for rel := range newFiles {
+		newOwned = append(newOwned, rel)
+	}
+	return tx.Commit(func() error { return saveOwnedFiles(localDir, pluginID, newOwned) })
 }
 
 // fetchManagedSettings calls GET /api/marketplace/managed-settings?localDir=<abs> and returns raw bytes.
