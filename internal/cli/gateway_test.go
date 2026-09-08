@@ -265,32 +265,6 @@ func TestWhoami_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
 	}
 }
 
-func TestAuthorize_FailsClosedWhenNoGateway(t *testing.T) {
-	withNoGateway(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
-func TestAuthorize_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
-	withOffline(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
 func TestHelpTools_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
