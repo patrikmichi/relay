@@ -3,9 +3,18 @@ package cli
 
 import (
 	"errors"
+	"time"
 
 	"github.com/patrikmichi/relay/internal/config"
 )
+
+// defaultOpTimeout bounds a single quick gateway request issued directly by
+// a CLI command (whoami, logout/tokens revoke, tokens list). Long-running
+// operations (search, download, tool execution, sync/publish) define their
+// own larger timeouts near their own call sites — this is deliberately not
+// one blanket timeout for every gateway interaction, since those are a
+// different operation class (R23).
+const defaultOpTimeout = 30 * time.Second
 
 // offlineGuidance is the fail-closed degradation message shown whenever a
 // gateway-touching (catalog) command is attempted with no gateway reachable

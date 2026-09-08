@@ -1,16 +1,17 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/auth"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
@@ -40,7 +41,9 @@ func tokensListCmd() *cobra.Command {
 
 			c := resolveClient(gURL)
 
-			resp, err := c.Get("/api/cli/whoami")
+			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
+			defer cancel()
+			resp, err := c.GetContext(ctx, "/api/cli/whoami")
 			if err != nil {
 				return fmt.Errorf("GET /api/cli/whoami: %w", err)
 			}
@@ -141,21 +144,15 @@ func tokensRevokeCmd() *cobra.Command {
 				return nil
 			}
 
-			resp, err := c.Post("/api/cli/logout", "application/json", nil)
+			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
+			defer cancel()
+			result, err := auth.Logout(ctx, c)
 			if err != nil {
-				// Server unavailable — still delete local keychain entry
-				fmt.Fprintf(os.Stderr, "Warning: could not reach gateway to revoke session: %v\n", err)
-			} else {
-				defer resp.Body.Close()
-				if resp.StatusCode != http.StatusOK {
-					body, _ := io.ReadAll(resp.Body)
-					fmt.Fprintf(os.Stderr, "Warning: server returned %d during revoke: %s\n", resp.StatusCode, body)
-				}
+				fmt.Fprintln(os.Stderr, "Revoke failed:", err)
+				os.Exit(1)
 			}
-
-			// Always delete the keychain entry
-			if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
-				return fmt.Errorf("delete keychain entry: %w", err)
+			if !result.RemoteRevoked {
+				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
 			}
 
 			fmt.Println("Session revoked")
