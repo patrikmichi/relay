@@ -47,8 +47,8 @@ type ManifestEntry struct {
 	// ran from, for a Scope: project entry only (empty for Scope: user,
 	// which has one destination per provider regardless of CWD).
 	// Rollback refuses a project-scope entry whose ProjectRoot is empty or
-	// doesn't match the current working directory — R06/P1.3 containment;
-	// see verifyProjectRollbackTarget in preflight.go.
+	// doesn't match the current working directory — R06; see
+	// verifyProjectRollbackTarget in preflight.go.
 	ProjectRoot string `json:"projectRoot,omitempty"`
 }
 

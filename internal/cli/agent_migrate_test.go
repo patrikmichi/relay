@@ -64,10 +64,10 @@ func TestAgentMigrate_ClaudeToOpencodeAndBack(t *testing.T) {
 
 	// The original hand-written claude/reviewer.md (writeClaudeUserAgent)
 	// was never a Relay-managed artifact, and its content necessarily
-	// differs from the round-tripped opencode->claude projection (P1.3's
-	// write-conflict guard now refuses to silently overwrite differing
-	// destination content — R07). Remove it first: this test's purpose is
-	// the round-trip's fidelity shape, not overwrite semantics.
+	// differs from the round-tripped opencode->claude projection — Write
+	// now refuses to silently overwrite differing destination content
+	// (R07). Remove it first: this test's purpose is the round-trip's
+	// fidelity shape, not overwrite semantics.
 	if err := os.Remove(filepath.Join(home, ".claude", "agents", "reviewer.md")); err != nil {
 		t.Fatalf("remove original claude agent before round-trip-back: %v", err)
 	}

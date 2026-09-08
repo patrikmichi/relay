@@ -11,11 +11,8 @@ import (
 
 // Sentinel errors identify the class of preflight rejection so callers and
 // tests can branch on the failure kind instead of parsing message text.
-// These are the P1.3 containment guard for R05-R08: a narrow layer in
-// front of the write engines and Rollback that stops damage before it
-// happens. The full transactional/recovery engine (staging, journaling,
-// snapshot restore) is Phase 3 — these checks only ever refuse a mutation,
-// they never repair or roll anything back themselves.
+// These checks only ever refuse a mutation — they don't stage, journal, or
+// restore anything themselves.
 var (
 	// ErrWriteConflict means the destination already holds content that
 	// differs from what's about to be written — R07: without this, Write/
@@ -138,13 +135,12 @@ func PreflightWriteAgent(plan *AgentPlan) error {
 
 // verifyProjectRollbackTarget rejects a project-scope rollback unless the
 // entry recorded the project it was installed into AND the current
-// working directory is that same project — R06 containment. Legacy
-// entries (recorded before ManifestEntry.ProjectRoot existed, so it
-// decodes empty) and CWD mismatches both fail closed rather than letting
-// Rollback re-derive a destination purely from CWD, which can delete a
-// different project's files while dropping this entry's ledger record
-// (D6: legacy project rollback fails closed until an explicit root
-// binding verifies the intended files).
+// working directory is that same project — R06: otherwise Rollback
+// re-derives its destination purely from CWD, which can delete a
+// different project's files while dropping this entry's ledger record.
+// Entries recorded before ManifestEntry.ProjectRoot existed decode with it
+// empty and are rejected the same way as a CWD mismatch — fail closed
+// rather than trust an unverifiable legacy entry.
 func verifyProjectRollbackTarget(entry ManifestEntry) error {
 	if entry.ProjectRoot == "" {
 		return fmt.Errorf("%w: manifest entry %s has no recorded project root (legacy project-scope entry)", ErrAmbiguousProjectRollback, entry.ID)

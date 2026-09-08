@@ -47,11 +47,10 @@ func Rollback(entry ManifestEntry, force bool) error {
 	}
 
 	// Refuse to act through a symlink anywhere under the resolved target —
-	// R05 containment: an attacker (or a stale installation) could replace
-	// an owned file, or a directory it lives in, with a symlink so this
-	// verify/delete pass reads or removes something outside dir instead.
-	// Checked before the verify pass so a single symlinked entry aborts
-	// the whole rollback with nothing read or deleted.
+	// R05: an owned file, or a directory it lives in, could be replaced
+	// with a symlink so this verify/delete pass reads or removes something
+	// outside dir instead. Checked before the verify pass so a single
+	// symlinked entry aborts the whole rollback with nothing touched.
 	for rel := range entry.TargetPaths {
 		if err := verifyPathHasNoSymlinks(dir, rel); err != nil {
 			return err

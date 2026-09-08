@@ -1,14 +1,11 @@
 package agentport
 
-// Regression tests for the 2026-09-07 deep review's R05-R08 findings
+// Regression tests for findings R05-R08
 // (vault/reviews/relay/2026-09-07/relay-deep-codebase-review.md), derived
 // from the evidence bundle's reproduce.py probes (destination-symlink-write,
 // rollback-wrong-project, overwrite-rollback, strict-partial-write,
-// failed-install-leaves-files). These findings had no existing Go
-// regression test to invert (only black-box CLI probes) — these are new,
-// not converted from an existing test. Each must fail against the
-// pre-P1.3 baseline and pass with the preflight.go guard in place; do not
-// weaken these assertions to obtain a green baseline.
+// failed-install-leaves-files). Do not weaken these assertions to obtain a
+// green baseline.
 
 import (
 	"errors"
@@ -62,8 +59,7 @@ func TestR05_WriteRejectsDestinationSymlink(t *testing.T) {
 }
 
 // TestR05_WriteAgentRejectsDestinationSymlink is the agent write engine
-// analogue of TestR05_WriteRejectsDestinationSymlink — "both write
-// engines" per the P1.3 acceptance criteria.
+// analogue of TestR05_WriteRejectsDestinationSymlink.
 func TestR05_WriteAgentRejectsDestinationSymlink(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -246,10 +242,9 @@ func TestR06_RollbackRejectsDifferentProject(t *testing.T) {
 	}
 }
 
-// TestR06_RollbackRejectsLegacyProjectEntry covers D6's "legacy project
-// rollback fails closed": a project-scope manifest entry recorded before
-// ProjectRoot existed decodes with an empty ProjectRoot and must be
-// rejected rather than trusted against whatever the current CWD is.
+// TestR06_RollbackRejectsLegacyProjectEntry: a project-scope manifest
+// entry recorded before ProjectRoot existed decodes with it empty and must
+// be rejected rather than trusted against whatever the current CWD is.
 func TestR06_RollbackRejectsLegacyProjectEntry(t *testing.T) {
 	entry := ManifestEntry{ID: "legacy-1", Kind: KindSkill, Provider: ProviderClaude, Scope: ScopeProject, Name: "demo"}
 	if err := Rollback(entry, false); err == nil {
@@ -408,9 +403,7 @@ func TestR08_WriteAgentFailsClosedWhenLedgerCorrupt(t *testing.T) {
 // target migration (e.g. `relay skill migrate --to codex --to opencode`)
 // must not write an earlier target when a later target fails preflight.
 // PreflightWrite is exported precisely so a multi-target caller can
-// validate every plan first — see preflight.go. (Wiring this into the
-// migrate/install CLI loop itself is out of this task's file scope; see
-// this task's handoff notes.)
+// validate every plan first — see preflight.go.
 func TestR08_PreflightWriteValidatesAllTargetsBeforeAnyWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
