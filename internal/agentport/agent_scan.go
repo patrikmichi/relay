@@ -20,12 +20,12 @@ func AgentScan(a *Agent) AgentScanResult {
 	scanText := func(file, text string) {
 		for _, p := range dangerousPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, false)})
 			}
 		}
 		for _, p := range secretPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, true)})
 			}
 		}
 	}

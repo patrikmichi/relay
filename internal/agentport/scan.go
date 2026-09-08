@@ -1,6 +1,8 @@
 package agentport
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -55,12 +57,12 @@ func Scan(s *Skill) ScanResult {
 	scanText := func(file, text string) {
 		for _, p := range dangerousPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, false)})
 			}
 		}
 		for _, p := range secretPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, true)})
 			}
 		}
 	}
@@ -77,8 +79,11 @@ func Scan(s *Skill) ScanResult {
 }
 
 // excerpt returns a short surrounding snippet of text around a regex match
-// location, for display in scan output.
-func excerpt(text string, loc []int) string {
+// location, for display in scan output. When redact is true (secretPatterns
+// matches), the matched span itself is replaced by a non-reversible
+// fingerprint so the credential value never appears in any scan output —
+// CLI print, JSON, or logs all render from this same Excerpt field (R27).
+func excerpt(text string, loc []int, redact bool) string {
 	start := 0
 	if loc[0] > 20 {
 		start = loc[0] - 20
@@ -87,7 +92,19 @@ func excerpt(text string, loc []int) string {
 	if loc[1]+20 < len(text) {
 		end = loc[1] + 20
 	}
-	return strings.TrimSpace(text[start:end])
+	if !redact {
+		return strings.TrimSpace(text[start:end])
+	}
+	return strings.TrimSpace(text[start:loc[0]] + redactedFingerprint(text[loc[0]:loc[1]]) + text[loc[1]:end])
+}
+
+// redactedFingerprint replaces a matched secret with a short, non-reversible
+// fingerprint (a truncated SHA-256 digest) — enough to correlate repeated
+// occurrences of the same credential without ever emitting the credential
+// itself.
+func redactedFingerprint(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return fmt.Sprintf("[REDACTED:sha256:%x]", sum[:4])
 }
 
 // looksBinary is a cheap heuristic (NUL-byte presence) to skip binary

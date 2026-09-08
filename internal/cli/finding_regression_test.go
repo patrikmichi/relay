@@ -7,6 +7,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -203,5 +204,33 @@ func TestR29_PublishExcludesDotEnvByDefault(t *testing.T) {
 		if f == ".env" || strings.HasSuffix(f, "/.env") {
 			t.Fatalf("R29: .env included in outgoing publish bundle by default: %v", files)
 		}
+	}
+}
+
+// TestR14_AuthorizeReturnsExplicitUnsupportedError reproduces R14:
+// `relay authorize <service>` used to run the generic device-code login
+// flow and then unconditionally print "Authorized <service>", even though
+// it never requested or verified any service-specific scope. Safe
+// behavior: until the real per-service grant flow exists, the command
+// must fail with a named, explicit error and must never print any success
+// claim for the service.
+func TestR14_AuthorizeReturnsExplicitUnsupportedError(t *testing.T) {
+	cmd := AuthorizeCmd()
+	cmd.SetArgs([]string{"google-workspace"})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("R14: authorize must fail until per-service authorization is implemented, got nil error")
+	}
+	if !errors.Is(err, ErrServiceAuthorizationUnsupported) {
+		t.Fatalf("R14: expected ErrServiceAuthorizationUnsupported, got: %v", err)
+	}
+
+	combined := stdout.String() + stderr.String()
+	if strings.Contains(combined, "Authorized") {
+		t.Fatalf("R14: output must never claim the service was authorized: %q", combined)
 	}
 }
