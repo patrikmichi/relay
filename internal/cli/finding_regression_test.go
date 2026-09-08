@@ -144,7 +144,7 @@ func TestR16_CallToolPreservesNonTextContentBlock(t *testing.T) {
 	}
 }
 
-// P5.2: --json bypasses human rendering and prints the full raw envelope,
+// --json bypasses human rendering and prints the full raw envelope,
 // but still fails (nonzero exit) on a tool-level error — scripts must be
 // able to trust the exit code without parsing stdout.
 func TestCallTool_JSONOutputPrintsRawEnvelopeAndPreservesErrorExitStatus(t *testing.T) {
