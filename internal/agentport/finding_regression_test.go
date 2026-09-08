@@ -1268,6 +1268,114 @@ func TestR27_SkillScanResourceSecretRedacted(t *testing.T) {
 	}
 }
 
+// Regression tests derived from the 2026-09-07 deep review (R28) — see
+// vault/reviews/relay/2026-09-07/relay-deep-codebase-review.md. The scanner
+// previously covered only SKILL.md's body and already-loaded resources: a
+// credential placed in frontmatter went undetected ("no findings", exit
+// 0), and a binary resource or a loader-excluded file (symlink, control
+// metadata) vanished from the scan report with no trace of ever having
+// existed. Safe behavior: every original input is either scanned or
+// explicitly disclosed as skipped with a reason, and a clean result is
+// never presented as more than a heuristic lint outcome.
+
+func TestR28_FrontmatterCredentialIsDetected(t *testing.T) {
+	s := &Skill{
+		Name:        "frontmatter-secret-skill",
+		Description: "a skill with a credential hidden in frontmatter metadata, not the body",
+		Body:        "This skill has an entirely clean body with no risky content.\n",
+		Metadata:    map[string]string{"contact-token": syntheticGithubToken},
+	}
+	result := Scan(s)
+
+	var found bool
+	for _, f := range result.Findings {
+		if f.Pattern == "github-token" && f.File == "frontmatter:metadata.contact-token" {
+			found = true
+			if strings.Contains(f.Excerpt, syntheticGithubToken) {
+				t.Fatalf("R28: frontmatter finding excerpt contains the raw secret: %q", f.Excerpt)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("R28: expected a frontmatter metadata finding, got %#v", result.Findings)
+	}
+}
+
+func TestR28_BinaryResourceDisclosedAsSkipped(t *testing.T) {
+	s := &Skill{
+		Name:        "binary-resource-skill",
+		Description: "a skill bundling a binary asset that cannot be pattern-matched as text",
+		Body:        "See assets/logo.png\n",
+		Resources: map[string]ResourceFile{
+			"assets/logo.png": {Data: []byte{0x89, 'P', 'N', 'G', 0x00, 0x01, 0x02, 0x03}, Mode: 0o644},
+		},
+	}
+	result := Scan(s)
+
+	for _, name := range result.Scanned {
+		if name == "assets/logo.png" {
+			t.Fatalf("R28: binary resource was pattern-matched as text instead of being skipped: %#v", result.Scanned)
+		}
+	}
+	var found bool
+	for _, sk := range result.Skipped {
+		if sk.File == "assets/logo.png" {
+			found = true
+			if sk.Reason == "" {
+				t.Fatalf("R28: skipped binary resource has no disclosed reason")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("R28: binary resource silently vanished from the scan report instead of being disclosed as skipped: %#v", result.Skipped)
+	}
+}
+
+func TestR28_LoaderExcludedResourceDisclosedAsSkipped(t *testing.T) {
+	s := &Skill{
+		Name:        "excluded-resource-skill",
+		Description: "a skill whose loader already excluded a symlinked resource file",
+		Body:        "body\n",
+		ExcludedResources: []ExcludedResource{
+			{Path: "scripts/evil-link", Reason: "symlinked or non-regular file, refused (untrusted resource link)"},
+		},
+	}
+	result := Scan(s)
+
+	var found bool
+	for _, sk := range result.Skipped {
+		if sk.File == "scripts/evil-link" && sk.Reason == "symlinked or non-regular file, refused (untrusted resource link)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("R28: loader-excluded resource not disclosed in scan Skipped, got %#v", result.Skipped)
+	}
+}
+
+// TestR28_ScoreDisclaimerDoesNotOverstateTrust guards against the score
+// (or a "no findings" result) ever being re-labeled as an execution-safety
+// or trust signal — it is exactly and only "no configured heuristic
+// pattern matched".
+func TestR28_ScoreDisclaimerDoesNotOverstateTrust(t *testing.T) {
+	if !strings.Contains(ScoreDisclaimer, "not an execution-safety") {
+		t.Fatalf("R28: score disclaimer must state it is not an execution-safety/trust certification, got %q", ScoreDisclaimer)
+	}
+
+	s := &Skill{
+		Name:        "clean-skill",
+		Description: "a completely clean skill with no risky patterns anywhere in it",
+		Body:        "This skill has a long, entirely benign body with nothing suspicious in it at all.\n",
+	}
+	result := Scan(s)
+	if len(result.Findings) != 0 {
+		t.Fatalf("expected no findings for a clean skill, got %#v", result.Findings)
+	}
+	// A clean scan (zero findings) is a fact about pattern-matching, not a
+	// safety verdict — callers must render it via ScoreDisclaimer, never a
+	// bare "safe"/"trusted" claim.
+}
+
 // Regression test for R20 — the review's exact object-shaped fixture
 // (evidence/reproduce.py's "codex-sidecar-objects" probe): a
 // `dependencies.tools` entry per the current vendor schema
