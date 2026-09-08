@@ -176,6 +176,11 @@ func (j *Journal) save() error {
 		_ = os.Remove(name)
 		return fmt.Errorf("write temp journal file: %w", werr)
 	}
+	if serr := tmp.Sync(); serr != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return fmt.Errorf("sync temp journal file: %w", serr)
+	}
 	if cerr := tmp.Close(); cerr != nil {
 		_ = os.Remove(name)
 		return fmt.Errorf("close temp journal file: %w", cerr)
