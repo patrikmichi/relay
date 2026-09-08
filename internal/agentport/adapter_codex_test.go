@@ -29,8 +29,15 @@ func TestCodexAdapter_RoundTrip(t *testing.T) {
 	if src.AllowImplicitInvocation == nil || *src.AllowImplicitInvocation != true {
 		t.Fatalf("AllowImplicitInvocation = %v, want pointer to true", src.AllowImplicitInvocation)
 	}
-	if src.CodexTools == nil || !reflect.DeepEqual(src.CodexTools.MCPServers, []string{"git-mcp"}) {
-		t.Fatalf("CodexTools = %#v, want MCPServers=[git-mcp]", src.CodexTools)
+	wantDep := []CodexToolDependency{{
+		Type:        "mcp",
+		Value:       "git-mcp",
+		Description: "Git MCP server",
+		Transport:   "streamable_http",
+		URL:         "https://example.invalid/git-mcp",
+	}}
+	if src.CodexTools == nil || !reflect.DeepEqual(src.CodexTools.Tools, wantDep) {
+		t.Fatalf("CodexTools = %#v, want Tools=%#v", src.CodexTools, wantDep)
 	}
 	if len(src.Resources) != 1 {
 		t.Fatalf("Resources = %#v, want 1 entry (references/notes.md, sidecar excluded)", src.Resources)

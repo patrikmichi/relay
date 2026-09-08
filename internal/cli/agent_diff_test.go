@@ -32,7 +32,7 @@ func TestAgentDiff_ReportsDroppedFieldsAndWritesNothing(t *testing.T) {
 	}
 
 	// Nothing should have been written to the REAL opencode target directory.
-	realTarget := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	realTarget := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	if _, err := os.Stat(realTarget); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written to %s, stat err = %v", realTarget, err)
 	}

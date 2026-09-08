@@ -141,8 +141,22 @@ type codexPolicyYAML struct {
 	AllowImplicitInvocation *bool `yaml:"allow_implicit_invocation,omitempty"`
 }
 
+// codexToolDependencyYAML mirrors one `dependencies.tools` entry per the
+// current vendor schema (R20) — an object, not a bare string. All fields
+// are optional strings; a well-formed entry has at least `type` and
+// `value` set, but Load never rejects a partially-populated entry (the
+// sidecar is documentation/config, not something Relay enforces schema
+// completeness on).
+type codexToolDependencyYAML struct {
+	Type        string `yaml:"type,omitempty"`
+	Value       string `yaml:"value,omitempty"`
+	Description string `yaml:"description,omitempty"`
+	Transport   string `yaml:"transport,omitempty"`
+	URL         string `yaml:"url,omitempty"`
+}
+
 type codexDependenciesYAML struct {
-	Tools []string `yaml:"tools,omitempty"`
+	Tools []codexToolDependencyYAML `yaml:"tools,omitempty"`
 }
 
 type codexOpenAIYAML struct {
@@ -206,7 +220,17 @@ func loadCodexSidecar(path string, s *Skill) error {
 		s.AllowImplicitInvocation = &v
 	}
 	if sc.Dependencies != nil && len(sc.Dependencies.Tools) > 0 {
-		s.CodexTools = &CodexTools{MCPServers: sc.Dependencies.Tools}
+		tools := make([]CodexToolDependency, len(sc.Dependencies.Tools))
+		for i, t := range sc.Dependencies.Tools {
+			tools[i] = CodexToolDependency{
+				Type:        t.Type,
+				Value:       t.Value,
+				Description: t.Description,
+				Transport:   t.Transport,
+				URL:         t.URL,
+			}
+		}
+		s.CodexTools = &CodexTools{Tools: tools}
 	}
 	return nil
 }
@@ -235,9 +259,19 @@ func (codexOpenAICodec) Project(ctx HookCtx, s *Skill, files map[string][]byte) 
 		v := *s.AllowImplicitInvocation
 		sc.Policy = &codexPolicyYAML{AllowImplicitInvocation: &v}
 	}
-	if s.CodexTools != nil && len(s.CodexTools.MCPServers) > 0 {
+	if s.CodexTools != nil && len(s.CodexTools.Tools) > 0 {
 		haveSidecar = true
-		sc.Dependencies = &codexDependenciesYAML{Tools: s.CodexTools.MCPServers}
+		tools := make([]codexToolDependencyYAML, len(s.CodexTools.Tools))
+		for i, t := range s.CodexTools.Tools {
+			tools[i] = codexToolDependencyYAML{
+				Type:        t.Type,
+				Value:       t.Value,
+				Description: t.Description,
+				Transport:   t.Transport,
+				URL:         t.URL,
+			}
+		}
+		sc.Dependencies = &codexDependenciesYAML{Tools: tools}
 	}
 	if !haveSidecar {
 		return nil

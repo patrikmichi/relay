@@ -39,10 +39,10 @@ func writeClaudeUserAgent(t *testing.T, home string) string {
 }
 
 // writeOpencodeUserAgent writes a minimal valid opencode user-scope agent
-// named "reviewer" under $HOME/.config/opencode/agent/reviewer.md.
+// named "reviewer" under $HOME/.config/opencode/agents/reviewer.md.
 func writeOpencodeUserAgent(t *testing.T, home string) string {
 	t.Helper()
-	dir := filepath.Join(home, ".config", "opencode", "agent")
+	dir := filepath.Join(home, ".config", "opencode", "agents")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

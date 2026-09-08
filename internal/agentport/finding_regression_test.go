@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -931,5 +932,179 @@ func TestR27_SkillScanResourceSecretRedacted(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected a github-token finding in resource scan, got %#v", result.Findings)
+	}
+}
+
+// Regression test for R20 — the review's exact object-shaped fixture
+// (evidence/reproduce.py's "codex-sidecar-objects" probe): a
+// `dependencies.tools` entry per the current vendor schema
+// (https://learn.chatgpt.com/docs/build-skills) is an object with type,
+// value, description, transport, and url — not a bare string. Before the
+// fix, hooks.go declared `Tools []string`, so this fixture failed to
+// decode with "cannot unmarshal !!map into string" instead of loading (and
+// later round-tripping) successfully.
+func TestR20_CodexObjectShapedDependencyRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "demo")
+	writeFiles(t, skillDir, map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: d\n---\n\nbody\n"),
+		"agents/openai.yaml": []byte(`dependencies:
+  tools:
+    - type: mcp
+      value: example
+      description: Example tool
+      transport: streamable_http
+      url: https://example.invalid/mcp
+`),
+	})
+
+	codex := NewCodexAdapter()
+	s, err := codex.Load(skillDir)
+	if err != nil {
+		t.Fatalf("R20: Load must decode the documented object-shaped dependency, got: %v", err)
+	}
+	want := []CodexToolDependency{{
+		Type:        "mcp",
+		Value:       "example",
+		Description: "Example tool",
+		Transport:   "streamable_http",
+		URL:         "https://example.invalid/mcp",
+	}}
+	if s.CodexTools == nil || !reflect.DeepEqual(s.CodexTools.Tools, want) {
+		t.Fatalf("R20: CodexTools = %#v, want Tools=%#v", s.CodexTools, want)
+	}
+
+	files, loss, err := codex.Project(s)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if len(loss) != 0 {
+		t.Fatalf("R20: same-provider round trip must report no loss, got %#v", loss)
+	}
+
+	tmp := t.TempDir()
+	reDir := filepath.Join(tmp, "demo")
+	writeFiles(t, reDir, files)
+	got, err := codex.Load(reDir)
+	if err != nil {
+		t.Fatalf("R20: re-Load of the projected sidecar failed: %v", err)
+	}
+	if !reflect.DeepEqual(got.CodexTools, s.CodexTools) {
+		t.Fatalf("R20: CodexTools did not round-trip, got %#v, want %#v", got.CodexTools, s.CodexTools)
+	}
+
+	// LoadGenericSkill (used by install.go for an arbitrary local directory
+	// of unknown provider) shares the same codec — must decode identically.
+	generic, err := LoadGenericSkill(skillDir)
+	if err != nil {
+		t.Fatalf("R20: LoadGenericSkill must also decode the object-shaped dependency, got: %v", err)
+	}
+	if generic.CodexTools == nil || !reflect.DeepEqual(generic.CodexTools.Tools, want) {
+		t.Fatalf("R20: LoadGenericSkill CodexTools = %#v, want Tools=%#v", generic.CodexTools, want)
+	}
+}
+
+// Regression tests for R21 — provider root paths corrected against current
+// vendor documentation, with the previously-shipped (incorrect) root kept
+// as an explicit READ-only compatibility fallback, never a write/rollback
+// target (evidence/reproduce.py's provider-path findings; see providers/
+// opencode.yml's plural "agents" directories and providers/windsurf.yml's
+// "~/.codeium/windsurf/skills" root).
+//
+// opencode's skill provider config (providers/opencode.yml) is unaffected —
+// it never used the singular "agent" path in the first place. The R21
+// documented-vs-actual mismatch is in the opencode AGENT provider config
+// (agents/opencode.yml), which previously wrote skills^H^H^Hagents to
+// singular ".opencode/agent" / "~/.config/opencode/agent" instead of the
+// documented plural "agents" directories.
+func TestR21_OpencodeAgentProviderUsesDocumentedPluralRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	oc := NewOpencodeAgentAdapter()
+	dirs := oc.UserDirs()
+	if len(dirs) == 0 || dirs[0] != filepath.Join(home, ".config", "opencode", "agents") {
+		t.Fatalf("R21: opencode agent UserDirs()[0] = %#v, want primary root ~/.config/opencode/agents (documented plural root)", dirs)
+	}
+
+	projDirs := oc.ProjectDirs()
+	if len(projDirs) == 0 || projDirs[0] != filepath.Join(".opencode", "agents") {
+		t.Fatalf("R21: opencode agent ProjectDirs()[0] = %#v, want .opencode/agents", projDirs)
+	}
+}
+
+// TestR21_OpencodeAgentLegacySingularRootIsReadOnlyFallback confirms the
+// old singular "agent" root is still searched (so a pre-existing install
+// under the old path is still found/migratable) but is NEVER counted as an
+// owned/writable directory — Detect(), OwnUserDirCount(), and rollback's
+// write-target resolution must never treat it as the provider's own
+// directory (R21's "never a silent rollback/write target" requirement).
+func TestR21_OpencodeAgentLegacySingularRootIsReadOnlyFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	legacyDir := filepath.Join(home, ".config", "opencode", "agent")
+	writeFiles(t, legacyDir, map[string][]byte{
+		"reviewer.md": []byte("---\ndescription: legacy install\n---\n\nbody\n"),
+	})
+
+	oc := NewOpencodeAgentAdapter()
+	dirs := oc.UserDirs()
+	var sawLegacy bool
+	for _, d := range dirs {
+		if d == legacyDir {
+			sawLegacy = true
+		}
+	}
+	if !sawLegacy {
+		t.Fatalf("R21: legacy singular root must remain a read fallback in UserDirs(), got %#v", dirs)
+	}
+
+	if n := oc.OwnUserDirCount(); n != 1 {
+		t.Fatalf("R21: OwnUserDirCount() = %d, want 1 — the legacy compat root must never be counted as own/writable", n)
+	}
+
+	path, err := ResolveAgentPath(oc, ScopeUser, "reviewer")
+	if err != nil {
+		t.Fatalf("R21: expected the legacy install to still be discoverable for read/migrate: %v", err)
+	}
+	if path != filepath.Join(legacyDir, "reviewer.md") {
+		t.Fatalf("R21: resolved path = %q, want the legacy root %q", path, legacyDir)
+	}
+
+	// The provider looks "not installed" via Detect() unless the NEW
+	// (documented) root exists — a stale legacy directory alone must never
+	// make an old root look like the provider's live install location.
+	if oc.Detect() {
+		t.Fatalf("R21: Detect() must not report the provider installed based on the legacy compat root alone")
+	}
+}
+
+func TestR21_WindsurfSkillProviderUsesDocumentedUserRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	a, ok := AdapterByID(ProviderID("windsurf"))
+	if !ok {
+		t.Fatal("windsurf provider config not found")
+	}
+	dirs := a.UserDirs()
+	want := filepath.Join(home, ".codeium", "windsurf", "skills")
+	if len(dirs) == 0 || dirs[0] != want {
+		t.Fatalf("R21: windsurf UserDirs()[0] = %#v, want documented root %q", dirs, want)
+	}
+
+	legacy := filepath.Join(home, ".windsurf", "skills")
+	var sawLegacy bool
+	for _, d := range dirs {
+		if d == legacy {
+			sawLegacy = true
+		}
+	}
+	if !sawLegacy {
+		t.Fatalf("R21: legacy ~/.windsurf/skills root must remain a read fallback, got %#v", dirs)
+	}
+	if n := a.OwnUserDirCount(); n != 1 {
+		t.Fatalf("R21: windsurf OwnUserDirCount() = %d, want 1 — legacy compat root must not be own/writable", n)
 	}
 }
