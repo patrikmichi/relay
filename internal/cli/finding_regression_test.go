@@ -83,7 +83,7 @@ func TestR15_CallToolFailsOnIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil)
+	err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil, false)
 	if err == nil {
 		t.Fatal("R15: expected a non-nil error for an MCP result.isError=true envelope")
 	}
@@ -98,7 +98,7 @@ func TestR15_CallToolRejectsUnrelatedJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil)
+	err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil, false)
 	if err == nil {
 		t.Fatal("R15: expected an error for a response missing both result and error fields")
 	}
@@ -113,12 +113,56 @@ func TestR16_CallToolPreservesAllContentBlocks(t *testing.T) {
 	defer srv.Close()
 
 	stdout := captureStdout(t, func() {
-		if err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil); err != nil {
+		if err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil, false); err != nil {
 			t.Fatal(err)
 		}
 	})
 	if !strings.Contains(stdout, "first") || !strings.Contains(stdout, "second") {
 		t.Fatalf("R16: expected both content blocks in output, got: %q", stdout)
+	}
+}
+
+// R16 (continued): a non-text content block (image/resource/etc.) has no
+// preserved output representation — callTool must render it as raw JSON
+// rather than silently dropping it (renderContentBlock's non-text fallback).
+func TestR16_CallToolPreservesNonTextContentBlock(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"before"},{"type":"image","data":"base64stuff","mimeType":"image/png"},{"type":"text","text":"after"}]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	stdout := captureStdout(t, func() {
+		if err := callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil, false); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, want := range []string{"before", "after", `"type": "image"`, "base64stuff"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("R16: expected output to contain %q, got: %q", want, stdout)
+		}
+	}
+}
+
+// P5.2: --json bypasses human rendering and prints the full raw envelope,
+// but still fails (nonzero exit) on a tool-level error — scripts must be
+// able to trust the exit code without parsing stdout.
+func TestCallTool_JSONOutputPrintsRawEnvelopeAndPreservesErrorExitStatus(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[{"type":"text","text":"tool failed"}]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	var callErr error
+	stdout := captureStdout(t, func() {
+		callErr = callTool(client.New(srv.URL, "synthetic"), "demo", "test", nil, true)
+	})
+	if callErr == nil {
+		t.Fatal("--json must not suppress the nonzero exit status for a tool-level failure")
+	}
+	if strings.TrimSpace(stdout) != body {
+		t.Fatalf("--json must print the unmodified raw response body, got: %q", stdout)
 	}
 }
 
