@@ -82,7 +82,20 @@ type Skill struct {
 	Body        string // markdown body after the frontmatter block
 	License     string
 	Metadata    map[string]string
-	Resources   map[string][]byte // relative path (scripts/, references/, assets/, ...) -> file bytes
+	Resources   map[string]ResourceFile // relative path (scripts/, references/, assets/, ...) -> file content + mode (R11)
+
+	// ExcludedResources records every file found under the skill root that
+	// was NOT loaded into Resources (a symlink/non-regular entry, or
+	// recognized control/generated metadata — R10/R12) together with why.
+	// computeLoss turns each into a LossDropped LossItem so a skipped file
+	// can never look like a clean "no loss" migration.
+	ExcludedResources []ExcludedResource
+
+	// UnmappedFields retains frontmatter keys this provider's configured
+	// field set has no binding for (R04, non-security half). Same-provider
+	// Project() re-emits them; a different target reports their loss
+	// instead of guessing a foreign-schema equivalent.
+	UnmappedFields []UnmappedField
 
 	// --- typed-optional platform extensions (nil/zero = not set) ---
 	AllowedTools            []string // Claude Code: allowed-tools

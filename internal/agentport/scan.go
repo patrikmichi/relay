@@ -68,11 +68,11 @@ func Scan(s *Skill) ScanResult {
 	}
 
 	scanText("SKILL.md", s.Body)
-	for rel, data := range s.Resources {
-		if looksBinary(data) {
+	for rel, rf := range s.Resources {
+		if looksBinary(rf.Data) {
 			continue
 		}
-		scanText(rel, string(data))
+		scanText(rel, string(rf.Data))
 	}
 
 	return ScanResult{Findings: findings, Score: qualityScore(s, findings)}

@@ -534,6 +534,283 @@ func TestR04_ProjectDoesNotSilentlyDropUnknownNonSecurityField(t *testing.T) {
 	}
 }
 
+// Regression tests for R04's non-security half (unmapped, non-security
+// frontmatter fields silently disappearing) and R10-R12 (resource
+// filtering, executable-mode loss, symlinked skill roots) — see
+// vault/reviews/relay/2026-09-07/relay-deep-codebase-review.md.
+
+// TestR04_AgentUnmappedNonSecurityFieldRoundTripsSameProvider reproduces the
+// non-security half of R04: an unrecognized, non-security frontmatter field
+// must survive a same-provider (claude -> claude) round trip instead of
+// vanishing the moment Load parses only its configured field set.
+func TestR04_AgentUnmappedNonSecurityFieldRoundTripsSameProvider(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ncustom-field: keep-me\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(ag.UnmappedFields) != 1 || ag.UnmappedFields[0].Key != "custom-field" {
+		t.Fatalf("R04: expected custom-field captured as an UnmappedField, got %#v", ag.UnmappedFields)
+	}
+
+	files, loss, err := claude.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	for _, l := range loss {
+		if l.Field == "custom-field" {
+			t.Fatalf("R04: same-provider round trip must not report custom-field as loss, got %#v", loss)
+		}
+	}
+	if !strings.Contains(string(files["reviewer.md"]), "custom-field: keep-me") {
+		t.Fatalf("R04: same-provider round trip must re-emit custom-field, got:\n%s", files["reviewer.md"])
+	}
+}
+
+// TestR04_AgentUnmappedNonSecurityFieldReportedAsLossCrossProvider is R04's
+// cross-provider control: projecting onto a DIFFERENT provider must report
+// the unmapped field as loss rather than either silently dropping it or
+// inventing a foreign-schema equivalent for it.
+func TestR04_AgentUnmappedNonSecurityFieldReportedAsLossCrossProvider(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ncustom-field: keep-me\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opencode := NewOpencodeAgentAdapter()
+	files, loss, err := opencode.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if strings.Contains(string(files["reviewer.md"]), "custom-field") {
+		t.Fatalf("R04: cross-provider projection must never invent a foreign-schema mapping for an unmapped field, got:\n%s", files["reviewer.md"])
+	}
+	var found bool
+	for _, l := range loss {
+		if l.Field == "custom-field" {
+			found = true
+			if l.Kind != LossDropped {
+				t.Errorf("R04: custom-field reported as %s, want %s", l.Kind, LossDropped)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("R04: expected custom-field named in the cross-provider loss report, got %#v", loss)
+	}
+}
+
+// TestR10_MigrationPreservesFileOutsideRecommendedDirectory reproduces R10:
+// a stray top-level helper file (not in scripts/references/assets) survived
+// LoadGenericSkill's unscoped walk but disappeared on the SECOND load — once
+// installed into a real provider's directory and re-loaded through the
+// provider-config-scoped loadResources call, before this fix.
+func TestR10_MigrationPreservesFileOutsideRecommendedDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	skillDir := filepath.Join(home, ".claude", "skills", "pkg-tool")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: pkg-tool\ndescription: d\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "helper.py"), []byte("print('hi')\n"), 0o644); err != nil {
+		t.Fatalf("write helper.py: %v", err)
+	}
+
+	src, err := NewClaudeAdapter().Load(skillDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := src.Resources["helper.py"]; !ok {
+		t.Fatalf("R10: helper.py must load even though it's not under scripts/references/assets, got %#v", src.Resources)
+	}
+
+	files, loss, err := NewCodexAdapter().Project(src)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if _, ok := files["helper.py"]; !ok {
+		t.Fatalf("R10: helper.py must survive migration to another provider, got files %#v", files)
+	}
+	for _, l := range loss {
+		if l.Field == "Resources" && strings.Contains(l.Note, "helper.py") {
+			t.Fatalf("R10: helper.py must not be reported as loss when it round-trips, got %#v", loss)
+		}
+	}
+}
+
+// TestR10_ExcludedControlMetadataReportedAsLoss confirms a real exclusion
+// (generated/VCS state) is never silent: it must show up as a named loss
+// item rather than the migration reporting clean "no loss".
+func TestR10_ExcludedControlMetadataReportedAsLoss(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	skillDir := filepath.Join(home, ".claude", "skills", "pkg-tool")
+	if err := os.MkdirAll(filepath.Join(skillDir, "node_modules", "pkg"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: pkg-tool\ndescription: d\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "node_modules", "pkg", "index.js"), []byte("module.exports={}"), 0o644); err != nil {
+		t.Fatalf("write index.js: %v", err)
+	}
+
+	src, err := NewClaudeAdapter().Load(skillDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(src.ExcludedResources) != 1 {
+		t.Fatalf("expected node_modules excluded and reported, got %#v", src.ExcludedResources)
+	}
+
+	_, loss, err := NewCodexAdapter().Project(src)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	var found bool
+	for _, l := range loss {
+		if l.Field == "Resources" && l.Kind == LossDropped {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("R10: excluded control metadata must appear as a LossDropped item, got %#v", loss)
+	}
+}
+
+// TestR11_ExecutableBitSurvivesMigration reproduces R11: a 0755 resource
+// script must still be 0755 on disk after Load -> Migrate -> Write, not
+// silently collapsed to 0644 (which would break `./scripts/run.sh`).
+func TestR11_ExecutableBitSurvivesMigration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	skillDir := filepath.Join(home, ".claude", "skills", "runner")
+	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: runner\ndescription: d\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	scriptPath := filepath.Join(skillDir, "scripts", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatalf("write scripts/run.sh: %v", err)
+	}
+
+	src, err := NewClaudeAdapter().Load(skillDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	plan, err := Migrate(src, NewCodexAdapter(), ScopeUser)
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	written := filepath.Join(plan.TargetPaths, "scripts", "run.sh")
+	fi, err := os.Stat(written)
+	if err != nil {
+		t.Fatalf("stat %s: %v", written, err)
+	}
+	if fi.Mode().Perm() != 0o755 {
+		t.Fatalf("R11: written scripts/run.sh mode = %v, want 0755 — executable bit lost", fi.Mode().Perm())
+	}
+}
+
+// TestR12_SymlinkedSkillRootResourcesLoad reproduces R12: an explicitly
+// selected skill root that is itself a symlink must still have its
+// resources discovered on Load, not silently migrate with the script
+// missing (filepath.WalkDir does not descend into a symlinked root on its
+// own).
+func TestR12_SymlinkedSkillRootResourcesLoad(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	realDir := filepath.Join(home, "dotfiles", "pkg-tool")
+	if err := os.MkdirAll(filepath.Join(realDir, "scripts"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "SKILL.md"), []byte("---\nname: pkg-tool\ndescription: d\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "scripts", "run.sh"), []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatalf("write scripts/run.sh: %v", err)
+	}
+
+	skillsDir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatalf("mkdir skills dir: %v", err)
+	}
+	linkPath := filepath.Join(skillsDir, "pkg-tool")
+	if err := os.Symlink(realDir, linkPath); err != nil {
+		t.Skipf("symlink not supported on this platform/filesystem: %v", err)
+	}
+
+	src, err := NewClaudeAdapter().Load(linkPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := src.Resources["scripts/run.sh"]; !ok {
+		t.Fatalf("R12: symlinked skill root's resources must still load, got %#v", src.Resources)
+	}
+}
+
+// TestR12_SymlinkedSkillDiscoveredByList reproduces R12's `skill list` half:
+// a symlinked skill directory was previously invisible to List (DirEntry.
+// IsDir() doesn't follow a symlink) even though named resolution accepted
+// it — an inconsistency between listing and migration for the identical
+// skill.
+func TestR12_SymlinkedSkillDiscoveredByList(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	realDir := filepath.Join(home, "dotfiles", "pkg-tool")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "SKILL.md"), []byte("---\nname: pkg-tool\ndescription: d\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	skillsDir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatalf("mkdir skills dir: %v", err)
+	}
+	linkPath := filepath.Join(skillsDir, "pkg-tool")
+	if err := os.Symlink(realDir, linkPath); err != nil {
+		t.Skipf("symlink not supported on this platform/filesystem: %v", err)
+	}
+
+	refs, err := List(NewClaudeAdapter(), ScopeUser)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var found bool
+	for _, r := range refs {
+		if r.Name == "pkg-tool" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("R12: symlinked skill directory must be discovered by List, got %#v", refs)
+	}
+}
+
 // TestR22_DeniedToolsLossIsFlaggedSecurity reproduces R22: migrating an
 // opencode agent with an explicitly-denied tool onto claude (an
 // allowlist-only shape with no boolean-denial equivalent) must flag that
@@ -636,8 +913,8 @@ func TestR27_SkillScanResourceSecretRedacted(t *testing.T) {
 		Name:        "leaky-skill-resource",
 		Description: "a skill whose bundled resource hardcodes a credential",
 		Body:        "See scripts/setup.sh\n",
-		Resources: map[string][]byte{
-			"scripts/setup.sh": []byte("export TOKEN=" + syntheticGithubToken + "\n"),
+		Resources: map[string]ResourceFile{
+			"scripts/setup.sh": {Data: []byte("export TOKEN=" + syntheticGithubToken + "\n"), Mode: 0o644},
 		},
 	}
 	result := Scan(s)

@@ -154,6 +154,53 @@ func TestR04_AgentMigrateRefusesSecurityFieldLoss(t *testing.T) {
 	}
 }
 
+// TestR04_AgentMigrateRefusesNonInteractiveLossWithoutAcceptLoss reproduces
+// R04's noninteractive-consent gap named in the review's Fix guidance:
+// "noninteractive calls currently proceed automatically unless --strict
+// detects a known dropped field." A test binary has no attached terminal,
+// so a migration with ordinary (non-security) dropped fields and neither
+// --strict nor --accept-loss must refuse rather than silently writing —
+// the absence of a terminal is never treated as consent.
+func TestR04_AgentMigrateRefusesNonInteractiveLossWithoutAcceptLoss(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "opencode", "agent")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// opencode's Temperature/Mode fields have no claude equivalent —
+	// ordinary (non-security) LossDropped items, not Security-flagged.
+	src := "---\ndescription: reviews code\ntemperature: 0.2\nmode: subagent\n---\nReview.\n"
+	if err := os.WriteFile(filepath.Join(dir, "reviewer.md"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cmd := AgentMigrateCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"reviewer", "--from", "opencode", "--to", "claude"})
+	err := cmd.Execute()
+
+	if err == nil {
+		t.Fatalf("R04: expected refusal without --accept-loss when running noninteractively, output:\n%s", buf.String())
+	}
+	claudePath := filepath.Join(home, ".claude", "agents", "reviewer.md")
+	if _, statErr := os.Stat(claudePath); !os.IsNotExist(statErr) {
+		t.Fatalf("R04: expected nothing written when noninteractive loss is refused, stat err = %v", statErr)
+	}
+
+	cmd2 := AgentMigrateCmd()
+	var buf2 bytes.Buffer
+	cmd2.SetOut(&buf2)
+	cmd2.SetArgs([]string{"reviewer", "--from", "opencode", "--to", "claude", "--accept-loss"})
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("R04: --accept-loss should let ordinary non-security loss proceed noninteractively: %v, output:\n%s", err, buf2.String())
+	}
+	if _, statErr := os.Stat(claudePath); statErr != nil {
+		t.Fatalf("R04: expected the file written after --accept-loss, stat err = %v", statErr)
+	}
+}
+
 // TestR22_AgentMigrateRefusesDeniedToolsLoss reproduces R22: migrating an
 // opencode agent with an explicitly-denied tool onto claude currently
 // reports only a "degraded"-style note and proceeds to write, so the

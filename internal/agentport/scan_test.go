@@ -81,8 +81,8 @@ func TestScan_IgnoresBinaryResources(t *testing.T) {
 		Name:        "binary-asset-skill",
 		Description: "a skill bundling a binary asset that happens to contain NUL bytes",
 		Body:        "See assets/logo.png\n",
-		Resources: map[string][]byte{
-			"assets/logo.png": {0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a},
+		Resources: map[string]ResourceFile{
+			"assets/logo.png": {Data: []byte{0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a}, Mode: 0o644},
 		},
 	}
 	result := Scan(s)

@@ -60,8 +60,8 @@ func TestFieldDiff_BodyChangeReportedWithoutFullText(t *testing.T) {
 }
 
 func TestFieldDiff_ResourceKeysDiff(t *testing.T) {
-	src := &Skill{Name: "s", Resources: map[string][]byte{"scripts/run.sh": []byte("x")}}
-	other := &Skill{Name: "s", Resources: map[string][]byte{}}
+	src := &Skill{Name: "s", Resources: map[string]ResourceFile{"scripts/run.sh": {Data: []byte("x"), Mode: 0o644}}}
+	other := &Skill{Name: "s", Resources: map[string]ResourceFile{}}
 	diffs := FieldDiff(src, other)
 	if len(diffs) != 1 {
 		t.Fatalf("diffs = %#v, want exactly 1 (Resources)", diffs)
