@@ -114,6 +114,10 @@ type Journal struct {
 }
 
 // baseDir returns ~/.config/relay/transactions, creating it if needed.
+// Backup/staged bytes under <baseDir>/<id>/{backup,staged}/* persist at
+// 0600 indefinitely until an operator runs `relay history prune` — an
+// accepted tradeoff (recovery data must outlive the process that wrote it),
+// not an oversight.
 func baseDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

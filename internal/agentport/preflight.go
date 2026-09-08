@@ -50,6 +50,15 @@ var (
 // could be a symlink. Shared by write preflight (destination) and Rollback
 // (deletion target) — both need the identical no-follow guarantee.
 func verifyPathHasNoSymlinks(root, rel string) error {
+	// Defense in depth: confirm the joined path actually stays under root
+	// even though every caller is expected to pass an already-cleaned rel
+	// (see txn.VerifyNoSymlinks, which shares this exact algorithm).
+	rootClean := filepath.Clean(root)
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if full != rootClean && !strings.HasPrefix(full, rootClean+string(filepath.Separator)) {
+		return fmt.Errorf("%w: %s escapes %s", ErrDestinationSymlink, full, root)
+	}
+
 	if info, err := os.Lstat(root); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: %s", ErrDestinationSymlink, root)
