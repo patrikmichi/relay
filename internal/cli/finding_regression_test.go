@@ -201,6 +201,53 @@ func TestR04_AgentMigrateRefusesNonInteractiveLossWithoutAcceptLoss(t *testing.T
 	}
 }
 
+// TestR04_SkillMigrateRefusesNonInteractiveLossWithoutAcceptLoss covers
+// applyMigrationToTargets — shared by `skill migrate` and `skill install` —
+// which had no test exercising this refusal path despite the equivalent
+// agent-side function being covered above. A test binary has no attached
+// terminal, so migrating a skill with an ordinary (non-security) dropped
+// field and neither --strict nor --accept-loss must refuse rather than
+// silently writing.
+func TestR04_SkillMigrateRefusesNonInteractiveLossWithoutAcceptLoss(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills", "reviewer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// codex has no `license` equivalent — an ordinary (non-security)
+	// LossDropped item, not Security-flagged.
+	src := "---\nname: reviewer\ndescription: reviews code\nlicense: MIT\n---\nReview.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cmd := SkillMigrateCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--to", "codex"})
+	err := cmd.Execute()
+
+	if err == nil {
+		t.Fatalf("R04: expected refusal without --accept-loss when running noninteractively, output:\n%s", buf.String())
+	}
+	codexPath := filepath.Join(home, ".agents", "skills", "reviewer", "SKILL.md")
+	if _, statErr := os.Stat(codexPath); !os.IsNotExist(statErr) {
+		t.Fatalf("R04: expected nothing written when noninteractive loss is refused, stat err = %v", statErr)
+	}
+
+	cmd2 := SkillMigrateCmd()
+	var buf2 bytes.Buffer
+	cmd2.SetOut(&buf2)
+	cmd2.SetArgs([]string{"reviewer", "--from", "claude", "--to", "codex", "--accept-loss"})
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("R04: --accept-loss should let ordinary non-security loss proceed noninteractively: %v, output:\n%s", err, buf2.String())
+	}
+	if _, statErr := os.Stat(codexPath); statErr != nil {
+		t.Fatalf("R04: expected the file written after --accept-loss, stat err = %v", statErr)
+	}
+}
+
 // TestR22_AgentMigrateRefusesDeniedToolsLoss reproduces R22: migrating an
 // opencode agent with an explicitly-denied tool onto claude currently
 // reports only a "degraded"-style note and proceeds to write, so the
