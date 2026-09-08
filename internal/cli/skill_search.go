@@ -36,15 +36,18 @@ const searchSkillsToolName = "management.search_skills"
 // CLI process with an oversized body).
 const maxSearchResponseBytes = 2 << 20 // 2 MiB
 
-// readLimitedSearchResponse reads at most maxSearchResponseBytes+1 bytes
-// from r, erroring if the stream exceeds the cap.
-func readLimitedSearchResponse(r io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxSearchResponseBytes+1))
+// readLimitedResponse reads at most limit+1 bytes from r, erroring if the
+// stream exceeds limit — shared by every MCP/JSON-RPC response reader in
+// this package (search, tool calls) so a malicious/misbehaving gateway can
+// never hang or OOM the CLI via an unbounded body. Mirrors
+// internal/client/refresh.go's readCapped for the CLI's own call paths.
+func readLimitedResponse(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) > maxSearchResponseBytes {
-		return nil, fmt.Errorf("search response exceeds size cap (%d bytes)", maxSearchResponseBytes)
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("response exceeds size cap (%d bytes)", limit)
 	}
 	return data, nil
 }
@@ -175,7 +178,7 @@ func searchSkills(doer skillSearchDoer, query string) ([]skillSearchEntry, error
 	}
 	defer resp.Body.Close()
 
-	respBody, err := readLimitedSearchResponse(resp.Body)
+	respBody, err := readLimitedResponse(resp.Body, maxSearchResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -187,37 +190,33 @@ func searchSkills(doer skillSearchDoer, query string) ([]skillSearchEntry, error
 		return nil, fmt.Errorf("%s", offlineGuidance)
 	}
 
-	var rpcResp struct {
-		Result *struct {
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"result"`
-		Error *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if jsonErr := json.Unmarshal(respBody, &rpcResp); jsonErr != nil {
+	env, err := decodeMCPEnvelope(respBody)
+	if err != nil {
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("search failed (%d): %s", resp.StatusCode, string(respBody))
+			return nil, fmt.Errorf("search failed (%d): %w", resp.StatusCode, err)
 		}
-		return nil, fmt.Errorf("unexpected search response: %s", string(respBody))
+		return nil, err
 	}
 
-	if rpcResp.Error != nil {
-		return nil, fmt.Errorf("search failed (code %d): %s", rpcResp.Error.Code, rpcResp.Error.Message)
+	if env.Error != nil {
+		return nil, fmt.Errorf("search failed (code %d): %s", env.Error.Code, env.Error.Message)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("search failed (%d): %s", resp.StatusCode, string(respBody))
 	}
-	if rpcResp.Result == nil || len(rpcResp.Result.Content) == 0 {
+	if env.Result.IsError {
+		return nil, fmt.Errorf("search failed: %s", renderContentBlocks(env.Result.Content))
+	}
+	if len(env.Result.Content) == 0 {
 		return nil, nil
 	}
 
+	text, ok := contentBlockText(env.Result.Content[0])
+	if !ok {
+		return nil, fmt.Errorf("search result's first content block is not text: %s", truncateForError(env.Result.Content[0]))
+	}
 	var results []skillSearchEntry
-	if err := json.Unmarshal([]byte(rpcResp.Result.Content[0].Text), &results); err != nil {
+	if err := json.Unmarshal([]byte(text), &results); err != nil {
 		return nil, fmt.Errorf("decode search results: %w", err)
 	}
 	return results, nil

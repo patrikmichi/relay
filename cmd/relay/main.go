@@ -40,24 +40,32 @@ func buildVersionString(version, commit, date string) string {
 // config's set-gateway/get-gateway/show) that also need to skip dynamic
 // registration. Anything NOT in this set is assumed to be a dynamic
 // service/tool command name (or an attempt at one).
+//
+// "recover" and "history" were missing here until this fix — both are real
+// registered top-level commands (see newRootCmd), so a discovered service
+// literally named "recover" or "history" would have silently collided with
+// them instead of being caught. This hand-maintained list is only the
+// pre-resolution fast-path check now; BuildServiceCommands' own
+// commandNameCollides check against the live command tree is the
+// authoritative guard (R13) and can't drift the same way.
 var staticCommandNames = map[string]bool{
 	"login": true, "logout": true, "whoami": true, "authorize": true,
 	"call": true, "services": true, "tokens": true, "config": true,
 	"help-tools": true, "help": true, "completion": true, "sync": true,
 	"publish": true, "skill": true, "agent": true, "mcp": true,
-	"providers": true,
-	"list":      true, "revoke": true, // tokens sub-commands
+	"providers": true, "recover": true, "history": true,
+	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
 
-// shouldBuildDynamicCommands decides whether PersistentPreRunE should call
-// BuildServiceCommands for the resolved command. False for every static
-// command/sub-command (cmdName or topName matching staticCommandNames)
-// regardless of offline state, and false whenever offline is true — this is
-// the single decision point that keeps `--offline` from ever triggering a
-// network dial to discover dynamic service/tool sub-commands. Extracted as
-// a pure function (no *cobra.Command, no network) so it is unit-testable
-// without constructing the full command tree.
+// shouldBuildDynamicCommands decides whether discovery should run for a
+// candidate command name. False for every static command/sub-command
+// (cmdName or topName matching staticCommandNames) regardless of offline
+// state, and false whenever offline is true — this is the single decision
+// point that keeps `--offline` from ever triggering a network dial to
+// discover dynamic service/tool sub-commands. Extracted as a pure function
+// (no *cobra.Command, no network) so it is unit-testable without
+// constructing the full command tree.
 func shouldBuildDynamicCommands(cmdName, topName string, offline bool) bool {
 	if staticCommandNames[topName] || staticCommandNames[cmdName] {
 		return false
@@ -65,16 +73,70 @@ func shouldBuildDynamicCommands(cmdName, topName string, offline bool) bool {
 	return !offline
 }
 
+// discoveryCandidate returns the first non-flag argument — the word Cobra
+// would try to resolve as a top-level command — along with whether one was
+// found at all. A bare `relay`, `relay --help`, or `relay --offline` all
+// have no candidate, so callers correctly skip discovery for them without
+// needing a separate "is this a help/offline invocation" check.
+//
+// A literal "--" ends flag scanning early per POSIX convention: the token
+// immediately after it is positional even if it starts with a dash.
+func discoveryCandidate(args []string) (string, bool) {
+	for i, a := range args {
+		if a == "--" {
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a, true
+	}
+	return "", false
+}
+
+// prepareDynamicCommands runs gateway discovery BEFORE Cobra resolves the
+// command tree for args, registering it on root synchronously. This is the
+// fix for R13: Cobra's own Find() rejects an unregistered command before
+// any PersistentPreRunE hook can run, so a hook-based call to
+// BuildServiceCommands (the previous approach) never actually fires for the
+// one case it exists to serve — a not-yet-registered dynamic service/tool
+// command. Calling it here, ahead of Execute, means the command already
+// exists in the tree by the time Cobra tries to resolve it.
+//
+// Skips discovery entirely (no gateway dial) whenever: there's no candidate
+// command word (bare `relay`, `--help`, `--offline` alone), the candidate is
+// a static/reserved name, --offline is present, or no gateway is
+// configured — the last of which degrades gracefully rather than erroring,
+// matching BuildServiceCommands' own degradation posture. Returns a non-nil
+// error only for a real collision (see BuildServiceCommands), which the
+// caller must treat as fatal rather than silently continuing.
+func prepareDynamicCommands(root *cobra.Command, args []string) error {
+	candidate, ok := discoveryCandidate(args)
+	if !ok {
+		return nil
+	}
+	offline := offlineFlagPresent(args)
+	if !shouldBuildDynamicCommands(candidate, candidate, offline) {
+		return nil
+	}
+	gatewayURL, err := config.GatewayURL()
+	if err != nil || gatewayURL == "" {
+		return nil // no gateway configured / corrupt config — degrade gracefully, resolved again (with a real error) at RunE time
+	}
+	return cli.BuildServiceCommands(root, gatewayURL)
+}
+
 // offlineFlagPresent reports whether --offline (or --offline=<truthy>) is
-// present in args. Used ONLY to decide whether to rewrite cobra's own
-// "unknown command" error (see rewriteOfflineUnknownCommandErr) — the
-// normal --offline enforcement path is cli.Offline() / shouldBuildDynamicCommands,
-// driven from PersistentPreRunE, which never runs for an unresolved dynamic
-// command (cobra's Find() rejects it before any Run hook fires — see
-// newRootCmd's PersistentPreRunE doc comment on skipping
-// BuildServiceCommands). A plain string scan (not full flag parsing) is
-// enough here: --offline takes no argument other than an optional
-// `=value`, so there is no "value is the next arg" ambiguity to resolve.
+// present in args. Used both by prepareDynamicCommands (to skip discovery
+// before Cobra resolution) and to decide whether to rewrite cobra's own
+// "unknown command" error (see rewriteOfflineUnknownCommandErr) for a
+// dynamic command that was never registered because --offline suppressed
+// discovery. A plain string scan (not full flag parsing) is enough here:
+// --offline takes no argument other than an optional `=value`, so there is
+// no "value is the next arg" ambiguity to resolve.
 func offlineFlagPresent(args []string) bool {
 	for _, a := range args {
 		if a == "--offline" {
@@ -91,10 +153,10 @@ func offlineFlagPresent(args []string) bool {
 // command %q for %q" error with the same offline fail-closed guidance
 // every other gateway-touching command surfaces, when the failed command
 // looks like it was an unregistered DYNAMIC service/tool command skipped
-// specifically because --offline suppressed BuildServiceCommands (see
-// newRootCmd's PersistentPreRunE). Leaves every other error (including a
-// genuinely unknown STATIC command typed without --offline) untouched, so
-// this never masks an actual typo against the static command set.
+// specifically because --offline suppressed discovery (see
+// prepareDynamicCommands). Leaves every other error (including a genuinely
+// unknown STATIC command typed without --offline) untouched, so this never
+// masks an actual typo against the static command set.
 func rewriteOfflineUnknownCommandErr(err error, args []string) error {
 	if err == nil || !offlineFlagPresent(args) {
 		return err
@@ -106,10 +168,12 @@ func rewriteOfflineUnknownCommandErr(err error, args []string) error {
 }
 
 // newRootCmd builds the relay root cobra command with every static
-// sub-command registered and the dynamic-registration PersistentPreRunE
-// wired up. Extracted from main() so tests can Execute() the full command
-// tree (e.g. to prove --offline never dials the gateway) without needing a
-// built binary.
+// sub-command registered. Extracted from main() so tests can Execute() the
+// full command tree (e.g. to prove --offline never dials the gateway)
+// without needing a built binary. Dynamic service/tool commands are NOT
+// registered here — see prepareDynamicCommands, which main() calls before
+// Execute (R13: a PersistentPreRunE hook never fires for a command Cobra's
+// own Find() couldn't already resolve).
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "relay",
@@ -148,42 +212,16 @@ func newRootCmd() *cobra.Command {
 		cli.HistoryCmd(),
 	)
 
-	// Register dynamic service sub-commands lazily.
-	// We use PersistentPreRunE so we only hit the gateway when actually executing
-	// a command — not on every --help invocation.
+	// PersistentPreRunE only needs to record --offline for every catalog
+	// verb's resolveGatewayURLOrFailClosed to consult (internal/cli/gateway.go)
+	// — dynamic command discovery happens earlier, before Execute (see
+	// prepareDynamicCommands), not here.
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		offline, err := cmd.Flags().GetBool("offline")
 		if err != nil {
 			return err
 		}
 		cli.SetOffline(offline)
-
-		// Check the current command and its parent names.
-		top := cmd
-		for top.HasParent() && top.Parent() != root {
-			top = top.Parent()
-		}
-
-		// --offline must block dynamic registration too: BuildServiceCommands
-		// dials GET /api/integrations to discover services/tools, and doing
-		// that here would defeat --offline for exactly the commands it exists
-		// to guard (an unregistered dynamic service verb) — the caller would
-		// see a network dial (or hang) instead of the fail-closed offline
-		// guidance. With registration skipped, an unresolved dynamic command
-		// falls through to cobra's own "unknown command" error — Execute's
-		// caller below (rewriteOfflineUnknownCommandErr) rewrites that
-		// specific error into the same offline guidance every other
-		// gateway-touching command surfaces, so the caller sees one
-		// consistent message instead of a bare "unknown command".
-		if !shouldBuildDynamicCommands(cmd.Name(), top.Name(), cli.Offline()) {
-			return nil
-		}
-
-		gatewayURL, err := config.GatewayURL()
-		if err != nil {
-			return nil // degrade gracefully
-		}
-		cli.BuildServiceCommands(root, gatewayURL)
 		return nil
 	}
 
@@ -192,6 +230,11 @@ func newRootCmd() *cobra.Command {
 
 func main() {
 	root := newRootCmd()
+
+	if err := prepareDynamicCommands(root, os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	// A SIGINT/SIGTERM cancels cmd.Context() everywhere it's threaded
 	// through (login/device-code polling, logout, whoami, refresh, ...) —

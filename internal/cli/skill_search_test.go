@@ -142,8 +142,8 @@ func TestSearchSkills_NonJSONRPCBodyWith200Errors(t *testing.T) {
 	defer srv.Close()
 
 	_, err := searchSkills(client.New(srv.URL, "tok"), "")
-	if err == nil || !strings.Contains(err.Error(), "unexpected search response") {
-		t.Fatalf("expected an 'unexpected search response' error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not valid JSON-RPC") {
+		t.Fatalf("expected a 'not valid JSON-RPC' error, got: %v", err)
 	}
 }
 
