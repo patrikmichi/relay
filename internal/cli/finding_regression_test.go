@@ -155,7 +155,7 @@ func TestR04_AgentMigrateRefusesSecurityFieldLoss(t *testing.T) {
 		t.Errorf("R04: fidelity report must never claim \"no loss\" when security fields vanish: %s", out)
 	}
 
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	if _, statErr := os.Stat(opencodePath); !os.IsNotExist(statErr) {
 		t.Fatalf("R04: expected nothing written when a security-relevant field would be lost, stat err = %v", statErr)
 	}
@@ -171,7 +171,7 @@ func TestR04_AgentMigrateRefusesSecurityFieldLoss(t *testing.T) {
 func TestR04_AgentMigrateRefusesNonInteractiveLossWithoutAcceptLoss(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".config", "opencode", "agent")
+	dir := filepath.Join(home, ".config", "opencode", "agents")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestR04_SkillMigrateRefusesNonInteractiveLossWithoutAcceptLoss(t *testing.T
 func TestR22_AgentMigrateRefusesDeniedToolsLoss(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".config", "opencode", "agent")
+	dir := filepath.Join(home, ".config", "opencode", "agents")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

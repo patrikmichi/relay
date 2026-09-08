@@ -176,6 +176,11 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 			val = mapped
 			modelLoss = l
 		}
+		// Tool identity is translated into the TARGET's vocabulary before
+		// encoding (translateToolNames, agent_caps.go) — Claude's PascalCase
+		// names and opencode's lowercase permission keys are different
+		// vocabularies for the same concept, not just a casing style (R22).
+		//
 		// opencode's on-disk "tools" shape is a {tool: bool} map — reshape
 		// the canonical CSV/list value (plus any DeniedTools — see
 		// agent.go's doc comment) via toolsListToMap (agent_caps.go)
@@ -187,12 +192,35 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 		// reshape as LossDegraded; a non-opencode target with DeniedTools
 		// gets a LossDropped item instead (no boolean-denial shape exists
 		// there to preserve into).
-		if f.IR == "tools" && a.ID() == ProviderOpencode {
-			if len(ag.Tools) == 0 && len(ag.DeniedTools) == 0 {
-				continue
+		if f.IR == "tools" {
+			translatedTools := translateToolNames(ag.Tools, ag.Provenance.SourceProvider, a.ID())
+			if a.ID() == ProviderOpencode {
+				translatedDenied := translateToolNames(ag.DeniedTools, ag.Provenance.SourceProvider, a.ID())
+				restrictive := claudeAllowlistIsRestrictive(ag.Tools, ag.Provenance.SourceProvider)
+				if len(translatedTools) == 0 && len(translatedDenied) == 0 && !restrictive {
+					continue
+				}
+				m := toolsListToMap(translatedTools, translatedDenied)
+				if restrictive {
+					// A Claude allowlist implies "everything else denied" —
+					// opencode has no such implicit default, so make it
+					// explicit rather than let the restriction evaporate.
+					if m == nil {
+						m = make(map[string]bool, 1)
+					}
+					if _, exists := m["*"]; !exists {
+						m["*"] = false
+					}
+				}
+				val = m
+				isZero = false
+			} else {
+				if len(translatedTools) == 0 {
+					continue
+				}
+				val = flexStringList(translatedTools)
+				isZero = false
 			}
-			val = toolsListToMap(ag.Tools, ag.DeniedTools)
-			isZero = false
 		}
 		if isZero {
 			continue

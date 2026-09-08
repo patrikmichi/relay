@@ -62,10 +62,23 @@ type CodexInterface struct {
 	DefaultPrompt    string
 }
 
+// CodexToolDependency mirrors one entry of a Codex `agents/openai.yaml`
+// `dependencies.tools` list — a structured tool/MCP-server dependency
+// declaration (R20). Per the current vendor documentation
+// (https://learn.chatgpt.com/docs/build-skills), every field is an
+// optional string; there is no documented bare-string-list form.
+type CodexToolDependency struct {
+	Type        string
+	Value       string
+	Description string
+	Transport   string
+	URL         string
+}
+
 // CodexTools mirrors the `dependencies.tools` block of a Codex
-// `agents/openai.yaml` sidecar file — declared MCP server dependencies.
+// `agents/openai.yaml` sidecar file — declared tool/MCP dependencies.
 type CodexTools struct {
-	MCPServers []string
+	Tools []CodexToolDependency
 }
 
 // Skill is the canonical, provider-agnostic in-memory representation of an

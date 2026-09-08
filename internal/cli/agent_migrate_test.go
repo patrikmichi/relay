@@ -35,15 +35,22 @@ func TestAgentMigrate_ClaudeToOpencodeAndBack(t *testing.T) {
 	}
 
 	// Flat "<name>.md" file shape — no per-agent subdirectory.
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	content, err := os.ReadFile(opencodePath)
 	if err != nil {
 		t.Fatalf("expected %s to exist: %v", opencodePath, err)
 	}
 	// opencode's on-disk tools shape is a {tool: bool} map, not Claude's
-	// CSV allowlist string.
-	if !strings.Contains(string(content), "Read: true") {
-		t.Errorf("expected opencode's {tool: bool} map shape in projected content, got:\n%s", content)
+	// CSV allowlist string — and tool identity is translated into
+	// opencode's lowercase vocabulary (R22), not case-preserved.
+	if !strings.Contains(string(content), "read: true") {
+		t.Errorf("expected opencode's {tool: bool} map shape (translated names) in projected content, got:\n%s", content)
+	}
+	// Claude's allowlist implies "everything else denied" — opencode has no
+	// such implicit default, so the projection must add an explicit
+	// wildcard deny (R22) rather than silently becoming unrestricted.
+	if !strings.Contains(string(content), `'*': false`) {
+		t.Errorf("expected an explicit \"*\": false default-deny entry preserving the claude allowlist's restriction, got:\n%s", content)
 	}
 	if strings.Contains(string(content), "tools: Read, Bash") {
 		t.Errorf("did not expect claude's CSV tools shape to survive projection, got:\n%s", content)
@@ -165,7 +172,7 @@ func TestAgentMigrate_DryRunWritesNothing(t *testing.T) {
 		t.Errorf("expected a dry-run marker, got:\n%s", buf.String())
 	}
 
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "reviewer.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written under --dry-run, stat err = %v", err)
 	}
@@ -202,7 +209,7 @@ func TestAgentMigrate_StrictAbortsOnDroppedFields(t *testing.T) {
 		t.Fatalf("expected --strict to abort on a dropped field (Memory)")
 	}
 
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written when --strict aborts, stat err = %v", err)
 	}
@@ -213,7 +220,7 @@ func TestAgentMigrate_DefaultToAllDetectedExceptFrom(t *testing.T) {
 	t.Setenv("HOME", home)
 	writeClaudeUserAgent(t, home)
 	// Detect() for opencode requires its own user dir to exist.
-	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode", "agent"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode", "agents"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
@@ -268,7 +275,7 @@ func TestAgentMigrate_WriteErrorPropagates(t *testing.T) {
 	writeClaudeUserAgent(t, home)
 
 	// Make $HOME/.config read-only so opencode's target dir
-	// (~/.config/opencode/agent) can never be created.
+	// (~/.config/opencode/agents) can never be created.
 	configDir := filepath.Join(home, ".config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -338,7 +345,7 @@ func TestAgentMigrate_InteractivePromptDeclines(t *testing.T) {
 	if !strings.Contains(buf.String(), "skipped") {
 		t.Errorf("expected 'skipped' after declining the prompt, got:\n%s", buf.String())
 	}
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); !os.IsNotExist(err) {
 		t.Fatalf("expected nothing written after declining, stat err = %v", err)
 	}
@@ -365,7 +372,7 @@ func TestAgentMigrate_InteractivePromptAccepts(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v\noutput:\n%s", err, buf.String())
 	}
-	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "with-memory.md")
+	opencodePath := filepath.Join(home, ".config", "opencode", "agents", "with-memory.md")
 	if _, err := os.Stat(opencodePath); err != nil {
 		t.Fatalf("expected %s written after accepting the prompt: %v", opencodePath, err)
 	}

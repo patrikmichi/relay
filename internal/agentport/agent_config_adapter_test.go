@@ -331,7 +331,7 @@ frontmatter:
   - { ir: name, key: name, type: string, presence: required }
   - { ir: description, key: description, type: string, presence: required }
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}

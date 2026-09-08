@@ -321,6 +321,86 @@ func deniedTools(tools map[string]bool) []string {
 	return out
 }
 
+// claudeOpencodeToolAlias maps a Claude Code built-in tool name (as used in
+// Claude agent frontmatter's CSV/list `tools:` key) to opencode's
+// documented lowercase permission-key vocabulary
+// (https://opencode.ai/docs/agents/ — read/write/edit/bash/glob/grep/list/
+// webfetch/websearch/task/todowrite). Without this, a projected opencode
+// {tool: bool} map carried Claude's case-preserved names (e.g. "Read":
+// true), which match none of opencode's real permission keys — the
+// restriction becomes inert rather than merely differently-cased (R22). An
+// unmapped name (a custom/MCP tool id, which both formats key by literal
+// name) is left untranslated by translateToolName below — best-effort,
+// never a guess.
+var claudeOpencodeToolAlias = map[string]string{
+	"Read":      "read",
+	"Write":     "write",
+	"Edit":      "edit",
+	"Bash":      "bash",
+	"Glob":      "glob",
+	"Grep":      "grep",
+	"Task":      "task",
+	"TodoWrite": "todowrite",
+	"WebFetch":  "webfetch",
+	"WebSearch": "websearch",
+}
+
+// opencodeClaudeToolAlias is the reverse of claudeOpencodeToolAlias,
+// derived once so the two tables can never drift out of sync.
+var opencodeClaudeToolAlias = reverseStringMap(claudeOpencodeToolAlias)
+
+// translateToolName maps one tool identity from source's vocabulary to
+// target's. Same-provider and unrecognized source/target pairs return name
+// unchanged; an unrecognized NAME within a known pair also passes through
+// unchanged (see claudeOpencodeToolAlias's doc comment).
+func translateToolName(name string, source, target ProviderID) string {
+	if source == target {
+		return name
+	}
+	var table map[string]string
+	switch {
+	case source == ProviderClaude && target == ProviderOpencode:
+		table = claudeOpencodeToolAlias
+	case source == ProviderOpencode && target == ProviderClaude:
+		table = opencodeClaudeToolAlias
+	default:
+		return name
+	}
+	if mapped, ok := table[name]; ok {
+		return mapped
+	}
+	return name
+}
+
+// translateToolNames maps every entry of names via translateToolName,
+// returning nil for an empty input (matching the rest of this file's
+// zero-value/omitempty conventions).
+func translateToolNames(names []string, source, target ProviderID) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = translateToolName(n, source, target)
+	}
+	return out
+}
+
+// claudeAllowlistIsRestrictive reports whether a non-empty Tools list whose
+// ORIGINAL source is Claude implies every unlisted tool is denied. Claude's
+// `tools:` CSV is a strict allowlist — its mere presence means "only
+// these" — but opencode's {tool: bool} map has no such implicit default:
+// an unlisted key there defaults to allowed. Projecting a Claude allowlist
+// onto opencode without an explicit "*": false entry would silently turn a
+// restricted agent into an unrestricted one the moment it lands in a
+// format whose unlisted-tool default is permissive (R22). This applies
+// only when the SOURCE was Claude — an opencode-sourced Tools list carries
+// no such implicit "everything else denied" meaning, so no wildcard is
+// synthesized for it.
+func claudeAllowlistIsRestrictive(tools []string, source ProviderID) bool {
+	return source == ProviderClaude && len(tools) > 0
+}
+
 // toolsLossForTarget reports tools-shape fidelity loss for a target
 // provider:
 //   - projecting a non-empty Tools allowlist onto opencode is always a
@@ -344,13 +424,25 @@ func toolsLossForTarget(tools []string, denied []string, target ProviderID) *Los
 			Note:  "reshaped CSV/list tools allowlist into opencode's {tool: bool} map (each listed tool set to true)",
 		}
 	}
-	if len(denied) == 0 {
+	// A literal "*" wildcard-deny entry (opencode's "everything else
+	// denied" default) is exactly what an allowlist-only target — every
+	// non-opencode target today — already implies by omitting a tool from
+	// the list. It is not itself a loss; only a SPECIFIC per-tool denial
+	// (deny this one tool while defaulting everything else to allowed) has
+	// no allowlist-only equivalent.
+	var specific []string
+	for _, d := range denied {
+		if d != "*" {
+			specific = append(specific, d)
+		}
+	}
+	if len(specific) == 0 {
 		return nil
 	}
 	return &LossItem{
 		Field:    "Tools",
 		Kind:     LossDropped,
 		Security: true,
-		Note:     "explicitly-denied tools {" + strings.Join(denied, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost (review R22)",
+		Note:     "explicitly-denied tools {" + strings.Join(specific, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost (review R22)",
 	}
 }

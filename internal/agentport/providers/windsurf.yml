@@ -2,12 +2,14 @@
 # the config-driven refactor's central claim: a normal new platform is a
 # data edit, not a recompile.
 #
-# Provenance: Windsurf follows the common Agent-Skills convention of a
-# per-tool global skills dir under the home directory plus a project-local
-# mirror (see vault/research/repos/2026/05/02/asm-universal-skill-manager.md
-# — the ASM provider directory map this schema absorbs as data). Confirm
-# against Windsurf's own docs before relying on this in production; treat
-# as best-effort until independently verified.
+# R21: the user-scope root is verified against current Windsurf/Cascade
+# documentation (https://docs.devin.ai/desktop/cascade/skills):
+# ~/.codeium/windsurf/skills, not ~/.windsurf/skills. The old path is kept
+# below as an explicit READ-only compat fallback (role: compat) for a
+# pre-existing install — never a write or rollback target. The project
+# path is a SEPARATE matter per the same documentation and is left
+# unchanged (still best-effort/unverified — do not conflate it with the
+# now-corrected user path).
 id: windsurf
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]
@@ -15,7 +17,8 @@ discovery: direct
 
 dirs:
   user:
-    - { path: "~/.windsurf/skills", role: own }
+    - { path: "~/.codeium/windsurf/skills", role: own }
+    - { path: "~/.windsurf/skills", role: compat } # R21: pre-correction root, read-only
   project:
     - { path: ".windsurf/skills", role: own }
 

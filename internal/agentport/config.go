@@ -174,15 +174,18 @@ type ProviderConfig struct {
 	nameRe *regexp.Regexp
 }
 
-// parseProviderConfig unmarshals and validates one provider config document.
-// registeredHooks/registeredCodecs are the load-hook/sidecar-codec registry
-// key sets, used to validate load_hooks/sidecar.codec references — see §4.4.
-func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[string]bool) (*ProviderConfig, error) {
+// parseProviderConfig unmarshals and validates one provider config document
+// against kind's IR field set — KindSkill for providers/*.yml (Skill IR,
+// ir_fields.go) or KindAgent for agents/*.yml (Agent IR,
+// agent_ir_fields.go). registeredHooks/registeredCodecs are the load-hook/
+// sidecar-codec registry key sets, used to validate load_hooks/
+// sidecar.codec references — see §4.4.
+func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[string]bool, kind ArtifactKind) (*ProviderConfig, error) {
 	var cfg ProviderConfig
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("parse provider config: %w", err)
 	}
-	if err := cfg.validate(registeredHooks, registeredCodecs); err != nil {
+	if err := cfg.validate(registeredHooks, registeredCodecs, kind); err != nil {
 		return nil, fmt.Errorf("provider config %q: %w", cfg.ID, err)
 	}
 	return &cfg, nil
@@ -196,12 +199,19 @@ func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[strin
 // each ir name's fixed canonical type, capability names resolve to CapSet
 // fields, and every load_hooks/sidecar.codec name is registered. Never
 // panics — every failure is a returned error naming the offending field.
-func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]bool) error {
+func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]bool, kind ArtifactKind) error {
 	if c.ID == "" {
 		return fmt.Errorf("missing required field \"id\"")
 	}
 	if c.SkillFile == "" {
 		c.SkillFile = "SKILL.md"
+	}
+	// R34: skill_file is joined onto a resolved skill directory (Load/
+	// Project, config_adapter.go) exactly like dirs.*.path is joined onto a
+	// resolved base — it needs the same containment check, which the
+	// pre-fix validate() applied to dirs.*.path only.
+	if pathHasDotDotSegment(c.SkillFile) || strings.HasPrefix(c.SkillFile, "/") {
+		return fmt.Errorf("skill_file: must be a relative path with no \"..\" segment, got %q", c.SkillFile)
 	}
 	if c.Discovery == "" {
 		c.Discovery = DiscoveryDirect
@@ -290,9 +300,17 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 		if f.IR == "" {
 			return fmt.Errorf("frontmatter[%d].ir: must not be empty", i)
 		}
-		expectedType, ok := canonicalIRFieldType(f.IR)
+		// R34: check against ONLY kind's own IR field set, not the union of
+		// both — irFieldDescriptors (Skill) and agentIrFieldDescriptors
+		// (Agent) overlap by name ("tools" means different things to
+		// neither/either) but their decoders (decodeIRField/
+		// decodeAgentIRField) are separate, kind-specific switches. Before
+		// this, a config was accepted here yet still failed with a
+		// confusing "unknown canonical IR field" error at Load/Project time
+		// whenever it declared a field belonging to the OTHER kind.
+		expectedType, ok := canonicalIRFieldTypeForKind(f.IR, kind)
 		if !ok {
-			return fmt.Errorf("frontmatter[%d].ir: unknown canonical IR field %q", i, f.IR)
+			return fmt.Errorf("frontmatter[%d].ir: unknown %s IR field %q", i, kind, f.IR)
 		}
 		if f.Key == "" {
 			return fmt.Errorf("frontmatter[%d].key: must not be empty", i)
@@ -325,6 +343,12 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 	if c.Sidecar != nil {
 		if c.Sidecar.Path == "" {
 			return fmt.Errorf("sidecar.path: must not be empty")
+		}
+		// R34: sidecar.path is joined onto the resolved skill directory the
+		// same way skill_file is (hooks.go's codexOpenAICodec) — same
+		// containment requirement.
+		if pathHasDotDotSegment(c.Sidecar.Path) || strings.HasPrefix(c.Sidecar.Path, "/") {
+			return fmt.Errorf("sidecar.path: must be a relative path with no \"..\" segment, got %q", c.Sidecar.Path)
 		}
 		if c.Sidecar.Codec == "" {
 			return fmt.Errorf("sidecar.codec: must not be empty")

@@ -159,7 +159,8 @@ policy:
   allow_implicit_invocation: true
 dependencies:
   tools:
-    - some-mcp
+    - type: mcp
+      value: some-mcp
 `),
 	})
 
@@ -173,7 +174,8 @@ dependencies:
 	if s.AllowImplicitInvocation == nil || !*s.AllowImplicitInvocation {
 		t.Fatalf("AllowImplicitInvocation = %v, want pointer to true", s.AllowImplicitInvocation)
 	}
-	if s.CodexTools == nil || !reflect.DeepEqual(s.CodexTools.MCPServers, []string{"some-mcp"}) {
+	wantDep := []CodexToolDependency{{Type: "mcp", Value: "some-mcp"}}
+	if s.CodexTools == nil || !reflect.DeepEqual(s.CodexTools.Tools, wantDep) {
 		t.Fatalf("CodexTools = %#v", s.CodexTools)
 	}
 	if _, ok := s.Resources["agents/openai.yaml"]; ok {

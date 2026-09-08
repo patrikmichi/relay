@@ -9,8 +9,10 @@ package agentport
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -851,6 +853,338 @@ func TestR22_DeniedToolsLossIsFlaggedSecurity(t *testing.T) {
 	}
 }
 
+// TestR22_ToolIdentityTranslatedNotCasePreserved reproduces the review's
+// exact complaint: "A Claude list such as `Read, Grep, Bash` becomes
+// case-preserved keys rather than a provider-aware vocabulary translation."
+// A case-preserved key matches none of opencode's real (lowercase)
+// permission keys, so the restriction is not merely mis-cased — it is
+// inert. Project() must translate tool identity into the target's
+// vocabulary.
+func TestR22_ToolIdentityTranslatedNotCasePreserved(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ntools: Read, Grep, Bash\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opencode := NewOpencodeAgentAdapter()
+	files, _, err := opencode.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	content := string(files["reviewer.md"])
+	for _, want := range []string{"read: true", "grep: true", "bash: true"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("R22: expected translated lowercase key %q in projected opencode content, got:\n%s", want, content)
+		}
+	}
+	for _, unwanted := range []string{"Read: true", "Grep: true", "Bash: true"} {
+		if strings.Contains(content, unwanted) {
+			t.Errorf("R22: case-preserved key %q must not survive translation, got:\n%s", unwanted, content)
+		}
+	}
+}
+
+// TestR22_ClaudeAllowlistDefaultDenyPreservedOnOpencode reproduces the
+// review's "unspecified tools" gap: "Merely writing `true` for named tools
+// does not establish that all other tools are forbidden." Claude's
+// tools: CSV is a strict allowlist (presence implies "only these"), but
+// opencode's {tool: bool} map defaults an unlisted key to allowed —
+// projecting the allowlist without an explicit "*": false entry would
+// silently turn a restricted agent into an unrestricted one.
+func TestR22_ClaudeAllowlistDefaultDenyPreservedOnOpencode(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ntools: Read\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opencode := NewOpencodeAgentAdapter()
+	files, _, err := opencode.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	content := string(files["reviewer.md"])
+	if !strings.Contains(content, "'*': false") {
+		t.Fatalf("R22: expected an explicit default-deny wildcard preserving the claude allowlist's restriction, got:\n%s", content)
+	}
+
+	// Control: an agent with NO tools restriction at all must not gain a
+	// synthesized wildcard — there is nothing to preserve.
+	writeFiles(t, dir, map[string][]byte{
+		"unrestricted.md": []byte("---\nname: unrestricted\ndescription: d\n---\n\nbody\n"),
+	})
+	ag2, err := claude.Load(filepath.Join(dir, "unrestricted.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	files2, _, err := opencode.Project(ag2)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if strings.Contains(string(files2["unrestricted.md"]), "*") {
+		t.Fatalf("R22: an agent with no tools restriction must not gain a synthesized wildcard, got:\n%s", files2["unrestricted.md"])
+	}
+}
+
+// TestR22_OpencodeWildcardDenyRoundTripsToClaudeWithoutFalseLoss confirms
+// the complementary direction: an opencode agent whose ONLY denial is the
+// "*" wildcard (i.e. exactly Claude's own allowlist semantics, expressed
+// in opencode's shape) migrates to claude with NO Tools loss reported —
+// Claude's allowlist already implies "everything else denied" for free, so
+// this is not an unrepresentable restriction. A genuine SPECIFIC per-tool
+// denial (deny just this one tool, default-allow the rest) has no
+// allowlist-only equivalent and must still be flagged.
+func TestR22_OpencodeWildcardDenyRoundTripsToClaudeWithoutFalseLoss(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\ndescription: d\ntools:\n  read: true\n  bash: true\n  '*': false\n---\n\nbody\n"),
+	})
+	oc := NewOpencodeAgentAdapter()
+	ag, err := oc.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	claude := NewClaudeAgentAdapter()
+	_, loss, err := claude.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if HasSecurityLoss(loss) {
+		t.Fatalf("R22: a wildcard-only denial is exactly claude's own allowlist semantics — expected no security loss, got %#v", loss)
+	}
+
+	// Control: a SPECIFIC per-tool denial (no wildcard) still has no
+	// allowlist-only equivalent and must still be flagged.
+	writeFiles(t, dir, map[string][]byte{
+		"specific.md": []byte("---\ndescription: d\ntools:\n  read: true\n  write: false\n---\n\nbody\n"),
+	})
+	ag2, err := oc.Load(filepath.Join(dir, "specific.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, loss2, err := claude.Project(ag2)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if !HasSecurityLoss(loss2) {
+		t.Fatalf("R22: a specific per-tool denial has no allowlist-only equivalent and must be flagged, got %#v", loss2)
+	}
+}
+
+// Regression tests for R30 — the review's exact repro (evidence/
+// reproduce.py's "cursor-nested-list"/"cursor-nested-resolve" probes): a
+// skill nested under Cursor's recursive project scope
+// (.cursor/skills/group/demo/SKILL.md) appeared in `skill list` but
+// `skill scan demo --from cursor --scope project` (and, by the same code
+// path, migrate/diff/uninstall) reported not found — List used a
+// recursive walk but ResolveSkillPath only checked the non-recursive
+// <dir>/<name>/SKILL.md shape.
+
+func TestR30_NestedCursorSkillListedAndResolvableByName(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: d\n---\n\nbody\n"),
+	})
+
+	cursor := NewCursorAdapter()
+	refs, err := List(cursor, ScopeProject)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var listed bool
+	for _, r := range refs {
+		if r.Name == "demo" {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatalf("R30: expected the nested skill to appear in List(), got %#v", refs)
+	}
+
+	got, err := ResolveSkillPath(cursor, ScopeProject, "demo")
+	if err != nil {
+		t.Fatalf("R30: expected the nested skill listed above to also resolve by name, got: %v", err)
+	}
+	want := filepath.Join(dir, ".cursor", "skills", "group", "demo")
+	if got != want {
+		t.Fatalf("R30: ResolveSkillPath = %q, want %q", got, want)
+	}
+}
+
+// TestR30_AmbiguousNestedNameIsExplicitError confirms the flip side of the
+// unification: two nested entries sharing the same name within a single
+// recursive directory tree are an explicit, deterministic error from BOTH
+// List and ResolveSkillPath — never a silent first-match pick that would
+// let `skill list` and a subsequent `skill scan`/`migrate` disagree about
+// which one "demo" actually refers to.
+func TestR30_AmbiguousNestedNameIsExplicitError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group-a", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: a\n---\n\nbody\n"),
+	})
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group-b", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: b\n---\n\nbody\n"),
+	})
+
+	cursor := NewCursorAdapter()
+	if _, err := List(cursor, ScopeProject); err == nil {
+		t.Fatal("R30: expected List to report the duplicate name as an explicit error, got nil")
+	}
+	if _, err := ResolveSkillPath(cursor, ScopeProject, "demo"); err == nil {
+		t.Fatal("R30: expected ResolveSkillPath to report the duplicate name as an explicit error, got nil")
+	}
+}
+
+// Regression tests for R34 — config.go's validate() accepted the UNION of
+// Skill IR and Agent IR field names, so a skill provider config declaring
+// an agent-only field (e.g. "tools", "temperature") was accepted at
+// validate() time and only failed later, confusingly, at Load/Project with
+// "unknown canonical IR field" — the config's own schema check never
+// caught the kind mismatch it was supposedly there to catch.
+
+func TestR34_SkillConfigRejectsAgentOnlyIRField(t *testing.T) {
+	raw := []byte(`
+id: bad-skill
+dirs:
+  user: [{ path: "~/.bad-skill/skills", role: own }]
+  project: [{ path: ".bad-skill/skills", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }
+`)
+	_, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
+	if err == nil {
+		t.Fatal("R34: expected a skill config declaring the agent-only \"tools\" IR field to be rejected at validate() time")
+	}
+	if !strings.Contains(err.Error(), "tools") {
+		t.Errorf("R34: expected the error to name the offending field, got: %v", err)
+	}
+}
+
+func TestR34_AgentConfigRejectsSkillOnlyIRField(t *testing.T) {
+	raw := []byte(`
+id: bad-agent
+layout: flat
+dirs:
+  user: [{ path: "~/.bad-agent/agents", role: own }]
+  project: [{ path: ".bad-agent/agents", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: allowed_tools, key: allowed-tools, type: string-or-list, presence: optional }
+`)
+	_, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
+	if err == nil {
+		t.Fatal("R34: expected an agent config declaring the skill-only \"allowed_tools\" IR field to be rejected at validate() time")
+	}
+}
+
+// TestR34_SkillFileAndSidecarPathRejectPathEscape confirms skill_file and
+// sidecar.path get the SAME containment check dirs.*.path already had —
+// both are joined onto a resolved skill directory downstream
+// (config_adapter.go's Load/Project, hooks.go's codexOpenAICodec).
+func TestR34_SkillFileAndSidecarPathRejectPathEscape(t *testing.T) {
+	base := `
+id: escape-test
+skill_file: %s
+dirs:
+  user: [{ path: "~/.escape-test/skills", role: own }]
+  project: [{ path: ".escape-test/skills", role: own }]
+frontmatter: [{ ir: name, key: name, type: string, presence: required }]
+`
+	for _, bad := range []string{"../../etc/passwd", "/etc/passwd"} {
+		raw := []byte(fmt.Sprintf(base, bad))
+		if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill); err == nil {
+			t.Errorf("R34: expected skill_file %q to be rejected", bad)
+		}
+	}
+
+	sidecarBase := `
+id: escape-sidecar-test
+dirs:
+  user: [{ path: "~/.escape-sidecar-test/skills", role: own }]
+  project: [{ path: ".escape-sidecar-test/skills", role: own }]
+frontmatter: [{ ir: name, key: name, type: string, presence: required }]
+sidecar: { path: %s, codec: codex-openai }
+`
+	for _, bad := range []string{"../../etc/passwd", "/etc/passwd"} {
+		raw := []byte(fmt.Sprintf(sidecarBase, bad))
+		if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill); err == nil {
+			t.Errorf("R34: expected sidecar.path %q to be rejected", bad)
+		}
+	}
+}
+
+// TestR34_ResolveHonorsProviderCustomNameRegex reproduces the review's
+// name_regex inconsistency: a provider config's custom name_regex is
+// honored by Load/Project (via the adapter's own validateName), but the
+// public ResolveSkillPath/ResolveAgentPath validated every name against
+// the package-default lowercase-hyphen regex regardless — so a name a
+// custom-regex provider's own artifacts actually use could be rejected by
+// the very functions migrate/scan/diff rely on to find them by name.
+func TestR34_ResolveHonorsProviderCustomNameRegex(t *testing.T) {
+	raw := []byte(`
+id: strict-upper
+name_regex: "^[A-Z]+$"
+layout: flat
+dirs:
+  user: [{ path: "~/.strict-upper/agents", role: own }]
+  project: [{ path: ".strict-upper/agents", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+`)
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
+	if err != nil {
+		t.Fatalf("parseProviderConfig: %v", err)
+	}
+	a := newAgentConfigAdapter(*cfg)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".strict-upper", "agents")
+	writeFiles(t, dir, map[string][]byte{
+		"REVIEWER.md": []byte("---\ndescription: d\n---\n\nbody\n"),
+	})
+
+	// "REVIEWER" matches this provider's own ^[A-Z]+$ regex but NOT the
+	// package-default ^[a-z0-9]+(-[a-z0-9]+)*$ — ResolveAgentPath must use
+	// the provider's own rule, not silently reject a name its own Load
+	// would accept.
+	if _, err := ResolveAgentPath(a, ScopeUser, "REVIEWER"); err != nil {
+		t.Fatalf("R34: expected ResolveAgentPath to honor the provider's custom name_regex, got: %v", err)
+	}
+}
+
 // Regression tests derived from the 2026-09-07 deep review (R27) — see
 // vault/reviews/relay/2026-09-07/relay-deep-codebase-review.md. The scanner
 // previously retained the full matched secret in ScanFinding.Excerpt, and
@@ -931,5 +1265,179 @@ func TestR27_SkillScanResourceSecretRedacted(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected a github-token finding in resource scan, got %#v", result.Findings)
+	}
+}
+
+// Regression test for R20 — the review's exact object-shaped fixture
+// (evidence/reproduce.py's "codex-sidecar-objects" probe): a
+// `dependencies.tools` entry per the current vendor schema
+// (https://learn.chatgpt.com/docs/build-skills) is an object with type,
+// value, description, transport, and url — not a bare string. Before the
+// fix, hooks.go declared `Tools []string`, so this fixture failed to
+// decode with "cannot unmarshal !!map into string" instead of loading (and
+// later round-tripping) successfully.
+func TestR20_CodexObjectShapedDependencyRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "demo")
+	writeFiles(t, skillDir, map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: d\n---\n\nbody\n"),
+		"agents/openai.yaml": []byte(`dependencies:
+  tools:
+    - type: mcp
+      value: example
+      description: Example tool
+      transport: streamable_http
+      url: https://example.invalid/mcp
+`),
+	})
+
+	codex := NewCodexAdapter()
+	s, err := codex.Load(skillDir)
+	if err != nil {
+		t.Fatalf("R20: Load must decode the documented object-shaped dependency, got: %v", err)
+	}
+	want := []CodexToolDependency{{
+		Type:        "mcp",
+		Value:       "example",
+		Description: "Example tool",
+		Transport:   "streamable_http",
+		URL:         "https://example.invalid/mcp",
+	}}
+	if s.CodexTools == nil || !reflect.DeepEqual(s.CodexTools.Tools, want) {
+		t.Fatalf("R20: CodexTools = %#v, want Tools=%#v", s.CodexTools, want)
+	}
+
+	files, loss, err := codex.Project(s)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if len(loss) != 0 {
+		t.Fatalf("R20: same-provider round trip must report no loss, got %#v", loss)
+	}
+
+	tmp := t.TempDir()
+	reDir := filepath.Join(tmp, "demo")
+	writeFiles(t, reDir, files)
+	got, err := codex.Load(reDir)
+	if err != nil {
+		t.Fatalf("R20: re-Load of the projected sidecar failed: %v", err)
+	}
+	if !reflect.DeepEqual(got.CodexTools, s.CodexTools) {
+		t.Fatalf("R20: CodexTools did not round-trip, got %#v, want %#v", got.CodexTools, s.CodexTools)
+	}
+
+	// LoadGenericSkill (used by install.go for an arbitrary local directory
+	// of unknown provider) shares the same codec — must decode identically.
+	generic, err := LoadGenericSkill(skillDir)
+	if err != nil {
+		t.Fatalf("R20: LoadGenericSkill must also decode the object-shaped dependency, got: %v", err)
+	}
+	if generic.CodexTools == nil || !reflect.DeepEqual(generic.CodexTools.Tools, want) {
+		t.Fatalf("R20: LoadGenericSkill CodexTools = %#v, want Tools=%#v", generic.CodexTools, want)
+	}
+}
+
+// Regression tests for R21 — provider root paths corrected against current
+// vendor documentation, with the previously-shipped (incorrect) root kept
+// as an explicit READ-only compatibility fallback, never a write/rollback
+// target (evidence/reproduce.py's provider-path findings; see providers/
+// opencode.yml's plural "agents" directories and providers/windsurf.yml's
+// "~/.codeium/windsurf/skills" root).
+//
+// opencode's skill provider config (providers/opencode.yml) is unaffected —
+// it never used the singular "agent" path in the first place. The R21
+// documented-vs-actual mismatch is in the opencode AGENT provider config
+// (agents/opencode.yml), which previously wrote skills^H^H^Hagents to
+// singular ".opencode/agent" / "~/.config/opencode/agent" instead of the
+// documented plural "agents" directories.
+func TestR21_OpencodeAgentProviderUsesDocumentedPluralRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	oc := NewOpencodeAgentAdapter()
+	dirs := oc.UserDirs()
+	if len(dirs) == 0 || dirs[0] != filepath.Join(home, ".config", "opencode", "agents") {
+		t.Fatalf("R21: opencode agent UserDirs()[0] = %#v, want primary root ~/.config/opencode/agents (documented plural root)", dirs)
+	}
+
+	projDirs := oc.ProjectDirs()
+	if len(projDirs) == 0 || projDirs[0] != filepath.Join(".opencode", "agents") {
+		t.Fatalf("R21: opencode agent ProjectDirs()[0] = %#v, want .opencode/agents", projDirs)
+	}
+}
+
+// TestR21_OpencodeAgentLegacySingularRootIsReadOnlyFallback confirms the
+// old singular "agent" root is still searched (so a pre-existing install
+// under the old path is still found/migratable) but is NEVER counted as an
+// owned/writable directory — Detect(), OwnUserDirCount(), and rollback's
+// write-target resolution must never treat it as the provider's own
+// directory (R21's "never a silent rollback/write target" requirement).
+func TestR21_OpencodeAgentLegacySingularRootIsReadOnlyFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	legacyDir := filepath.Join(home, ".config", "opencode", "agent")
+	writeFiles(t, legacyDir, map[string][]byte{
+		"reviewer.md": []byte("---\ndescription: legacy install\n---\n\nbody\n"),
+	})
+
+	oc := NewOpencodeAgentAdapter()
+	dirs := oc.UserDirs()
+	var sawLegacy bool
+	for _, d := range dirs {
+		if d == legacyDir {
+			sawLegacy = true
+		}
+	}
+	if !sawLegacy {
+		t.Fatalf("R21: legacy singular root must remain a read fallback in UserDirs(), got %#v", dirs)
+	}
+
+	if n := oc.OwnUserDirCount(); n != 1 {
+		t.Fatalf("R21: OwnUserDirCount() = %d, want 1 — the legacy compat root must never be counted as own/writable", n)
+	}
+
+	path, err := ResolveAgentPath(oc, ScopeUser, "reviewer")
+	if err != nil {
+		t.Fatalf("R21: expected the legacy install to still be discoverable for read/migrate: %v", err)
+	}
+	if path != filepath.Join(legacyDir, "reviewer.md") {
+		t.Fatalf("R21: resolved path = %q, want the legacy root %q", path, legacyDir)
+	}
+
+	// The provider looks "not installed" via Detect() unless the NEW
+	// (documented) root exists — a stale legacy directory alone must never
+	// make an old root look like the provider's live install location.
+	if oc.Detect() {
+		t.Fatalf("R21: Detect() must not report the provider installed based on the legacy compat root alone")
+	}
+}
+
+func TestR21_WindsurfSkillProviderUsesDocumentedUserRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	a, ok := AdapterByID(ProviderID("windsurf"))
+	if !ok {
+		t.Fatal("windsurf provider config not found")
+	}
+	dirs := a.UserDirs()
+	want := filepath.Join(home, ".codeium", "windsurf", "skills")
+	if len(dirs) == 0 || dirs[0] != want {
+		t.Fatalf("R21: windsurf UserDirs()[0] = %#v, want documented root %q", dirs, want)
+	}
+
+	legacy := filepath.Join(home, ".windsurf", "skills")
+	var sawLegacy bool
+	for _, d := range dirs {
+		if d == legacy {
+			sawLegacy = true
+		}
+	}
+	if !sawLegacy {
+		t.Fatalf("R21: legacy ~/.windsurf/skills root must remain a read fallback, got %#v", dirs)
+	}
+	if n := a.OwnUserDirCount(); n != 1 {
+		t.Fatalf("R21: windsurf OwnUserDirCount() = %d, want 1 — legacy compat root must not be own/writable", n)
 	}
 }

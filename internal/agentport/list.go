@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -62,10 +63,7 @@ func List(a Adapter, scope Scope) ([]SkillRef, error) {
 		}
 	}
 
-	recursive := false
-	if rd, ok := a.(recursiveDiscoverer); ok {
-		recursive = rd.DiscoversRecursively(scope)
-	}
+	recursive := adapterDiscoversRecursively(a, scope)
 
 	seen := map[string]bool{}
 	var out []SkillRef
@@ -77,11 +75,28 @@ func List(a Adapter, scope Scope) ([]SkillRef, error) {
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", d, err)
 		}
+		byName := map[string][]string{}
+		for _, h := range hits {
+			byName[h.Name] = append(byName[h.Name], h.Path)
+		}
 		for _, h := range hits {
 			if seen[h.Name] {
 				continue
 			}
 			seen[h.Name] = true
+			// A name appearing more than once WITHIN this single directory
+			// tree is an explicit ambiguity, not a silent first-hit pick —
+			// the same rule findSkillByName (adapter.go) enforces for a
+			// named lookup, so an artifact List shows is never one a
+			// subsequent scan/migrate/uninstall by that name can't actually
+			// resolve (R30). Duplicate names across DIFFERENT directories
+			// remain ordinary priority-order shadowing (the earlier
+			// directory wins), unchanged.
+			if len(byName[h.Name]) > 1 {
+				matches := append([]string(nil), byName[h.Name]...)
+				sort.Strings(matches)
+				return nil, fmt.Errorf("skill name %q is ambiguous under %s: found at %s", h.Name, d, strings.Join(matches, ", "))
+			}
 			out = append(out, SkillRef{Name: h.Name, Provider: a.ID(), Scope: scope, Path: h.Path})
 		}
 	}
