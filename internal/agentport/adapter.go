@@ -29,6 +29,25 @@ type LossItem struct {
 	Field string
 	Kind  LossKind
 	Note  string
+	// Security marks a LossItem whose field carries permission/restriction
+	// semantics (tool allow/deny lists, permission modes, lifecycle hooks,
+	// model constraints — see R04/R22). Unlike ordinary fidelity loss, this
+	// is never waved through by --strict, --dry-run, or an interactive
+	// prompt: see HasSecurityLoss.
+	Security bool
+}
+
+// HasSecurityLoss reports whether loss contains any Security-flagged item.
+// Callers must check this before any --strict/--dry-run/interactive-
+// confirmation handling and treat true as an unconditional refusal —
+// security-relevant restrictions have no generic bypass.
+func HasSecurityLoss(loss []LossItem) bool {
+	for _, l := range loss {
+		if l.Security {
+			return true
+		}
+	}
+	return false
 }
 
 // CapSet declares which typed-optional/extension IR fields a provider's
@@ -113,7 +132,12 @@ func computeLoss(s *Skill, caps CapSet) []LossItem {
 		loss = append(loss, LossItem{Field: field, Kind: LossDropped, Note: note})
 	}
 	if len(s.AllowedTools) > 0 && !caps.AllowedTools {
-		add("AllowedTools", "target provider has no allowed-tools equivalent")
+		loss = append(loss, LossItem{
+			Field:    "AllowedTools",
+			Kind:     LossDropped,
+			Note:     "target provider has no allowed-tools equivalent — a tool restriction cannot silently disappear",
+			Security: true,
+		})
 	}
 	if len(s.Paths) > 0 && !caps.Paths {
 		add("Paths", "target provider has no path-glob activation equivalent")

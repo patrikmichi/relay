@@ -6,6 +6,7 @@ package cli
 // not weaken these assertions.
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,6 +111,77 @@ func TestR16_CallToolPreservesAllContentBlocks(t *testing.T) {
 	})
 	if !strings.Contains(stdout, "first") || !strings.Contains(stdout, "second") {
 		t.Fatalf("R16: expected both content blocks in output, got: %q", stdout)
+	}
+}
+
+// TestR04_AgentMigrateRefusesSecurityFieldLoss reproduces R04's exact
+// cli-probes.jsonl observation: `relay agent migrate --strict` on a Claude
+// agent carrying disallowedTools/permissionMode/hooks exited 0 and printed
+// "fidelity: no loss — all fields preserved" while writing only
+// description/body. Safe behavior: the command must refuse (nonzero exit,
+// named reason) and must not write the target file — with or without
+// --strict, since a security-relevant loss is never bypassable by a flag.
+func TestR04_AgentMigrateRefusesSecurityFieldLoss(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "agents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	src := "---\nname: reviewer\ndescription: Review only\ndisallowedTools: [Bash, Write]\npermissionMode: plan\nhooks: {}\n---\nReview only.\n"
+	if err := os.WriteFile(filepath.Join(dir, "reviewer.md"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cmd := AgentMigrateCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--to", "opencode"})
+	err := cmd.Execute()
+	out := buf.String()
+
+	if err == nil {
+		t.Fatalf("R04: expected agent migrate to refuse a migration that loses disallowedTools/permissionMode/hooks, got exit 0. output:\n%s", out)
+	}
+	if strings.Contains(out, "no loss") {
+		t.Errorf("R04: fidelity report must never claim \"no loss\" when security fields vanish: %s", out)
+	}
+
+	opencodePath := filepath.Join(home, ".config", "opencode", "agent", "reviewer.md")
+	if _, statErr := os.Stat(opencodePath); !os.IsNotExist(statErr) {
+		t.Fatalf("R04: expected nothing written when a security-relevant field would be lost, stat err = %v", statErr)
+	}
+}
+
+// TestR22_AgentMigrateRefusesDeniedToolsLoss reproduces R22: migrating an
+// opencode agent with an explicitly-denied tool onto claude currently
+// reports only a "degraded"-style note and proceeds to write, so the
+// migrated agent silently loses its restriction. Safe behavior: the command
+// refuses outright, naming the reason, and writes nothing.
+func TestR22_AgentMigrateRefusesDeniedToolsLoss(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config", "opencode", "agent")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	src := "---\ndescription: Reviews code.\ntools:\n  read: true\n  write: false\n---\n\nReview the diff.\n"
+	if err := os.WriteFile(filepath.Join(dir, "reviewer.md"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cmd := AgentMigrateCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"reviewer", "--from", "opencode", "--to", "claude"})
+	err := cmd.Execute()
+
+	if err == nil {
+		t.Fatalf("R22: expected agent migrate to refuse dropping an explicitly-denied tool's restriction, got exit 0. output:\n%s", buf.String())
+	}
+	claudePath := filepath.Join(home, ".claude", "agents", "reviewer.md")
+	if _, statErr := os.Stat(claudePath); !os.IsNotExist(statErr) {
+		t.Fatalf("R22: expected nothing written when denied-tool semantics would be lost, stat err = %v", statErr)
 	}
 }
 

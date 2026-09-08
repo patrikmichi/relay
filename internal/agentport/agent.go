@@ -46,5 +46,23 @@ type Agent struct {
 	Memory      string   // Claude: project|global
 	Skills      []string // Claude: bundled skill ids
 
+	// UnmappedSecurityFields captures source frontmatter keys that carry
+	// permission/restriction semantics (Claude disallowedTools/
+	// permissionMode/hooks, opencode permission — R04) but have no binding
+	// in agent_ir_fields.go's fixed field set, so Load cannot interpret or
+	// round-trip them. The raw value is retained only so computeAgentLoss
+	// (agent_caps.go) can report it and Project() can refuse the migration
+	// by default — not to preserve or re-map the setting itself.
+	UnmappedSecurityFields []UnmappedSecurityField
+
 	Provenance Provenance
+}
+
+// UnmappedSecurityField is one frontmatter key agentSecurityFrontmatterKeys
+// recognized as security-relevant that decodeAgentIRField has no case for.
+// Raw is a best-effort, length-capped YAML rendering of the field's value —
+// diagnostic text for a loss-report Note, not a re-parseable representation.
+type UnmappedSecurityField struct {
+	Key string
+	Raw string
 }

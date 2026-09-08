@@ -126,6 +126,10 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 		fmt.Fprintf(out, "target: %s\n", plan.TargetPaths)
 		printLossReport(out, plan.Loss)
 
+		if agentport.HasSecurityLoss(plan.Loss) {
+			return fmt.Errorf("refusing %s -> %s: a permission/restriction field would be lost or degraded and cannot be represented on the target (see [security] items above) — this is not overridable by --strict, --dry-run, or an interactive prompt; migrate to a provider that fully supports it or wait for provider-fidelity mapping", fromLabel, target.ID())
+		}
+
 		if strict && plan.HasDropped() {
 			return fmt.Errorf("aborting (--strict): %s -> %s would drop one or more fields", fromLabel, target.ID())
 		}
