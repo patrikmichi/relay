@@ -155,6 +155,54 @@ func TestSave_Atomic(t *testing.T) {
 	}
 }
 
+// TestR03_NormalizeGatewayURL_RejectsUnsafeTransport covers R03: gateway
+// URL validation must reject remote HTTP, userinfo, query, fragment,
+// missing host, unsupported scheme, and a non-root path, while permitting
+// HTTPS everywhere and plain HTTP only for a literal loopback host.
+func TestR03_NormalizeGatewayURL_RejectsUnsafeTransport(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"remote http", "http://gw.example.com"},
+		{"userinfo", "https://user:pass@gw.example.com"},
+		{"query string", "https://gw.example.com?token=abc"},
+		{"fragment", "https://gw.example.com#frag"},
+		{"missing host", "https:///path"},
+		{"unsupported scheme", "ftp://gw.example.com"},
+		{"no scheme", "gw.example.com"},
+		{"non-root path", "https://gw.example.com/api"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := config.NormalizeGatewayURL(tc.raw); err == nil {
+				t.Errorf("R03: expected NormalizeGatewayURL(%q) to fail, got nil error", tc.raw)
+			}
+		})
+	}
+}
+
+func TestR03_NormalizeGatewayURL_PermitsHTTPSAndLoopbackHTTP(t *testing.T) {
+	cases := []struct{ raw, want string }{
+		{"https://gw.example.com", "https://gw.example.com"},
+		{"https://gw.example.com/", "https://gw.example.com"},
+		{"https://gw.example.com:8443", "https://gw.example.com:8443"},
+		{"http://127.0.0.1:4000", "http://127.0.0.1:4000"},
+		{"http://localhost:4000", "http://localhost:4000"},
+		{"http://[::1]:4000", "http://[::1]:4000"},
+	}
+	for _, tc := range cases {
+		got, err := config.NormalizeGatewayURL(tc.raw)
+		if err != nil {
+			t.Errorf("NormalizeGatewayURL(%q): unexpected error: %v", tc.raw, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("NormalizeGatewayURL(%q): got %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
 func TestLoad_MigratesLegacyGwDir(t *testing.T) {
 	home := withTempHome(t)
 

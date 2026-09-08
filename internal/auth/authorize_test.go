@@ -35,7 +35,7 @@ func TestPollDeviceToken_SuccessOnFirstPoll(t *testing.T) {
 		t.Errorf("unexpected result: %+v", result)
 	}
 
-	if _, err := keychain.ReadToken("user@example.com"); err != nil {
+	if _, err := keychain.ReadToken(srv.URL, "user@example.com"); err != nil {
 		t.Errorf("expected token persisted to keychain: %v", err)
 	}
 }

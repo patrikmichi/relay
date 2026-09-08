@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/config"
 )
 
 // DeviceCodeResponse is the JSON returned by /api/cli/device/code.
@@ -21,9 +24,19 @@ type DeviceCodeResponse struct {
 // DeviceLogin performs the device-code grant flow (RFC 8628) for headless environments.
 // Used by `relay login --device`.
 func DeviceLogin(ctx context.Context, gatewayURL string) (*LoginResult, error) {
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return nil, err
+	}
+
 	// 1. Request device code
-	endpoint := fmt.Sprintf("%s/api/cli/device/code", strings.TrimRight(gatewayURL, "/"))
-	resp, err := http.Post(endpoint, "application/json", nil)
+	endpoint := fmt.Sprintf("%s/api/cli/device/code", origin)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create device code request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.NoRedirectHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request device code: %w", err)
 	}
@@ -50,10 +63,11 @@ func DeviceLogin(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	if interval < 5 {
 		interval = 5
 	}
-	return pollDeviceToken(ctx, gatewayURL, dc.DeviceCode, interval)
+	return pollDeviceToken(ctx, origin, dc.DeviceCode, interval)
 }
 
-// pollDeviceToken polls the device token endpoint until authorized or timed out.
+// pollDeviceToken polls the device token endpoint until authorized or timed
+// out. gatewayURL must already be a normalized origin (see DeviceLogin).
 func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int) (*LoginResult, error) {
 	tokenEndpoint := fmt.Sprintf("%s/api/cli/device/token", strings.TrimRight(gatewayURL, "/"))
 
@@ -71,7 +85,7 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.NoRedirectHTTPClient().Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("poll device token: %w", err)
 		}
@@ -91,7 +105,7 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 				expiresIn = int(v)
 			}
 
-			if err := writeKeychainToken(email, accessToken, refreshToken, expiresIn); err != nil {
+			if err := writeKeychainToken(gatewayURL, email, accessToken, refreshToken, expiresIn); err != nil {
 				return nil, err
 			}
 
@@ -125,8 +139,8 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 	}
 }
 
-func writeKeychainToken(email, accessToken, refreshToken string, expiresIn int) error {
-	return writeToken(email, accessToken, refreshToken, expiresIn)
+func writeKeychainToken(gatewayOrigin, email, accessToken, refreshToken string, expiresIn int) error {
+	return writeToken(gatewayOrigin, email, accessToken, refreshToken, expiresIn)
 }
 
 // waitSeconds returns a channel that closes after n seconds.

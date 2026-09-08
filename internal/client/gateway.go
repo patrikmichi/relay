@@ -49,10 +49,28 @@ type Client struct {
 	// Refresh context — populated only by Resolve for a keychain-backed
 	// OAuth session. Zero values (email == "") mean "no refresh capability"
 	// — see canRefresh. Never set for a GATEWAY_API_KEY bearer client.
-	mu           sync.Mutex
-	email        string
-	refreshToken string
-	expiresAt    time.Time
+	mu            sync.Mutex
+	email         string
+	gatewayOrigin string
+	refreshToken  string
+	expiresAt     time.Time
+}
+
+// errRedirectRefused is returned via http.Client.CheckRedirect to refuse
+// every HTTP redirect outright — a redirect could relocate a
+// credential-bearing request (bearer header, or a secret in a token
+// exchange/refresh body) to an origin the user never selected.
+var errRedirectRefused = errors.New("refusing to follow HTTP redirect")
+
+func refuseRedirects(_ *http.Request, _ []*http.Request) error {
+	return errRedirectRefused
+}
+
+// NoRedirectHTTPClient returns a plain HTTP client that never follows
+// redirects. Shared with internal/auth for token exchange/device-code/refresh
+// calls.
+func NoRedirectHTTPClient() *http.Client {
+	return &http.Client{CheckRedirect: refuseRedirects}
 }
 
 // New creates a gateway client with a fixed bearer token and NO refresh
@@ -62,25 +80,41 @@ func New(gatewayURL, accessToken string) *Client {
 	return &Client{
 		GatewayURL:  strings.TrimRight(gatewayURL, "/"),
 		AccessToken: accessToken,
-		httpClient:  &http.Client{},
+		httpClient:  NoRedirectHTTPClient(),
 	}
 }
 
 // Resolve builds an authenticated Client for gateway calls.
 //
+// gatewayURL is normalized and policy-checked (config.NormalizeGatewayURL)
+// first, so an invalid or insecure-transport gateway value is rejected here
+// even for a caller that skipped internal/cli/gateway.go's
+// resolveGatewayURLOrFailClosed.
+//
 // Resolution order:
 //  1. GATEWAY_API_KEY env var — non-interactive bearer auth (scripts, cron,
 //     CI). Mirrors the gateway's own bearer-key fallback (lib/api-keys.ts /
-//     verifyMcpAuth). No refresh capability: API keys don't rotate through
-//     the OAuth flow, so there's nothing to refresh.
+//     verifyMcpAuth). No refresh capability. Scoped to exactly this resolved
+//     gateway for this invocation only — never persisted, never carried to
+//     a different origin.
 //  2. RELAY_EMAIL env var, or the email persisted at the last successful
-//     `relay login` (config.ResolveEmail) → the matching OS keychain OAuth
-//     pair, wrapped in a Client with automatic pre-expiry / on-401 refresh.
+//     `relay login` (config.ResolveEmail) → the OS keychain OAuth pair bound
+//     to BOTH that email AND this normalized gateway origin, wrapped in a
+//     Client with automatic pre-expiry / on-401 refresh.
 //
 // Returns ErrNotLoggedIn when neither path resolves to usable credentials.
+// If a pre-gateway-identity ("legacy") session exists for the resolved
+// email but no session is bound to this gateway, the returned error
+// explains that a fresh login is required — it never falls back to using
+// the legacy, unscoped session automatically.
 func Resolve(gatewayURL string) (*Client, error) {
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return nil, err
+	}
+
 	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
-		return New(gatewayURL, apiKey), nil
+		return New(origin, apiKey), nil
 	}
 
 	email, err := config.ResolveEmail()
@@ -88,13 +122,21 @@ func Resolve(gatewayURL string) (*Client, error) {
 		return nil, ErrNotLoggedIn
 	}
 
-	tokenData, err := keychain.ReadToken(email)
+	tokenData, err := keychain.ReadToken(origin, email)
 	if err != nil {
+		if keychain.HasLegacyToken(email) {
+			return nil, fmt.Errorf(
+				"%w — found a pre-existing session for %s with no gateway binding; "+
+					"run `relay login` again to create a session scoped to %s, then remove the old one with `relay logout --legacy`",
+				ErrNotLoggedIn, email, origin,
+			)
+		}
 		return nil, ErrNotLoggedIn
 	}
 
-	c := New(gatewayURL, tokenData.AccessToken)
+	c := New(origin, tokenData.AccessToken)
 	c.email = email
+	c.gatewayOrigin = origin
 	c.refreshToken = tokenData.RefreshToken
 	if tokenData.ExpiresAt > 0 {
 		c.expiresAt = time.Unix(tokenData.ExpiresAt, 0)
@@ -108,10 +150,17 @@ func (c *Client) Email() string {
 	return c.email
 }
 
+// GatewayOrigin returns the normalized gateway identity this Client's
+// keychain-backed OAuth session (if any) is bound to, or "" for a
+// bearer-only Client (New / GATEWAY_API_KEY) that has no CLI session.
+func (c *Client) GatewayOrigin() string {
+	return c.gatewayOrigin
+}
+
 // canRefresh reports whether this Client holds enough context (email +
-// refresh token) to attempt a rotation.
+// gateway identity + refresh token) to attempt a rotation.
 func (c *Client) canRefresh() bool {
-	return c.email != "" && c.refreshToken != ""
+	return c.email != "" && c.gatewayOrigin != "" && c.refreshToken != ""
 }
 
 // refreshLocked performs the refresh + keychain persistence. Caller must
@@ -137,10 +186,9 @@ func (c *Client) refreshLocked() error {
 	// next command) would present the now-spent old refresh token and get
 	// its whole token family revoked. Failing the refresh outright on a
 	// write error is safer than risking that.
-	if err := keychain.WriteToken(c.email, keychain.TokenData{
+	if err := keychain.WriteToken(c.gatewayOrigin, c.email, keychain.TokenData{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
-		Email:        c.email,
 		ExpiresIn:    expiresIn,
 		ExpiresAt:    expiresAt.Unix(),
 	}); err != nil {

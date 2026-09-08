@@ -256,7 +256,7 @@ func TestLogin_HappyPath(t *testing.T) {
 		t.Errorf("unexpected LoginResult: %+v", result)
 	}
 
-	tok, err := keychain.ReadToken("user@example.com")
+	tok, err := keychain.ReadToken(srv.URL, "user@example.com")
 	if err != nil {
 		t.Fatalf("expected token persisted to keychain: %v", err)
 	}

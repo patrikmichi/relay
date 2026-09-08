@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,32 +101,45 @@ func tokensListCmd() *cobra.Command {
 // command surfaces.
 func tokensRevokeCmd() *cobra.Command {
 	var gatewayURL string
+	var legacy bool
 
 	cmd := &cobra.Command{
 		Use:   "revoke",
 		Short: "Revoke the current session token",
 		RunE: func(cmd *cobra.Command, _args []string) error {
+			if legacy {
+				return logoutLegacySession()
+			}
+
+			// The keychain lookup below is scoped to (gateway, email), so
+			// the gateway must be identified before building a client —
+			// resolved locally (no network) so this still works offline.
+			gURL, err := resolveGatewayIdentityLocal(gatewayURL)
+			if err != nil {
+				return err
+			}
+			if gURL == "" {
+				if Offline() {
+					return errors.New("no gateway configured — cannot determine which session to remove; pass --gateway-url")
+				}
+				return errors.New(offlineGuidance)
+			}
+
 			// Building the client never dials the network — it only reads
 			// GATEWAY_API_KEY / the OS keychain.
-			c := resolveClient(gatewayURL)
+			c := resolveClient(gURL)
 			if c.Email() == "" {
 				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke.")
 				os.Exit(1)
 			}
 
 			if Offline() {
-				if err := keychain.DeleteToken(c.Email()); err != nil {
+				if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
 				fmt.Printf("Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
 				return nil
 			}
-
-			resolvedURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
-			if err != nil {
-				return err
-			}
-			c.GatewayURL = strings.TrimRight(resolvedURL, "/")
 
 			resp, err := c.Post("/api/cli/logout", "application/json", nil)
 			if err != nil {
@@ -140,7 +154,7 @@ func tokensRevokeCmd() *cobra.Command {
 			}
 
 			// Always delete the keychain entry
-			if err := keychain.DeleteToken(c.Email()); err != nil {
+			if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
 				return fmt.Errorf("delete keychain entry: %w", err)
 			}
 
@@ -150,5 +164,6 @@ func tokensRevokeCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().BoolVar(&legacy, "legacy", false, "Remove a pre-gateway-identity session left over from an older relay version")
 	return cmd
 }

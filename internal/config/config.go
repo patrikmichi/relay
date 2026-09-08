@@ -6,19 +6,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 )
 
 // DefaultGatewayURL is the compiled-in fallback gateway URL, used when no
 // GATEWAY_URL env var and no config file value are set. It is a var (not a
-// const) so it can be overridden per-build via
+// const) so an intentional private/owner build can inject one via
 // -ldflags "-X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL=...".
-// Public builds may set this to "" — every consumer of GatewayURL() (and,
-// downstream, every catalog verb) must treat an empty result as "no gateway
-// configured" and fail closed rather than silently dialing an empty/relative
-// URL. See resolveGatewayURLOrFailClosed in internal/cli/gateway.go.
-var DefaultGatewayURL = "https://gw.atlashub.dev"
+// Empty by default for BOTH source builds and public releases — a
+// source/`go install` build must not silently select an owner-specific
+// gateway that a public release build deliberately omits. Every consumer of
+// GatewayURL() (and, downstream, every catalog verb) must treat an empty
+// result as "no gateway configured" and fail closed rather than silently
+// dialing an empty/relative URL. See resolveGatewayURLOrFailClosed in
+// internal/cli/gateway.go.
+var DefaultGatewayURL = ""
 
 // Config holds all persisted CLI settings.
 type Config struct {
@@ -108,27 +113,91 @@ func Save(cfg Config) error {
 	return nil
 }
 
-// GatewayURL returns the configured gateway URL, or the compiled-in default
-// if not set. Resolution order: env var → config file → compiled default.
+// GatewayURL returns the normalized, policy-checked gateway URL, or "" if
+// none is set. Resolution order: env var → config file → compiled default.
 //
-// When DefaultGatewayURL is empty (a public build with no baked-in gateway)
-// and neither the env var nor the config file supply one, this returns ""
-// with a nil error — it never fabricates a URL. Callers that dial the
-// gateway must treat an empty result as "no gateway configured" and fail
-// closed (see internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
+// When DefaultGatewayURL is empty (the default — see its doc comment) and
+// neither the env var nor the config file supply one, this returns "" with a
+// nil error — it never fabricates a URL. Callers that dial the gateway must
+// treat an empty result as "no gateway configured" and fail closed (see
+// internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
+//
+// A corrupt/unreadable config file is propagated as an error — it never
+// falls back to selecting a different host (env/default) than the one the
+// user believes is configured. Whichever candidate is selected is passed
+// through NormalizeGatewayURL, so an invalid or insecure-transport value
+// from any source is rejected here rather than at the point of use.
 func GatewayURL() (string, error) {
 	// Env var takes precedence over the config file.
 	if v := os.Getenv("GATEWAY_URL"); v != "" {
-		return v, nil
+		return NormalizeGatewayURL(v)
 	}
 	cfg, err := Load()
 	if err != nil {
-		return DefaultGatewayURL, nil // degrade gracefully
+		return "", fmt.Errorf("load config: %w", err)
 	}
 	if cfg.GatewayURL != "" {
-		return cfg.GatewayURL, nil
+		return NormalizeGatewayURL(cfg.GatewayURL)
 	}
-	return DefaultGatewayURL, nil
+	if DefaultGatewayURL == "" {
+		return "", nil
+	}
+	return NormalizeGatewayURL(DefaultGatewayURL)
+}
+
+// NormalizeGatewayURL parses raw into a canonical gateway endpoint identity:
+// scheme + host[:port], with no userinfo, query, fragment, or path component
+// — path-prefix gateways are not supported, so a non-root path is rejected
+// rather than silently dropped. Plain HTTP is permitted only for a literal
+// loopback host (localhost/127.0.0.1/::1); every other host must use HTTPS.
+func NormalizeGatewayURL(raw string) (string, error) {
+	if raw == "" {
+		return "", fmt.Errorf("gateway URL is empty")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse gateway URL %q: %w", raw, err)
+	}
+	if u.Scheme == "" {
+		return "", fmt.Errorf("gateway URL %q has no scheme (expected https://...)", raw)
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("gateway URL %q must not contain userinfo", raw)
+	}
+	if u.RawQuery != "" {
+		return "", fmt.Errorf("gateway URL %q must not contain a query string", raw)
+	}
+	if u.Fragment != "" {
+		return "", fmt.Errorf("gateway URL %q must not contain a fragment", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("gateway URL %q has no host", raw)
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", fmt.Errorf("gateway URL %q must not include a path — path-prefix gateways are not supported", raw)
+	}
+	switch u.Scheme {
+	case "https":
+		// ok
+	case "http":
+		if !isLoopbackHost(u.Hostname()) {
+			return "", fmt.Errorf("gateway URL %q uses plain HTTP for a non-loopback host — remote gateways require https", raw)
+		}
+	default:
+		return "", fmt.Errorf("gateway URL %q has unsupported scheme %q — only https (or http for loopback) is allowed", raw, u.Scheme)
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+// isLoopbackHost reports whether host (a URL's Hostname(), no port/brackets)
+// is a literal loopback address — the sole exception to the HTTPS-only
+// transport policy, intended for local gateway development only.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // SetEmail persists the given email as the current logged-in identity,

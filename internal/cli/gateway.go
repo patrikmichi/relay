@@ -52,30 +52,42 @@ func Offline() bool { return offlineFlag }
 
 // resolveGatewayURLOrFailClosed resolves the gateway URL a catalog-touching
 // command should dial: the explicit override (typically a --gateway-url
-// flag value) if non-empty, otherwise config.GatewayURL()'s resolution
-// order (env var -> config file -> config.DefaultGatewayURL). If --offline
-// was passed at the root, or the resolved value is still empty — which
-// (absent --offline) only happens when config.DefaultGatewayURL itself has
-// been compiled empty (a public build with no baked-in gateway) and no
-// override/env/config value fills it in — this returns an error wrapping
-// offlineGuidance instead of silently dialing an empty/relative URL, or a
-// gateway the caller explicitly asked to skip. Every catalog verb must
-// route its gateway URL resolution through this helper so the fail-closed
-// behavior — and its exact user-facing message — is identical everywhere.
+// flag value) if non-empty, otherwise config.GatewayURL()'s resolution order
+// (env var -> config file -> config.DefaultGatewayURL). Every candidate is
+// normalized and policy-checked (config.NormalizeGatewayURL). If --offline
+// was passed at the root, config.GatewayURL() returned an error (e.g. a
+// corrupt config file — that error is returned as-is, never papered over
+// with a fallback host), or the resolved value is still empty, this returns
+// an error wrapping offlineGuidance instead of silently dialing an
+// empty/relative URL or a gateway the caller explicitly asked to skip.
+// Every catalog verb must route its gateway URL resolution through this
+// helper so the fail-closed behavior — and its exact user-facing message —
+// is identical everywhere.
 func resolveGatewayURLOrFailClosed(override string) (string, error) {
 	if Offline() {
 		return "", errors.New(offlineGuidance)
 	}
-	gURL := override
-	if gURL == "" {
-		var err error
-		gURL, err = config.GatewayURL()
-		if err != nil {
-			gURL = config.DefaultGatewayURL
-		}
+	if override != "" {
+		return config.NormalizeGatewayURL(override)
+	}
+	gURL, err := config.GatewayURL()
+	if err != nil {
+		return "", err
 	}
 	if gURL == "" {
 		return "", errors.New(offlineGuidance)
 	}
 	return gURL, nil
+}
+
+// resolveGatewayIdentityLocal resolves and normalizes the gateway identity
+// from an explicit override or local config only — it never consults
+// --offline and never dials the network, because identifying which locally
+// cached session to remove is a filesystem-only operation. Used by
+// logout/tokens revoke's offline-safe local-delete path.
+func resolveGatewayIdentityLocal(override string) (string, error) {
+	if override != "" {
+		return config.NormalizeGatewayURL(override)
+	}
+	return config.GatewayURL()
 }
