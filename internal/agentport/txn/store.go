@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 )
@@ -46,6 +47,27 @@ const schemaVersion = 1
 
 // ErrFutureSchema means the journal was written by a newer relay version.
 var ErrFutureSchema = errors.New("transaction journal uses a newer schema than this relay build supports")
+
+// ErrInvalidID means a transaction id doesn't match newID()'s own output
+// format. Every id-taking entry point in this package rejects anything
+// else before it touches a path — newID() produces "<unixnano>-<16 hex
+// chars>", never anything containing a path separator, so a caller-
+// supplied id (CLI argument, or round-tripped through a manifest entry's
+// TransactionID) that doesn't match can only be an attempt to traverse
+// outside the transactions directory.
+var ErrInvalidID = errors.New("invalid transaction id")
+
+var idPattern = regexp.MustCompile(`^[0-9]+-[0-9a-f]{16}$`)
+
+// validateID rejects any id that doesn't match newID()'s exact output
+// shape — the containment check for every id-taking function in this
+// package (Dir, journalPath, Load, Prune, Recover).
+func validateID(id string) error {
+	if !idPattern.MatchString(id) {
+		return fmt.Errorf("%w: %q", ErrInvalidID, id)
+	}
+	return nil
+}
 
 // FileState is the recorded fate of one destination file within a
 // transaction: what was there before (for compensation), what's staged to
@@ -107,6 +129,9 @@ func baseDir() (string, error) {
 // Dir returns the private directory holding id's backup/staged file
 // bytes.
 func Dir(id string) (string, error) {
+	if err := validateID(id); err != nil {
+		return "", err
+	}
 	base, err := baseDir()
 	if err != nil {
 		return "", err
@@ -115,6 +140,9 @@ func Dir(id string) (string, error) {
 }
 
 func journalPath(id string) (string, error) {
+	if err := validateID(id); err != nil {
+		return "", err
+	}
 	base, err := baseDir()
 	if err != nil {
 		return "", err

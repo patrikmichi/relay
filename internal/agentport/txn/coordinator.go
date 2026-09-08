@@ -344,6 +344,9 @@ func restoreOne(dir string, fstate *FileState) error {
 // no-op that returns its current state, and re-running Recover after a
 // partially-successful compensation only retries what's still Applied.
 func Recover(ctx context.Context, id string) (Journal, error) {
+	if err := validateID(id); err != nil {
+		return Journal{}, err
+	}
 	j, err := Load(id)
 	if err != nil {
 		return Journal{}, err

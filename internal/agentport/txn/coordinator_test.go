@@ -318,11 +318,12 @@ func TestPrune_RefusesNonTerminalJournal(t *testing.T) {
 
 func TestLoad_RefusesFutureSchema(t *testing.T) {
 	isolate(t)
-	j := &Journal{Schema: schemaVersion + 1, ID: "future-1", State: StatePrepared}
+	id := "1700000000000000000-aaaaaaaaaaaaaaaa"
+	j := &Journal{Schema: schemaVersion + 1, ID: id, State: StatePrepared}
 	if err := j.save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if _, err := Load("future-1"); !errors.Is(err, ErrFutureSchema) {
+	if _, err := Load(id); !errors.Is(err, ErrFutureSchema) {
 		t.Fatalf("Load future schema = %v, want ErrFutureSchema", err)
 	}
 }
