@@ -2,7 +2,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -36,7 +35,10 @@ is not available.`,
 				return err
 			}
 
-			ctx := context.Background()
+			// cmd.Context() carries the root command's signal-aware
+			// cancellation (see cmd/relay/main.go) — Login/DeviceLogin each
+			// narrow it further with their own operation-specific deadline.
+			ctx := cmd.Context()
 
 			if deviceFlow {
 				result, err := auth.DeviceLogin(ctx, resolvedURL)

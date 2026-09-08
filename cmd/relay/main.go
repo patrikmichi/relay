@@ -5,10 +5,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -188,7 +191,15 @@ func newRootCmd() *cobra.Command {
 func main() {
 	root := newRootCmd()
 
-	if err := root.Execute(); err != nil {
+	// A SIGINT/SIGTERM cancels cmd.Context() everywhere it's threaded
+	// through (login/device-code polling, logout, whoami, refresh, ...) —
+	// commands that ignore it entirely still run to completion, but every
+	// command wired to cmd.Context() gets clean, immediate cancellation
+	// instead of relying solely on its own operation timeout (R23).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := root.ExecuteContext(ctx); err != nil {
 		err = rewriteOfflineUnknownCommandErr(err, os.Args[1:])
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

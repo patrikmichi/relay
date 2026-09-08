@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -27,7 +28,9 @@ func WhoamiCmd() *cobra.Command {
 
 			c := resolveClient(gURL)
 
-			info, err := auth.Whoami(c, full)
+			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
+			defer cancel()
+			info, err := auth.Whoami(ctx, c, full)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "whoami failed:", err)
 				os.Exit(1)

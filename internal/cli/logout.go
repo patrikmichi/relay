@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -66,12 +67,18 @@ func LogoutCmd() *cobra.Command {
 				return nil
 			}
 
-			if err := auth.Logout(c); err != nil {
+			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
+			defer cancel()
+			result, err := auth.Logout(ctx, c)
+			if err != nil {
 				fmt.Fprintln(os.Stderr, "Logout failed:", err)
 				os.Exit(1)
 			}
+			if !result.RemoteRevoked {
+				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
+			}
 
-			fmt.Printf("Logged out %s\n", c.Email())
+			fmt.Printf("Logged out %s\n", result.Email)
 			return nil
 		},
 	}
