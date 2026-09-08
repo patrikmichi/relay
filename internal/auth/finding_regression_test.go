@@ -30,3 +30,31 @@ func TestR26_EmptyDeviceResponseRejected(t *testing.T) {
 		t.Fatalf("R26: expected an error for an empty HTTP 200 device-token response, got result=%+v", result)
 	}
 }
+
+func TestR26_PartialDeviceResponseRejected(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"email":"user@example.com"}`))
+	}))
+	defer srv.Close()
+
+	result, err := pollDeviceToken(context.Background(), srv.URL, "synthetic", 5)
+	if err == nil {
+		t.Fatalf("R26: expected an error when access_token/refresh_token are missing, got result=%+v", result)
+	}
+}
+
+func TestR26_MalformedDeviceResponseRejected(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	result, err := pollDeviceToken(context.Background(), srv.URL, "synthetic", 5)
+	if err == nil {
+		t.Fatalf("R26: expected an error for a non-JSON HTTP 200 device-token response, got result=%+v", result)
+	}
+}

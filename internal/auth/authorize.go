@@ -91,15 +91,20 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 		}
 
 		var result map[string]interface{}
-		_ = json.NewDecoder(resp.Body).Decode(&result)
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
 		resp.Body.Close()
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			// Success — extract token pair
+			if decodeErr != nil {
+				return nil, fmt.Errorf("decode device token response: %w", decodeErr)
+			}
 			accessToken, _ := result["access_token"].(string)
 			refreshToken, _ := result["refresh_token"].(string)
 			email, _ := result["email"].(string)
+			if accessToken == "" || refreshToken == "" || email == "" {
+				return nil, fmt.Errorf("device token response missing required field(s)")
+			}
 			expiresIn := 3600
 			if v, ok := result["expires_in"].(float64); ok {
 				expiresIn = int(v)
