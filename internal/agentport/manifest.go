@@ -43,6 +43,13 @@ type ManifestEntry struct {
 	TargetPaths    map[string]string `json:"targetPaths"` // relative file path -> sha256 hex digest
 	Timestamp      time.Time         `json:"timestamp"`
 	Provenance     Provenance        `json:"provenance"`
+	// ProjectRoot records the absolute working directory Write/WriteAgent
+	// ran from, for a Scope: project entry only (empty for Scope: user,
+	// which has one destination per provider regardless of CWD).
+	// Rollback refuses a project-scope entry whose ProjectRoot is empty or
+	// doesn't match the current working directory — R06; see
+	// verifyProjectRollbackTarget in preflight.go.
+	ProjectRoot string `json:"projectRoot,omitempty"`
 }
 
 // Manifest is the on-disk ledger shape: a flat, append-only list of entries.

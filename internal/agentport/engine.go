@@ -134,10 +134,12 @@ func Migrate(src *Skill, target Adapter, scope Scope) (*Plan, error) {
 }
 
 // Write materializes a Plan's files under Plan.TargetPaths and records a
-// manifest ledger entry.
+// manifest ledger entry. It refuses to touch the filesystem at all unless
+// PreflightWrite passes first — see preflight.go for the conflict/symlink/
+// ledger checks this guards against (R05, R07, R08).
 func Write(plan *Plan) error {
-	if plan == nil {
-		return fmt.Errorf("nil plan")
+	if err := PreflightWrite(plan); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(plan.TargetPaths, 0o755); err != nil {
 		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
@@ -161,6 +163,13 @@ func Write(plan *Plan) error {
 		TargetPaths:    HashFiles(plan.Files),
 		Timestamp:      time.Now().UTC(),
 		Provenance:     plan.Skill.Provenance,
+	}
+	if plan.Scope == ScopeProject {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve project root: %w", err)
+		}
+		entry.ProjectRoot = cwd
 	}
 	return RecordEntry(entry)
 }
