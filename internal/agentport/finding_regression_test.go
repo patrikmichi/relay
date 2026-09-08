@@ -852,6 +852,134 @@ func TestR22_DeniedToolsLossIsFlaggedSecurity(t *testing.T) {
 	}
 }
 
+// TestR22_ToolIdentityTranslatedNotCasePreserved reproduces the review's
+// exact complaint: "A Claude list such as `Read, Grep, Bash` becomes
+// case-preserved keys rather than a provider-aware vocabulary translation."
+// A case-preserved key matches none of opencode's real (lowercase)
+// permission keys, so the restriction is not merely mis-cased — it is
+// inert. Project() must translate tool identity into the target's
+// vocabulary.
+func TestR22_ToolIdentityTranslatedNotCasePreserved(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ntools: Read, Grep, Bash\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opencode := NewOpencodeAgentAdapter()
+	files, _, err := opencode.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	content := string(files["reviewer.md"])
+	for _, want := range []string{"read: true", "grep: true", "bash: true"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("R22: expected translated lowercase key %q in projected opencode content, got:\n%s", want, content)
+		}
+	}
+	for _, unwanted := range []string{"Read: true", "Grep: true", "Bash: true"} {
+		if strings.Contains(content, unwanted) {
+			t.Errorf("R22: case-preserved key %q must not survive translation, got:\n%s", unwanted, content)
+		}
+	}
+}
+
+// TestR22_ClaudeAllowlistDefaultDenyPreservedOnOpencode reproduces the
+// review's "unspecified tools" gap: "Merely writing `true` for named tools
+// does not establish that all other tools are forbidden." Claude's
+// tools: CSV is a strict allowlist (presence implies "only these"), but
+// opencode's {tool: bool} map defaults an unlisted key to allowed —
+// projecting the allowlist without an explicit "*": false entry would
+// silently turn a restricted agent into an unrestricted one.
+func TestR22_ClaudeAllowlistDefaultDenyPreservedOnOpencode(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\nname: reviewer\ndescription: d\ntools: Read\n---\n\nbody\n"),
+	})
+	claude := NewClaudeAgentAdapter()
+	ag, err := claude.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opencode := NewOpencodeAgentAdapter()
+	files, _, err := opencode.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	content := string(files["reviewer.md"])
+	if !strings.Contains(content, "'*': false") {
+		t.Fatalf("R22: expected an explicit default-deny wildcard preserving the claude allowlist's restriction, got:\n%s", content)
+	}
+
+	// Control: an agent with NO tools restriction at all must not gain a
+	// synthesized wildcard — there is nothing to preserve.
+	writeFiles(t, dir, map[string][]byte{
+		"unrestricted.md": []byte("---\nname: unrestricted\ndescription: d\n---\n\nbody\n"),
+	})
+	ag2, err := claude.Load(filepath.Join(dir, "unrestricted.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	files2, _, err := opencode.Project(ag2)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if strings.Contains(string(files2["unrestricted.md"]), "*") {
+		t.Fatalf("R22: an agent with no tools restriction must not gain a synthesized wildcard, got:\n%s", files2["unrestricted.md"])
+	}
+}
+
+// TestR22_OpencodeWildcardDenyRoundTripsToClaudeWithoutFalseLoss confirms
+// the complementary direction: an opencode agent whose ONLY denial is the
+// "*" wildcard (i.e. exactly Claude's own allowlist semantics, expressed
+// in opencode's shape) migrates to claude with NO Tools loss reported —
+// Claude's allowlist already implies "everything else denied" for free, so
+// this is not an unrepresentable restriction. A genuine SPECIFIC per-tool
+// denial (deny just this one tool, default-allow the rest) has no
+// allowlist-only equivalent and must still be flagged.
+func TestR22_OpencodeWildcardDenyRoundTripsToClaudeWithoutFalseLoss(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string][]byte{
+		"reviewer.md": []byte("---\ndescription: d\ntools:\n  read: true\n  bash: true\n  '*': false\n---\n\nbody\n"),
+	})
+	oc := NewOpencodeAgentAdapter()
+	ag, err := oc.Load(filepath.Join(dir, "reviewer.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	claude := NewClaudeAgentAdapter()
+	_, loss, err := claude.Project(ag)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if HasSecurityLoss(loss) {
+		t.Fatalf("R22: a wildcard-only denial is exactly claude's own allowlist semantics — expected no security loss, got %#v", loss)
+	}
+
+	// Control: a SPECIFIC per-tool denial (no wildcard) still has no
+	// allowlist-only equivalent and must still be flagged.
+	writeFiles(t, dir, map[string][]byte{
+		"specific.md": []byte("---\ndescription: d\ntools:\n  read: true\n  write: false\n---\n\nbody\n"),
+	})
+	ag2, err := oc.Load(filepath.Join(dir, "specific.md"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, loss2, err := claude.Project(ag2)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if !HasSecurityLoss(loss2) {
+		t.Fatalf("R22: a specific per-tool denial has no allowlist-only equivalent and must be flagged, got %#v", loss2)
+	}
+}
+
 // Regression tests derived from the 2026-09-07 deep review (R27) — see
 // vault/reviews/relay/2026-09-07/relay-deep-codebase-review.md. The scanner
 // previously retained the full matched secret in ScanFinding.Excerpt, and
