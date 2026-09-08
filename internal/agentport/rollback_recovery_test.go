@@ -15,10 +15,10 @@ import (
 // actual restore guarantee: rolling back an entry whose transaction
 // recorded prior content brings back the ORIGINAL bytes and mode, not
 // just a deletion. The "overwrite" this simulates isn't reachable through
-// today's CLI (fresh installs still refuse a conflicting destination —
-// P3.3's explicit replace/adopt verbs are a separate, not-yet-built
-// piece), so this drives the same txn primitive Write uses directly,
-// exactly like a future replace operation's write would.
+// today's CLI (fresh installs still refuse a conflicting destination; an
+// explicit replace/adopt verb doesn't exist yet), so this drives the same
+// txn primitive Write uses directly, exactly like a future replace
+// operation's write would.
 func TestRollback_RestoresPriorBytesAndModeFromLinkedTransaction(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
