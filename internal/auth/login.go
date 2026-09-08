@@ -17,6 +17,7 @@ import (
 
 	"github.com/pkg/browser"
 
+	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
@@ -56,6 +57,14 @@ type tokenResponse struct {
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
 func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
+	// The keychain entry this login produces is bound to this normalized
+	// origin — reject an invalid/insecure gateway value before opening a
+	// browser or starting the loopback server.
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 
@@ -113,7 +122,7 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	}()
 
 	// Step 3: Open browser
-	authorizeURL := buildAuthorizeURL(gatewayURL, cliClientID, redirectURI, state, challenge)
+	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge)
 	if err := openBrowser(authorizeURL); err != nil {
 		fmt.Fprintf(os.Stderr, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
 	}
@@ -130,16 +139,16 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	}
 
 	// Step 5: Exchange code for tokens
-	resp, err := exchangeCode(gatewayURL, authCode, verifier, redirectURI)
+	resp, err := exchangeCode(origin, authCode, verifier, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 
-	// Step 6: Store in keychain
-	if err := keychain.WriteToken(resp.Email, keychain.TokenData{
+	// Step 6: Store in keychain, bound to this normalized gateway origin —
+	// never to email alone.
+	if err := keychain.WriteToken(origin, resp.Email, keychain.TokenData{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
-		Email:        resp.Email,
 		ExpiresIn:    resp.ExpiresIn,
 		ExpiresAt:    time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second).Unix(),
 	}); err != nil {
@@ -208,7 +217,18 @@ func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenRespons
 		"redirect_uri":  {redirectURI},
 	}
 
-	resp, err := http.PostForm(endpoint, data)
+	// Token exchange must never follow a redirect — a compromised or
+	// misconfigured gateway could otherwise relocate the response carrying
+	// the minted token pair to another origin. http.PostForm uses
+	// http.DefaultClient, which follows redirects, so build the request
+	// explicitly instead.
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("create token exchange request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.NoRedirectHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", endpoint, err)
 	}

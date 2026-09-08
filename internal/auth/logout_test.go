@@ -18,9 +18,9 @@ import (
 // set to email (client.Resolve is the only way to get an email-bound
 // Client — its `email` field is unexported and set solely from
 // config.ResolveEmail + a matching keychain entry).
-func seedSession(t *testing.T, email string, tok keychain.TokenData) {
+func seedSession(t *testing.T, gatewayOrigin, email string, tok keychain.TokenData) {
 	t.Helper()
-	if err := keychain.WriteToken(email, tok); err != nil {
+	if err := keychain.WriteToken(gatewayOrigin, email, tok); err != nil {
 		t.Fatalf("seed keychain token: %v", err)
 	}
 	if err := config.SetEmail(email); err != nil {
@@ -48,7 +48,7 @@ func TestLogout_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r", Email: "user@example.com"})
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r"})
 	c := resolveSeededClient(t, srv.URL)
 
 	if err := Logout(c); err != nil {
@@ -57,7 +57,7 @@ func TestLogout_Success(t *testing.T) {
 	if gotPath != "/api/cli/logout" {
 		t.Errorf("expected POST to /api/cli/logout, got %q", gotPath)
 	}
-	if _, err := keychain.ReadToken("user@example.com"); err == nil {
+	if _, err := keychain.ReadToken(srv.URL, "user@example.com"); err == nil {
 		t.Error("expected keychain entry to be deleted after logout")
 	}
 }
@@ -69,13 +69,13 @@ func TestLogout_ToleratesUnreachableServer(t *testing.T) {
 	unreachable := srv.URL
 	srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r", Email: "user@example.com"})
+	seedSession(t, unreachable, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r"})
 	c := resolveSeededClient(t, unreachable)
 
 	if err := Logout(c); err != nil {
 		t.Fatalf("Logout should tolerate an unreachable gateway, got: %v", err)
 	}
-	if _, err := keychain.ReadToken("user@example.com"); err == nil {
+	if _, err := keychain.ReadToken(unreachable, "user@example.com"); err == nil {
 		t.Error("expected keychain entry to still be deleted despite unreachable server")
 	}
 }
@@ -88,13 +88,13 @@ func TestLogout_ToleratesNon200FromServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r", Email: "user@example.com"})
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r"})
 	c := resolveSeededClient(t, srv.URL)
 
 	if err := Logout(c); err != nil {
 		t.Fatalf("Logout should tolerate a non-200 revoke response, got: %v", err)
 	}
-	if _, err := keychain.ReadToken("user@example.com"); err == nil {
+	if _, err := keychain.ReadToken(srv.URL, "user@example.com"); err == nil {
 		t.Error("expected keychain entry to still be deleted despite server error")
 	}
 }
@@ -108,7 +108,7 @@ func TestLogout_ReturnsErrorWhenKeychainDeleteFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r", Email: "user@example.com"})
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{AccessToken: "a", RefreshToken: "r"})
 	c := resolveSeededClient(t, srv.URL)
 
 	keyring.MockInitWithError(errors.New("mock keychain failure"))

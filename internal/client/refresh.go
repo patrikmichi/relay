@@ -35,7 +35,10 @@ func refreshOAuthToken(gatewayURL, refreshToken string) (*refreshResult, error) 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Refresh must never follow a redirect — the request body carries a
+	// secret refresh token, which a redirect-following client would forward
+	// to whatever origin the response pointed at.
+	resp, err := NoRedirectHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", endpoint, err)
 	}

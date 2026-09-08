@@ -1,13 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/auth"
+	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
@@ -22,39 +23,48 @@ import (
 // user should always be able to clear a stale local session (e.g. after a
 // laptop loses network, or the gateway is decommissioned) even with no
 // gateway reachable, so the local half runs unconditionally once we know
-// which email's keychain entry to delete. `relay tokens revoke`
+// which gateway/email's keychain entry to delete. `relay tokens revoke`
 // (tokens.go) is the other command surface for this exact operation and
 // intentionally mirrors this same two-halves design.
 func LogoutCmd() *cobra.Command {
 	var gatewayURL string
+	var legacy bool
 
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Revoke the current session and remove the stored token",
 		RunE: func(cmd *cobra.Command, _args []string) error {
-			// Building the client never dials the network — it only reads
-			// GATEWAY_API_KEY / the OS keychain — so this is safe to do
-			// before deciding whether the network half may run.
-			c := resolveClient(gatewayURL)
+			if legacy {
+				return logoutLegacySession()
+			}
+
+			// The keychain lookup below is scoped to (gateway, email), so
+			// the gateway must be identified before building a client —
+			// resolved locally (no network) so this still works offline.
+			gURL, err := resolveGatewayIdentityLocal(gatewayURL)
+			if err != nil {
+				return err
+			}
+			if gURL == "" {
+				if Offline() {
+					return errors.New("no gateway configured — cannot determine which session to remove; pass --gateway-url")
+				}
+				return errors.New(offlineGuidance)
+			}
+
+			c := resolveClient(gURL)
 			if c.Email() == "" {
-				// GATEWAY_API_KEY bearer session — no local CLI session to revoke.
 				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to log out of.")
 				os.Exit(1)
 			}
 
 			if Offline() {
-				if err := keychain.DeleteToken(c.Email()); err != nil {
+				if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
 				fmt.Printf("Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
 				return nil
 			}
-
-			resolvedURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
-			if err != nil {
-				return err
-			}
-			c.GatewayURL = strings.TrimRight(resolvedURL, "/")
 
 			if err := auth.Logout(c); err != nil {
 				fmt.Fprintln(os.Stderr, "Logout failed:", err)
@@ -67,5 +77,25 @@ func LogoutCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL")
+	cmd.Flags().BoolVar(&legacy, "legacy", false, "Remove a pre-gateway-identity session left over from an older relay version")
 	return cmd
+}
+
+// logoutLegacySession removes a pre-gateway-identity ("legacy") keychain
+// entry for the current identity, without needing a resolved gateway. It
+// never prints the stored token value.
+func logoutLegacySession() error {
+	email, err := config.ResolveEmail()
+	if err != nil {
+		return err
+	}
+	if !keychain.HasLegacyToken(email) {
+		fmt.Printf("No legacy session found for %s\n", email)
+		return nil
+	}
+	if err := keychain.DeleteLegacyToken(email); err != nil {
+		return fmt.Errorf("delete legacy keychain entry: %w", err)
+	}
+	fmt.Printf("Removed legacy session for %s\n", email)
+	return nil
 }

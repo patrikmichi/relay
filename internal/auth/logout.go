@@ -30,7 +30,7 @@ func Logout(c *client.Client) error {
 	}
 
 	// Always delete the keychain entry
-	if err := keychain.DeleteToken(c.Email()); err != nil {
+	if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
 		return fmt.Errorf("delete keychain entry: %w", err)
 	}
 	return nil

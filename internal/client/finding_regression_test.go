@@ -23,26 +23,57 @@ import (
 )
 
 // TestR01_CredentialNotSentToUnboundGateway reproduces R01: a session
-// stored under an email-only keychain key has no gateway-origin binding,
-// so Resolve() against an unrelated gateway B still attaches gateway A's
-// bearer token. Safe behavior: gateway B must never receive a credential
-// that was not issued for it.
+// stored under an email-only keychain key (the pre-fix format) has no
+// gateway-origin binding. Safe behavior: such a legacy session must never
+// be used automatically against any gateway — Resolve must refuse it and
+// require a fresh login rather than risk attaching an unrelated origin's
+// bearer token.
 func TestR01_CredentialNotSentToUnboundGateway(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("GATEWAY_API_KEY", "")
 	t.Setenv("RELAY_EMAIL", "review@example.invalid")
-	keychain.WriteToken("review@example.invalid", keychain.TokenData{
-		AccessToken:  "gateway-A-access",
-		RefreshToken: "gateway-A-refresh",
-		ExpiresAt:    time.Now().Add(time.Hour).Unix(),
-	})
+	if err := keyring.Set("relay-cli", "oauth-refresh-token:review@example.invalid",
+		`{"access_token":"gateway-A-access","refresh_token":"gateway-A-refresh"}`); err != nil {
+		t.Fatal(err)
+	}
 
-	var seen string
 	gatewayB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seen = r.Header.Get("Authorization")
+		t.Errorf("R01: gateway B must never be dialed for a refused legacy session (Authorization: %q)", r.Header.Get("Authorization"))
 		io.WriteString(w, "ok")
 	}))
 	defer gatewayB.Close()
+
+	if _, err := Resolve(gatewayB.URL); err == nil {
+		t.Fatal("R01: expected Resolve to refuse an unbound legacy session, got nil error")
+	}
+}
+
+// TestR01_SameEmailSessionsCoexistAcrossGateways verifies the positive half
+// of R01's fix: two sessions for the same email but different gateways are
+// stored independently, and resolving against one never surfaces the
+// other's bearer token.
+func TestR01_SameEmailSessionsCoexistAcrossGateways(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("RELAY_EMAIL", "review@example.invalid")
+
+	var seenB string
+	gatewayB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenB = r.Header.Get("Authorization")
+		io.WriteString(w, "ok")
+	}))
+	defer gatewayB.Close()
+
+	if err := keychain.WriteToken("https://gateway-a.example.invalid", "review@example.invalid", keychain.TokenData{
+		AccessToken: "gateway-A-access", RefreshToken: "gateway-A-refresh", ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := keychain.WriteToken(gatewayB.URL, "review@example.invalid", keychain.TokenData{
+		AccessToken: "gateway-B-access", RefreshToken: "gateway-B-refresh", ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	c, err := Resolve(gatewayB.URL)
 	if err != nil {
@@ -54,8 +85,8 @@ func TestR01_CredentialNotSentToUnboundGateway(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if seen == "Bearer gateway-A-access" {
-		t.Fatalf("R01: gateway B received gateway A's credential (%q) — sessions must be gateway-origin bound", seen)
+	if seenB != "Bearer gateway-B-access" {
+		t.Fatalf("R01: gateway B did not receive its own bound credential, got %q", seenB)
 	}
 }
 
@@ -102,6 +133,7 @@ func TestR23_RefreshRespectsContextDeadline(t *testing.T) {
 
 	c := New(s.URL, "old")
 	c.email = "review@example.invalid"
+	c.gatewayOrigin = s.URL
 	c.refreshToken = "old-refresh"
 	c.expiresAt = time.Now().Add(-time.Hour)
 
@@ -127,11 +159,6 @@ func TestR24_ConcurrentClientsDoNotReuseStaleRefreshToken(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("GATEWAY_API_KEY", "")
 	t.Setenv("RELAY_EMAIL", "review@example.invalid")
-	keychain.WriteToken("review@example.invalid", keychain.TokenData{
-		AccessToken:  "old",
-		RefreshToken: "same-old-refresh",
-		ExpiresAt:    time.Now().Add(time.Hour).Unix(),
-	})
 
 	var mu sync.Mutex
 	var submitted []string
@@ -151,6 +178,12 @@ func TestR24_ConcurrentClientsDoNotReuseStaleRefreshToken(t *testing.T) {
 		io.WriteString(w, "ok")
 	}))
 	defer s.Close()
+
+	keychain.WriteToken(s.URL, "review@example.invalid", keychain.TokenData{
+		AccessToken:  "old",
+		RefreshToken: "same-old-refresh",
+		ExpiresAt:    time.Now().Add(time.Hour).Unix(),
+	})
 
 	a, err := Resolve(s.URL)
 	if err != nil {
