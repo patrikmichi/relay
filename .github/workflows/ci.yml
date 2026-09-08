@@ -1,0 +1,48 @@
+# .github/workflows/ci.yml — PR/push baseline gate.
+#
+# Runs on every push/PR against this standalone repo. Separate from
+# release.yml (tag-triggered goreleaser release), which currently pins an
+# unsupported Go 1.22 toolchain (tracked as R32, out of this workflow's
+# scope). This workflow uses the current supported toolchain so
+# build/vet/test/race regressions surface before a release is cut.
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-vet-test:
+    name: build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l cmd internal)"
+          if [ -n "$out" ]; then
+            echo "gofmt needs to be run on:"; echo "$out"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test -race
+        run: go test -race ./...
