@@ -98,4 +98,3 @@ func TestRecover_RejectsTraversalID(t *testing.T) {
 		t.Fatalf("Recover traversal id = %v, want ErrInvalidID", err)
 	}
 }
-

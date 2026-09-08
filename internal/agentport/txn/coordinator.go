@@ -29,6 +29,11 @@ type Tx struct {
 	j     *Journal
 	locks *LockSet
 	dir   string
+	// verify is the TOCTOU symlink-containment check Apply re-runs before
+	// every write, captured here so compensate/restoreOne — invoked later
+	// by Discard, a failed Commit, or Recover — apply the exact same check
+	// rather than trusting the journal's recorded Dest blindly.
+	verify func(root, rel string) error
 }
 
 // ID returns the transaction's journal id, for error messages pointing at
@@ -204,6 +209,7 @@ func (t *Tx) Persist() error {
 // destinations were actually touched. On error, the caller must call
 // Discard to compensate whatever was applied before returning.
 func (t *Tx) Apply(verify func(root, rel string) error) error {
+	t.verify = verify
 	t.j.State = StateApplying
 	if err := t.j.save(); err != nil {
 		return err
@@ -305,9 +311,16 @@ func (t *Tx) compensate() error {
 	for i := range t.j.Files {
 		fstate := &t.j.Files[i]
 		if !fstate.Applied {
-			continue
+			// A crash between atomicWrite landing and the Applied=true save's
+			// rename completing leaves this flag false even though the
+			// destination already holds the new bytes — reconcile against
+			// reality before trusting the persisted flag, or compensation
+			// would silently skip a file that actually needs restoring.
+			if !reconcileApplied(fstate) {
+				continue
+			}
 		}
-		if err := restoreOne(t.dir, fstate); err != nil {
+		if err := restoreOne(t.dir, fstate, t.verify); err != nil {
 			errs = append(errs, err)
 			continue
 		}
@@ -317,7 +330,33 @@ func (t *Tx) compensate() error {
 	return errors.Join(errs...)
 }
 
-func restoreOne(dir string, fstate *FileState) error {
+// reconcileApplied reports whether dest's current content already matches
+// the staged write's NewHash despite Applied being false — the crash
+// window between atomicWrite completing and the following journal save
+// landing. Removal entries have no "new content" to compare against, so
+// they're left to the ordinary Applied bookkeeping.
+func reconcileApplied(fstate *FileState) bool {
+	if fstate.Remove || fstate.NewHash == "" {
+		return false
+	}
+	data, err := os.ReadFile(fstate.Dest)
+	if err != nil {
+		return false
+	}
+	return sha256Hex(data) == fstate.NewHash
+}
+
+// restoreOne re-verifies symlink containment immediately before touching
+// fstate.Dest — the same TOCTOU guard Apply applies before every write,
+// applied here too so a symlink swapped in during the window between a
+// successful Apply and a later Discard/Commit-failure/Recover can't turn
+// compensation into an arbitrary write/delete outside the artifact tree.
+func restoreOne(dir string, fstate *FileState, verify func(root, rel string) error) error {
+	if verify != nil {
+		if err := verify(fstate.Root, fstate.Rel); err != nil {
+			return fmt.Errorf("compensate %s: %w", fstate.Dest, err)
+		}
+	}
 	if !fstate.Existed {
 		if err := os.Remove(fstate.Dest); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove %s: %w", fstate.Dest, err)
@@ -377,7 +416,11 @@ func Recover(ctx context.Context, id string) (Journal, error) {
 		return *j, nil
 	}
 
-	t := &Tx{j: j, dir: dir}
+	// VerifyNoSymlinks is the same containment algorithm every caller's own
+	// verify function (e.g. agentport.verifyPathHasNoSymlinks) implements —
+	// Recover has no caller-supplied verify to thread through, so it uses
+	// this package's own copy directly rather than skipping the check.
+	t := &Tx{j: j, dir: dir, verify: VerifyNoSymlinks}
 	if err := t.compensate(); err != nil {
 		j.State = StateRecovery
 		j.Err = err.Error()
