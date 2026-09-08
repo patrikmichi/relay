@@ -3,6 +3,8 @@ package agentport
 import (
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // This file is the Agent-IR analogue of the CapSet/computeLoss mechanism in
@@ -114,7 +116,81 @@ func computeAgentLoss(a *Agent, caps AgentCapSet) []LossItem {
 	if len(a.Skills) > 0 && !caps.Skills {
 		add("Skills", "target provider has no bundled-skills equivalent")
 	}
+	for _, f := range a.UnmappedSecurityFields {
+		loss = append(loss, LossItem{
+			Field:    f.Key,
+			Kind:     LossDropped,
+			Security: true,
+			Note:     "security/restriction field " + f.Key + " (" + f.Raw + ") has no Agent-IR mapping — cannot be verified or written to the target and is refused rather than silently dropped (review R04)",
+		})
+	}
 	return loss
+}
+
+// agentSecurityFrontmatterKeys is the fixed, reviewed set of source
+// frontmatter keys (lower-cased for matching) documented as permission or
+// lifecycle controls that agentIrFieldDescriptors has no binding for.
+// "hooks" is included per review R04's fix note ("dropping or weakening
+// permission/lifecycle controls" — lifecycle hooks execute code, so their
+// silent disappearance is a restriction-fidelity issue, not cosmetic loss).
+// Deliberately a small, explicit, human-reviewed table — never inferred or
+// pattern-matched — matching claudeOpencodeModelAlias's style above: a
+// false negative here (an unrecognized security key) still surfaces via
+// R22's "define mappings ... refuse when unknown" follow-on in Phase 4, but
+// this table is what makes R04's specific documented fields (Claude
+// disallowedTools/permissionMode/hooks; opencode permission) impossible to
+// silently lose today.
+var agentSecurityFrontmatterKeys = map[string]bool{
+	"disallowedtools": true, // Claude subagent config
+	"permissionmode":  true, // Claude subagent config
+	"hooks":           true, // Claude subagent config (lifecycle, executes code)
+	"permission":      true, // opencode agent config
+}
+
+// collectUnmappedSecurityFields walks root's top-level frontmatter mapping
+// and returns an UnmappedSecurityField for every key that (a) is not one of
+// this provider's configured frontmatter keys (case-insensitive — configured
+// keys are already handled, correctly or not, by decodeAgentIRField) and (b)
+// matches agentSecurityFrontmatterKeys. Called from agentConfigAdapter.Load
+// after the normal frontmatter decode loop.
+func collectUnmappedSecurityFields(root *yaml.Node, configured map[string]bool) []UnmappedSecurityField {
+	mapping := root
+	if mapping.Kind == yaml.DocumentNode {
+		if len(mapping.Content) == 0 {
+			return nil
+		}
+		mapping = mapping.Content[0]
+	}
+	if mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	var out []UnmappedSecurityField
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		key := mapping.Content[i].Value
+		lower := strings.ToLower(key)
+		if configured[lower] || !agentSecurityFrontmatterKeys[lower] {
+			continue
+		}
+		out = append(out, UnmappedSecurityField{Key: key, Raw: renderNodeCompact(mapping.Content[i+1])})
+	}
+	return out
+}
+
+// renderNodeCompact renders a yaml.Node's value into short diagnostic text
+// for a LossItem.Note — best-effort and length-capped; not a re-parseable
+// representation of the field (see UnmappedSecurityField's doc comment).
+func renderNodeCompact(node *yaml.Node) string {
+	b, err := yaml.Marshal(node)
+	if err != nil {
+		return "<unrenderable value>"
+	}
+	text := strings.Join(strings.Fields(string(b)), " ")
+	const maxLen = 120
+	if len(text) > maxLen {
+		text = text[:maxLen] + "..."
+	}
+	return text
 }
 
 // claudeOpencodeModelAlias maps a Claude short model alias (as used in
@@ -278,8 +354,9 @@ func toolsLossForTarget(tools []string, denied []string, target ProviderID) *Los
 		return nil
 	}
 	return &LossItem{
-		Field: "Tools",
-		Kind:  LossDropped,
-		Note:  "explicitly-denied tools {" + strings.Join(denied, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost",
+		Field:    "Tools",
+		Kind:     LossDropped,
+		Security: true,
+		Note:     "explicitly-denied tools {" + strings.Join(denied, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost (review R22)",
 	}
 }

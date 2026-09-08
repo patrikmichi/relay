@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -100,7 +101,9 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 	}
 
 	ag := &Agent{}
+	configured := make(map[string]bool, len(a.cfg.Frontmatter))
 	for _, f := range a.cfg.Frontmatter {
+		configured[strings.ToLower(f.Key)] = true
 		node := mappingLookup(&root, f.Key)
 		if node == nil {
 			continue
@@ -130,6 +133,8 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 			return nil, fmt.Errorf("%s: field %q: %w", path, f.Key, err)
 		}
 	}
+
+	ag.UnmappedSecurityFields = collectUnmappedSecurityFields(&root, configured)
 
 	// No on-disk "name" field is mapped for every shipped agent provider
 	// (e.g. opencode); when frontmatter omits it, infer it from the
