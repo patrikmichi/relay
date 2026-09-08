@@ -105,10 +105,11 @@ func MigrateAgent(src *Agent, target AgentAdapter, scope Scope) (*AgentPlan, err
 
 // WriteAgent materializes an AgentPlan's file under plan.TargetPaths and
 // records a manifest ledger entry with Kind: KindAgent — the Agent-IR
-// analogue of Write.
+// analogue of Write. It refuses to touch the filesystem at all unless
+// PreflightWriteAgent passes first — see preflight.go (R05, R07, R08).
 func WriteAgent(plan *AgentPlan) error {
-	if plan == nil {
-		return fmt.Errorf("nil plan")
+	if err := PreflightWriteAgent(plan); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(plan.TargetPaths, 0o755); err != nil {
 		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
@@ -132,6 +133,13 @@ func WriteAgent(plan *AgentPlan) error {
 		TargetPaths:    HashFiles(plan.Files),
 		Timestamp:      time.Now().UTC(),
 		Provenance:     plan.Agent.Provenance,
+	}
+	if plan.Scope == ScopeProject {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve project root: %w", err)
+		}
+		entry.ProjectRoot = cwd
 	}
 	return RecordEntry(entry)
 }
