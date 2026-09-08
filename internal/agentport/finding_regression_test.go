@@ -9,6 +9,7 @@ package agentport
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -977,6 +978,210 @@ func TestR22_OpencodeWildcardDenyRoundTripsToClaudeWithoutFalseLoss(t *testing.T
 	}
 	if !HasSecurityLoss(loss2) {
 		t.Fatalf("R22: a specific per-tool denial has no allowlist-only equivalent and must be flagged, got %#v", loss2)
+	}
+}
+
+// Regression tests for R30 — the review's exact repro (evidence/
+// reproduce.py's "cursor-nested-list"/"cursor-nested-resolve" probes): a
+// skill nested under Cursor's recursive project scope
+// (.cursor/skills/group/demo/SKILL.md) appeared in `skill list` but
+// `skill scan demo --from cursor --scope project` (and, by the same code
+// path, migrate/diff/uninstall) reported not found — List used a
+// recursive walk but ResolveSkillPath only checked the non-recursive
+// <dir>/<name>/SKILL.md shape.
+
+func TestR30_NestedCursorSkillListedAndResolvableByName(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: d\n---\n\nbody\n"),
+	})
+
+	cursor := NewCursorAdapter()
+	refs, err := List(cursor, ScopeProject)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var listed bool
+	for _, r := range refs {
+		if r.Name == "demo" {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatalf("R30: expected the nested skill to appear in List(), got %#v", refs)
+	}
+
+	got, err := ResolveSkillPath(cursor, ScopeProject, "demo")
+	if err != nil {
+		t.Fatalf("R30: expected the nested skill listed above to also resolve by name, got: %v", err)
+	}
+	want := filepath.Join(dir, ".cursor", "skills", "group", "demo")
+	if got != want {
+		t.Fatalf("R30: ResolveSkillPath = %q, want %q", got, want)
+	}
+}
+
+// TestR30_AmbiguousNestedNameIsExplicitError confirms the flip side of the
+// unification: two nested entries sharing the same name within a single
+// recursive directory tree are an explicit, deterministic error from BOTH
+// List and ResolveSkillPath — never a silent first-match pick that would
+// let `skill list` and a subsequent `skill scan`/`migrate` disagree about
+// which one "demo" actually refers to.
+func TestR30_AmbiguousNestedNameIsExplicitError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group-a", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: a\n---\n\nbody\n"),
+	})
+	writeFiles(t, filepath.Join(dir, ".cursor", "skills", "group-b", "demo"), map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo\ndescription: b\n---\n\nbody\n"),
+	})
+
+	cursor := NewCursorAdapter()
+	if _, err := List(cursor, ScopeProject); err == nil {
+		t.Fatal("R30: expected List to report the duplicate name as an explicit error, got nil")
+	}
+	if _, err := ResolveSkillPath(cursor, ScopeProject, "demo"); err == nil {
+		t.Fatal("R30: expected ResolveSkillPath to report the duplicate name as an explicit error, got nil")
+	}
+}
+
+// Regression tests for R34 — config.go's validate() accepted the UNION of
+// Skill IR and Agent IR field names, so a skill provider config declaring
+// an agent-only field (e.g. "tools", "temperature") was accepted at
+// validate() time and only failed later, confusingly, at Load/Project with
+// "unknown canonical IR field" — the config's own schema check never
+// caught the kind mismatch it was supposedly there to catch.
+
+func TestR34_SkillConfigRejectsAgentOnlyIRField(t *testing.T) {
+	raw := []byte(`
+id: bad-skill
+dirs:
+  user: [{ path: "~/.bad-skill/skills", role: own }]
+  project: [{ path: ".bad-skill/skills", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }
+`)
+	_, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
+	if err == nil {
+		t.Fatal("R34: expected a skill config declaring the agent-only \"tools\" IR field to be rejected at validate() time")
+	}
+	if !strings.Contains(err.Error(), "tools") {
+		t.Errorf("R34: expected the error to name the offending field, got: %v", err)
+	}
+}
+
+func TestR34_AgentConfigRejectsSkillOnlyIRField(t *testing.T) {
+	raw := []byte(`
+id: bad-agent
+layout: flat
+dirs:
+  user: [{ path: "~/.bad-agent/agents", role: own }]
+  project: [{ path: ".bad-agent/agents", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: allowed_tools, key: allowed-tools, type: string-or-list, presence: optional }
+`)
+	_, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
+	if err == nil {
+		t.Fatal("R34: expected an agent config declaring the skill-only \"allowed_tools\" IR field to be rejected at validate() time")
+	}
+}
+
+// TestR34_SkillFileAndSidecarPathRejectPathEscape confirms skill_file and
+// sidecar.path get the SAME containment check dirs.*.path already had —
+// both are joined onto a resolved skill directory downstream
+// (config_adapter.go's Load/Project, hooks.go's codexOpenAICodec).
+func TestR34_SkillFileAndSidecarPathRejectPathEscape(t *testing.T) {
+	base := `
+id: escape-test
+skill_file: %s
+dirs:
+  user: [{ path: "~/.escape-test/skills", role: own }]
+  project: [{ path: ".escape-test/skills", role: own }]
+frontmatter: [{ ir: name, key: name, type: string, presence: required }]
+`
+	for _, bad := range []string{"../../etc/passwd", "/etc/passwd"} {
+		raw := []byte(fmt.Sprintf(base, bad))
+		if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill); err == nil {
+			t.Errorf("R34: expected skill_file %q to be rejected", bad)
+		}
+	}
+
+	sidecarBase := `
+id: escape-sidecar-test
+dirs:
+  user: [{ path: "~/.escape-sidecar-test/skills", role: own }]
+  project: [{ path: ".escape-sidecar-test/skills", role: own }]
+frontmatter: [{ ir: name, key: name, type: string, presence: required }]
+sidecar: { path: %s, codec: codex-openai }
+`
+	for _, bad := range []string{"../../etc/passwd", "/etc/passwd"} {
+		raw := []byte(fmt.Sprintf(sidecarBase, bad))
+		if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill); err == nil {
+			t.Errorf("R34: expected sidecar.path %q to be rejected", bad)
+		}
+	}
+}
+
+// TestR34_ResolveHonorsProviderCustomNameRegex reproduces the review's
+// name_regex inconsistency: a provider config's custom name_regex is
+// honored by Load/Project (via the adapter's own validateName), but the
+// public ResolveSkillPath/ResolveAgentPath validated every name against
+// the package-default lowercase-hyphen regex regardless — so a name a
+// custom-regex provider's own artifacts actually use could be rejected by
+// the very functions migrate/scan/diff rely on to find them by name.
+func TestR34_ResolveHonorsProviderCustomNameRegex(t *testing.T) {
+	raw := []byte(`
+id: strict-upper
+name_regex: "^[A-Z]+$"
+layout: flat
+dirs:
+  user: [{ path: "~/.strict-upper/agents", role: own }]
+  project: [{ path: ".strict-upper/agents", role: own }]
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+`)
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
+	if err != nil {
+		t.Fatalf("parseProviderConfig: %v", err)
+	}
+	a := newAgentConfigAdapter(*cfg)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".strict-upper", "agents")
+	writeFiles(t, dir, map[string][]byte{
+		"REVIEWER.md": []byte("---\ndescription: d\n---\n\nbody\n"),
+	})
+
+	// "REVIEWER" matches this provider's own ^[A-Z]+$ regex but NOT the
+	// package-default ^[a-z0-9]+(-[a-z0-9]+)*$ — ResolveAgentPath must use
+	// the provider's own rule, not silently reject a name its own Load
+	// would accept.
+	if _, err := ResolveAgentPath(a, ScopeUser, "REVIEWER"); err != nil {
+		t.Fatalf("R34: expected ResolveAgentPath to honor the provider's custom name_regex, got: %v", err)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 // SKILL.md-style resource-dir shape to fall back to, so this only ever
 // looks for "<dir>/<name>.md".
 func ResolveAgentPath(a AgentAdapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
 	if scope == ScopeProject {
@@ -32,7 +32,7 @@ func ResolveAgentPath(a AgentAdapter, scope Scope, name string) (string, error) 
 // uninstall must never remove a file from a directory the provider doesn't
 // own).
 func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
 

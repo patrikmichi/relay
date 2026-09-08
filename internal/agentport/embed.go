@@ -56,10 +56,10 @@ func loadedProviderConfigs() map[string]ProviderConfig {
 	configs := mustParseEmbeddedConfigs(hookNames, codecNames)
 
 	if home, err := os.UserHomeDir(); err == nil {
-		applyOverrideTier(configs, filepath.Join(home, ".config", "relay", "providers"), hookNames, codecNames)
+		applyOverrideTier(configs, filepath.Join(home, ".config", "relay", "providers"), hookNames, codecNames, KindSkill)
 	}
 	if AllowProjectProviderOverrides {
-		applyOverrideTier(configs, filepath.Join(".relay", "providers"), hookNames, codecNames)
+		applyOverrideTier(configs, filepath.Join(".relay", "providers"), hookNames, codecNames, KindSkill)
 	}
 
 	return configs
@@ -85,7 +85,7 @@ func mustParseEmbeddedConfigs(hookNames, codecNames map[string]bool) map[string]
 		if err != nil {
 			panic(fmt.Sprintf("agentport: read embedded %s: %v", e.Name(), err))
 		}
-		cfg, err := parseProviderConfig(raw, hookNames, codecNames)
+		cfg, err := parseProviderConfig(raw, hookNames, codecNames, KindSkill)
 		if err != nil {
 			panic(fmt.Sprintf("agentport: embedded provider config %s is invalid: %v", e.Name(), err))
 		}
@@ -110,10 +110,10 @@ func loadedAgentProviderConfigs() map[string]ProviderConfig {
 	configs := mustParseEmbeddedAgentConfigs(hookNames, codecNames)
 
 	if home, err := os.UserHomeDir(); err == nil {
-		applyOverrideTier(configs, filepath.Join(home, ".config", "relay", "agents"), hookNames, codecNames)
+		applyOverrideTier(configs, filepath.Join(home, ".config", "relay", "agents"), hookNames, codecNames, KindAgent)
 	}
 	if AllowProjectProviderOverrides {
-		applyOverrideTier(configs, filepath.Join(".relay", "agents"), hookNames, codecNames)
+		applyOverrideTier(configs, filepath.Join(".relay", "agents"), hookNames, codecNames, KindAgent)
 	}
 
 	return configs
@@ -139,7 +139,7 @@ func mustParseEmbeddedAgentConfigs(hookNames, codecNames map[string]bool) map[st
 		if err != nil {
 			panic(fmt.Sprintf("agentport: read embedded %s: %v", e.Name(), err))
 		}
-		cfg, err := parseProviderConfig(raw, hookNames, codecNames)
+		cfg, err := parseProviderConfig(raw, hookNames, codecNames, KindAgent)
 		if err != nil {
 			panic(fmt.Sprintf("agentport: embedded agent provider config %s is invalid: %v", e.Name(), err))
 		}
@@ -158,8 +158,9 @@ func mustParseEmbeddedAgentConfigs(hookNames, codecNames map[string]bool) map[st
 // invalid file is reported to stderr and skipped, leaving whatever was
 // already in configs for that id untouched (embedded, or a lower override
 // tier) — §4.4's fail-safe, so a typo in a user override can never brick a
-// shipped provider.
-func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames, codecNames map[string]bool) {
+// shipped provider. kind (KindSkill/KindAgent) scopes frontmatter IR
+// validation to the correct field set (R34) — see parseProviderConfig.
+func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames, codecNames map[string]bool, kind ArtifactKind) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return // no overrides at this tier — not an error
@@ -201,14 +202,14 @@ func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames,
 				fmt.Fprintf(os.Stderr, "agentport: skipping provider override %s: extends unknown provider %q\n", path, probe.Extends)
 				continue
 			}
-			merged, err := shallowOverlay(base, raw, hookNames, codecNames)
+			merged, err := shallowOverlay(base, raw, hookNames, codecNames, kind)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "agentport: skipping provider override %s: %v\n", path, err)
 				continue
 			}
 			cfg = merged
 		} else {
-			parsed, err := parseProviderConfig(raw, hookNames, codecNames)
+			parsed, err := parseProviderConfig(raw, hookNames, codecNames, kind)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "agentport: skipping invalid provider override %s: %v\n", path, err)
 				continue
@@ -226,7 +227,7 @@ func applyOverrideTier(configs map[string]ProviderConfig, dir string, hookNames,
 // an explicit, shallow, named-key overlay — never a deep merge — so a user
 // authoring a partial patch config gets predictable behavior (§4.2: "so
 // users don't get surprised by deep-merge").
-func shallowOverlay(base ProviderConfig, overrideRaw []byte, hookNames, codecNames map[string]bool) (*ProviderConfig, error) {
+func shallowOverlay(base ProviderConfig, overrideRaw []byte, hookNames, codecNames map[string]bool, kind ArtifactKind) (*ProviderConfig, error) {
 	baseRaw, err := yaml.Marshal(base)
 	if err != nil {
 		return nil, fmt.Errorf("re-marshal base config %q: %w", base.ID, err)
@@ -252,5 +253,5 @@ func shallowOverlay(base ProviderConfig, overrideRaw []byte, hookNames, codecNam
 	if err != nil {
 		return nil, fmt.Errorf("re-marshal merged config: %w", err)
 	}
-	return parseProviderConfig(mergedRaw, hookNames, codecNames)
+	return parseProviderConfig(mergedRaw, hookNames, codecNames, kind)
 }
