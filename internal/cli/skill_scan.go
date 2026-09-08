@@ -127,5 +127,6 @@ func runSkillScore(cmd *cobra.Command, name, from, scopeStr string) error {
 	}
 	result := agentport.Scan(s)
 	fmt.Fprintf(cmd.OutOrStdout(), "%d\n", result.Score)
+	fmt.Fprintln(cmd.ErrOrStderr(), agentport.ScoreDisclaimer)
 	return nil
 }
