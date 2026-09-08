@@ -1227,8 +1227,9 @@ func toIncludeSet(paths []string) map[string]bool {
 
 // secretExclusionReason returns a non-empty reason if rel's basename matches
 // a default-excluded secret-bearing filename pattern (R29): a plain ".env"
-// or an ".env.<suffix>" variant other than a known-safe template, and
-// unencrypted private-key filenames. Empty return means "not excluded".
+// or an ".env.<suffix>" variant other than a known-safe template, unencrypted
+// private-key filenames/extensions, and known credential-store dotfiles.
+// Empty return means "not excluded".
 func secretExclusionReason(rel string) string {
 	base := strings.ToLower(filepath.Base(rel))
 	switch base {
@@ -1236,6 +1237,8 @@ func secretExclusionReason(rel string) string {
 		return "default-excluded secret-bearing filename (.env)"
 	case "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
 		return "default-excluded private key filename"
+	case ".npmrc", ".netrc", ".pgpass", "credentials", "credentials.json":
+		return "default-excluded credential-store filename"
 	}
 	if strings.HasPrefix(base, ".env.") {
 		switch base {
@@ -1244,6 +1247,10 @@ func secretExclusionReason(rel string) string {
 		default:
 			return "default-excluded secret-bearing filename pattern (.env.*)"
 		}
+	}
+	switch filepath.Ext(base) {
+	case ".pem", ".key", ".p12", ".pfx":
+		return "default-excluded private key/certificate extension"
 	}
 	return ""
 }

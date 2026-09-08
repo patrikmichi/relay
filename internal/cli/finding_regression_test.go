@@ -445,6 +445,30 @@ func TestR29_PublishExcludesDotEnvByDefault(t *testing.T) {
 	}
 }
 
+// R29: secretExclusionReason's original pattern set only caught .env and
+// bare OpenSSH id_* key basenames — a bundled server.pem, .npmrc, or .netrc
+// shipped by default with no exclusion and no --include override needed,
+// because it was never screened in the first place.
+func TestR29_SecretExclusionCoversCommonCredentialFilenames(t *testing.T) {
+	excluded := []string{
+		"server.pem", "client.key", "cert.p12", "bundle.pfx",
+		".npmrc", ".netrc", ".pgpass", "credentials", "credentials.json",
+	}
+	for _, name := range excluded {
+		if secretExclusionReason(name) == "" {
+			t.Errorf("R29: expected %q to be excluded by default, got no reason", name)
+		}
+	}
+
+	// Ordinary files with superficially similar names must not be swept up.
+	safe := []string{"README.md", "keymap.json", "keys.md"}
+	for _, name := range safe {
+		if reason := secretExclusionReason(name); reason != "" {
+			t.Errorf("R29: expected %q to NOT be excluded, got reason %q", name, reason)
+		}
+	}
+}
+
 // TestR14_AuthorizeReturnsExplicitUnsupportedError reproduces R14:
 // `relay authorize <service>` used to run the generic device-code login
 // flow and then unconditionally print "Authorized <service>", even though
