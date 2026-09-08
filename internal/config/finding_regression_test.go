@@ -1,9 +1,9 @@
 package config_test
 
-// Regression test for R31 (2026-09-07 deep review): GatewayURL() silently
-// degrades to DefaultGatewayURL when the config file exists but fails to
-// parse, instead of propagating the error. Safe behavior (plan D1/P1.1):
-// corrupt config must return an error, never select a fallback host.
+// Regression test for R31: GatewayURL() silently degrades to
+// DefaultGatewayURL when the config file exists but fails to parse, instead
+// of propagating the error. Safe behavior: corrupt config must return an
+// error, never select a fallback host.
 
 import (
 	"os"
