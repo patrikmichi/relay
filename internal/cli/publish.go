@@ -19,6 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/agentport"
 	"github.com/patrikmichi/relay/internal/client"
 )
 
@@ -26,6 +27,12 @@ import (
 // The server enforces its own cap; this is a client-side guard to fail fast.
 // Declared as var (not const) so tests can temporarily lower it.
 var artifactMaxBytes int64 = 25 << 20 // 25 MiB
+
+// artifactMaxEntries bounds how many filesystem entries a directory publish
+// may walk, independent of artifactMaxBytes — a directory with an enormous
+// number of tiny files can exhaust memory/time well before the byte cap
+// triggers. Declared as var so tests can temporarily lower it (R29).
+var artifactMaxEntries = 20000
 
 // publishAPIPath is the endpoint on the gateway.
 const publishAPIPath = "/api/marketplace/publish"
@@ -133,11 +140,15 @@ type publishStatusDoer interface {
 
 // PublishCmd returns the `relay publish <path>` cobra command.
 func PublishCmd() *cobra.Command {
-	return publishCmdWithDoer(nil)
+	return publishCmdWithDoer(nil, "")
 }
 
-// publishCmdWithDoer is the internal constructor; doer==nil means resolve at runtime.
-func publishCmdWithDoer(doer publishDoer) *cobra.Command {
+// publishCmdWithDoer is the internal constructor; doer==nil means resolve at
+// runtime. aliasKind is set by skillPublishCmd/agentPublishCmd ("skill" /
+// "agent") to give an ordinary provider file a sensible default type without
+// requiring --type, and to catch a document whose own frontmatter declares a
+// contradictory type (R17).
+func publishCmdWithDoer(doer publishDoer, aliasKind agentport.ArtifactKind) *cobra.Command {
 	var (
 		flagType       string
 		flagName       string
@@ -146,6 +157,8 @@ func publishCmdWithDoer(doer publishDoer) *cobra.Command {
 		flagDryRun     bool
 		flagWatch      bool
 		flagGatewayURL string
+		flagManifest   string
+		flagInclude    []string
 	)
 
 	cmd := &cobra.Command{
@@ -182,7 +195,10 @@ Flags:
 			}
 			d := doer
 			resolvedURL := flagGatewayURL
-			if d == nil {
+			// R19: dry-run is local packaging/validation only — never resolve
+			// (and thus never require) an authenticated client for it. Auth is
+			// resolved lazily, only on the path that will actually call the API.
+			if d == nil && !flagDryRun {
 				var err error
 				d, resolvedURL, err = resolvePublishDoerWithURL(flagGatewayURL)
 				if err != nil {
@@ -191,6 +207,9 @@ Flags:
 			}
 			return runPublish(d, publishPath, publishOpts{
 				resourceType:      flagType,
+				aliasKind:         aliasKind,
+				manifestPath:      flagManifest,
+				includeFiles:      flagInclude,
 				name:              flagName,
 				slug:              flagSlug,
 				channel:           flagChannel,
@@ -217,23 +236,28 @@ Flags:
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Validate and print the payload without sending it")
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll publish status until terminal; exit non-zero on changes_requested")
 	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&flagManifest, "manifest", "", "Explicit path (relative to <path>) to the manifest/descriptor file — bypasses SKILL.md/agent.md convention discovery")
+	cmd.Flags().StringSliceVar(&flagInclude, "include", nil, "Force-include a bundle-relative path the default secret-screening policy would otherwise exclude (repeatable)")
 
 	cmd.AddCommand(publishStatusCmd())
 
 	return cmd
 }
 
-// skillPublishCmd returns `relay skill publish <path>` — thin alias.
+// skillPublishCmd returns `relay skill publish <path>` — thin alias. Setting
+// aliasKind gives an ordinary SKILL.md with no marketplace-specific type
+// frontmatter a working default (R17).
 func skillPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, agentport.KindSkill)
 	cmd.Use = "publish <path>"
 	cmd.Short = "Publish a skill to the marketplace"
 	return cmd
 }
 
-// agentPublishCmd returns `relay agent publish <path>` — thin alias.
+// agentPublishCmd returns `relay agent publish <path>` — thin alias. See
+// skillPublishCmd.
 func agentPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, agentport.KindAgent)
 	cmd.Use = "publish <path>"
 	cmd.Short = "Publish an agent to the marketplace"
 	return cmd
@@ -241,7 +265,7 @@ func agentPublishCmd() *cobra.Command {
 
 // mcpPublishCmd returns `relay mcp publish <path>` — thin alias.
 func mcpPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, "")
 	cmd.Use = "publish [path]"
 	cmd.Short = "Publish an MCP server to the marketplace"
 	cmd.Args = cobra.MaximumNArgs(1)
@@ -390,6 +414,16 @@ func resolvePublishStatusDoer(overrideURL string) (publishStatusDoer, error) {
 
 type publishOpts struct {
 	resourceType string
+	// aliasKind is set by the skill/agent parent commands (never by top-level
+	// `relay publish`) to supply a default resourceType and to detect a
+	// document whose frontmatter declares a contradictory type (R17).
+	aliasKind agentport.ArtifactKind
+	// manifestPath is an explicit bundle-relative manifest/descriptor path
+	// (--manifest), bypassing SKILL.md/agent.md convention discovery (R18).
+	manifestPath string
+	// includeFiles force-includes bundle-relative paths the default
+	// secret-screening policy would otherwise exclude (R29).
+	includeFiles []string
 	name         string
 	slug         string
 	channel      string
@@ -462,6 +496,14 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		return fmt.Errorf("invalid --channel %q: must be stable or beta", ch)
 	}
 
+	// R17: an explicit --type that contradicts the skill/agent parent command
+	// is never silently honored — the command name is itself a declaration
+	// of intent.
+	if opts.aliasKind != "" && opts.resourceType != "" && opts.resourceType != string(opts.aliasKind) {
+		return fmt.Errorf("contradictory type: this is `relay %s publish`, which publishes type %q, but --type=%q was given",
+			opts.aliasKind, opts.aliasKind, opts.resourceType)
+	}
+
 	// Resolve path.
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -477,13 +519,18 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		manifestContent []byte
 		bundleBytes     []byte
 		bundleFiles     []string // for dry-run display
+		excludedFiles   []excludedBundleEntry
 		isDir           bool
 	)
 
 	if fi.IsDir() {
 		isDir = true
 		// Collect + validate the directory bundle.
-		manifestContent, bundleBytes, bundleFiles, err = buildBundle(absPath)
+		manifestContent, bundleBytes, bundleFiles, excludedFiles, err = buildBundleFor(absPath, bundleSelector{
+			kind:                resolveKindHint(opts),
+			explicitManifestRel: opts.manifestPath,
+			includeOverride:     toIncludeSet(opts.includeFiles),
+		})
 		if err != nil {
 			return err
 		}
@@ -517,11 +564,22 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		}
 	}
 
-	// Detect resource type from frontmatter, overridable by --type.
+	// Detect resource type from frontmatter, overridable by --type. The
+	// skill/agent alias default (opts.aliasKind) only applies when nothing
+	// more specific is given, and never silently overrides a document that
+	// declares a different type (R17) — that is a contradiction, not a
+	// default to fall back on.
 	fm := parseFrontmatter(manifestContent)
 	resourceType := opts.resourceType
 	if resourceType == "" && descriptor != nil {
 		resourceType = "mcp_server"
+	}
+	if resourceType == "" && opts.aliasKind != "" {
+		if fm.Type != "" && fm.Type != string(opts.aliasKind) {
+			return fmt.Errorf("contradictory type: this is `relay %s publish`, but the manifest frontmatter declares type %q — pass --type to override",
+				opts.aliasKind, fm.Type)
+		}
+		resourceType = string(opts.aliasKind)
 	}
 	if resourceType == "" {
 		resourceType = fm.Type
@@ -558,6 +616,12 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 			for _, f := range bundleFiles {
 				fmt.Printf("[dry-run]   %s\n", f)
 			}
+			if len(excludedFiles) > 0 {
+				fmt.Printf("[dry-run] excluded files (%d) — default secret-screening policy, use --include to override:\n", len(excludedFiles))
+				for _, x := range excludedFiles {
+					fmt.Printf("[dry-run]   %s (%s)\n", x.rel, x.reason)
+				}
+			}
 			fmt.Printf("[dry-run] bundle size: %d bytes\n", len(bundleBytes))
 		} else {
 			fmt.Printf("[dry-run] manifest file: %s (%d bytes)\n", bundleFiles[0], len(manifestContent))
@@ -568,6 +632,20 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		}
 		fmt.Println("[dry-run] no API call made")
 		return nil
+	}
+
+	// R29: the outgoing file set is always shown, not only on --dry-run —
+	// exclusion is deliberate and visible, never a silent accident.
+	if isDir {
+		fmt.Printf("publishing %d files", len(bundleFiles))
+		if len(excludedFiles) > 0 {
+			fmt.Printf(", %d excluded by default secret-screening policy (use --include to override):\n", len(excludedFiles))
+			for _, x := range excludedFiles {
+				fmt.Printf("  %s (%s)\n", x.rel, x.reason)
+			}
+		} else {
+			fmt.Println()
+		}
 	}
 
 	// Build multipart body.
@@ -1087,15 +1165,108 @@ changes_requested — useful for gating CI on a publish.`,
 
 // ---- bundle builder (path-safe tar.gz) ----
 
+// bundleSelector controls manifest discovery and file-inclusion policy for
+// buildBundleFor. The zero value auto-detects the manifest by canonical
+// filename and applies the default secret-screening exclusion policy.
+type bundleSelector struct {
+	// kind, when non-empty, requires the canonical manifest filename for
+	// that artifact kind (SKILL.md / agent.md) rather than auto-detecting —
+	// set from --type or the skill/agent alias (R17, R18).
+	kind agentport.ArtifactKind
+	// explicitManifestRel, when non-empty, is a bundle-relative path used as
+	// the manifest verbatim — bypasses all convention discovery (R18).
+	explicitManifestRel string
+	// includeOverride force-includes bundle-relative paths (both OS-native
+	// and slash-separated forms are checked) that the default
+	// secret-screening policy would otherwise exclude (R29).
+	includeOverride map[string]bool
+}
+
+// canonicalManifestNames maps each supported artifact kind to the one
+// filename that counts as its manifest at the bundle root — never picked by
+// walk-order/alphabetical accident (R18).
+var canonicalManifestNames = map[agentport.ArtifactKind]string{
+	agentport.KindSkill: "SKILL.md",
+	agentport.KindAgent: "agent.md",
+}
+
+// excludedBundleEntry records a file the walk deliberately left out of the
+// bundle, and why, so the exclusion is visible rather than silent (R29).
+type excludedBundleEntry struct {
+	rel    string
+	reason string
+}
+
+// resolveKindHint derives the manifest-selection kind hint from an explicit
+// --type flag (if it names a known artifact kind) or, failing that, the
+// skill/agent parent-command alias.
+func resolveKindHint(opts publishOpts) agentport.ArtifactKind {
+	switch opts.resourceType {
+	case string(agentport.KindSkill):
+		return agentport.KindSkill
+	case string(agentport.KindAgent):
+		return agentport.KindAgent
+	}
+	return opts.aliasKind
+}
+
+// toIncludeSet builds the includeOverride lookup from --include values,
+// keyed by both OS-native and slash-separated relative-path forms.
+func toIncludeSet(paths []string) map[string]bool {
+	if len(paths) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(paths)*2)
+	for _, p := range paths {
+		clean := filepath.Clean(p)
+		set[clean] = true
+		set[filepath.ToSlash(clean)] = true
+	}
+	return set
+}
+
+// secretExclusionReason returns a non-empty reason if rel's basename matches
+// a default-excluded secret-bearing filename pattern (R29): a plain ".env"
+// or an ".env.<suffix>" variant other than a known-safe template, and
+// unencrypted private-key filenames. Empty return means "not excluded".
+func secretExclusionReason(rel string) string {
+	base := strings.ToLower(filepath.Base(rel))
+	switch base {
+	case ".env":
+		return "default-excluded secret-bearing filename (.env)"
+	case "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
+		return "default-excluded private key filename"
+	}
+	if strings.HasPrefix(base, ".env.") {
+		switch base {
+		case ".env.example", ".env.sample", ".env.template":
+			return ""
+		default:
+			return "default-excluded secret-bearing filename pattern (.env.*)"
+		}
+	}
+	return ""
+}
+
 // buildBundle reads a directory, validates every file entry for path safety,
-// enforces the artifactMaxBytes cap, and returns:
-//   - the content of the manifest file (the .md file at the root, or the first .md found)
-//   - the tar.gz bytes of the entire directory
-//   - the list of relative paths included (for dry-run display)
+// enforces size/entry caps, applies the default secret-screening exclusion
+// policy, and returns the auto-detected manifest, the tar.gz bytes, and the
+// list of packaged relative paths. It is a thin wrapper over buildBundleFor
+// for callers that don't need kind hints, explicit manifest paths, or
+// visibility into excluded files.
 func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files []string, err error) {
+	manifestContent, bundleBytes, files, _, err = buildBundleFor(root, bundleSelector{})
+	return manifestContent, bundleBytes, files, err
+}
+
+// buildBundleFor is buildBundle plus manifest-selection/exclusion control
+// via sel, and returns the excluded-file list alongside the packaged one so
+// callers can display a deliberate, visible outgoing-file inventory (R29).
+func buildBundleFor(root string, sel bundleSelector) (manifestContent []byte, bundleBytes []byte, files []string, excluded []excludedBundleEntry, err error) {
 	// Collect files.
 	var entries []bundleEntry
 	totalSize := int64(0)
+	visited := 0
 
 	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -1113,6 +1284,14 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			return nil // skip FIFO / device / socket / irregular
 		}
 
+		// R29: bound total walked entries independent of byte size — an
+		// enormous file count can exhaust memory/time long before the size
+		// cap below ever triggers.
+		visited++
+		if visited > artifactMaxEntries {
+			return fmt.Errorf("bundle exceeds entry-count cap (%d files); reduce the directory contents and retry", artifactMaxEntries)
+		}
+
 		// Compute relative path.
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
@@ -1124,9 +1303,18 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			return err
 		}
 
-		// Symlink check: reject symlinks that escape the bundle root.
+		// Symlink check: reject symlinks that escape the bundle root or
+		// resolve to a non-regular file (FIFO/device/socket — R29).
 		if err := checkSymlink(path, root); err != nil {
 			return err
+		}
+
+		// R29: screen secret-bearing filenames before ever reading their
+		// content, unless the caller explicitly opted the path back in.
+		if reason := secretExclusionReason(rel); reason != "" &&
+			!sel.includeOverride[rel] && !sel.includeOverride[filepath.ToSlash(rel)] {
+			excluded = append(excluded, excludedBundleEntry{rel: rel, reason: reason})
+			return nil
 		}
 
 		// Use os.Stat (follows symlinks) for an accurate size of the content we will read.
@@ -1144,7 +1332,7 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 		return nil
 	})
 	if walkErr != nil {
-		return nil, nil, nil, walkErr
+		return nil, nil, nil, nil, walkErr
 	}
 
 	// Build the tar.gz in memory.
@@ -1155,7 +1343,7 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 	for _, e := range entries {
 		data, readErr := os.ReadFile(e.abs)
 		if readErr != nil {
-			return nil, nil, nil, fmt.Errorf("read %s: %w", e.abs, readErr)
+			return nil, nil, nil, nil, fmt.Errorf("read %s: %w", e.abs, readErr)
 		}
 
 		hdr := &tar.Header{
@@ -1165,30 +1353,32 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			ModTime: time.Unix(0, 0), // deterministic
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
-			return nil, nil, nil, fmt.Errorf("tar header %s: %w", e.rel, err)
+			return nil, nil, nil, nil, fmt.Errorf("tar header %s: %w", e.rel, err)
 		}
 		if _, err := tw.Write(data); err != nil {
-			return nil, nil, nil, fmt.Errorf("tar write %s: %w", e.rel, err)
+			return nil, nil, nil, nil, fmt.Errorf("tar write %s: %w", e.rel, err)
 		}
 
 		files = append(files, e.rel)
 	}
 
 	if err := tw.Close(); err != nil {
-		return nil, nil, nil, fmt.Errorf("close tar: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("close tar: %w", err)
 	}
 	if err := gzw.Close(); err != nil {
-		return nil, nil, nil, fmt.Errorf("close gzip: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("close gzip: %w", err)
 	}
 	bundleBytes = buf.Bytes()
 
-	// Find the manifest: prefer a .md file at the root level.
-	manifestContent = findManifestInEntries(root, entries)
+	manifestContent, _, err = selectManifest(entries, sel)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 	if manifestContent == nil {
-		return nil, nil, nil, fmt.Errorf("no .md manifest file found in %s", root)
+		return nil, nil, nil, nil, fmt.Errorf("no manifest file found in %s — pass --manifest to specify one explicitly", root)
 	}
 
-	return manifestContent, bundleBytes, files, nil
+	return manifestContent, bundleBytes, files, excluded, nil
 }
 
 type bundleEntry struct {
@@ -1252,28 +1442,116 @@ func checkSymlink(path, root string) error {
 	if !strings.HasPrefix(resolved+string(filepath.Separator), absRoot+string(filepath.Separator)) {
 		return fmt.Errorf("symlink %s → %s escapes the bundle root — refusing to package it", path, resolved)
 	}
+	// R29: a contained symlink can still point at a FIFO, device, or socket.
+	// os.Stat only reads metadata (never opens the target), so this cannot
+	// itself hang even on a FIFO with no writer — but reading it later with
+	// os.ReadFile would. Reject non-regular resolved targets here instead.
+	resolvedInfo, statErr := os.Stat(path)
+	if statErr != nil {
+		return fmt.Errorf("stat symlink target for %s: %w", path, statErr)
+	}
+	if !resolvedInfo.Mode().IsRegular() {
+		return fmt.Errorf("symlink %s resolves to a non-regular file (%s) — refusing to package it", path, resolvedInfo.Mode())
+	}
 	return nil
 }
 
-// findManifestInEntries returns the content of the first root-level .md file.
-func findManifestInEntries(root string, entries []bundleEntry) []byte {
-	// Prefer a root-level .md (no directory separator in rel).
+// selectManifest picks exactly one manifest entry from the bundle, never by
+// walk-order/alphabetical accident (R18):
+//  1. sel.explicitManifestRel, if set — verbatim, no further discovery.
+//  2. The canonical root filename for sel.kind, if set — SKILL.md / agent.md.
+//  3. Auto-detect: exactly one canonical root filename among the entries.
+//  4. Exactly one root-level .md file.
+//  5. Exactly one .md file anywhere in the bundle.
+//
+// More than one candidate at any discovery tier is ambiguous and rejected
+// rather than guessed at.
+func selectManifest(entries []bundleEntry, sel bundleSelector) (data []byte, rel string, err error) {
+	readEntry := func(e bundleEntry) ([]byte, string, error) {
+		data, err := os.ReadFile(e.abs)
+		if err != nil {
+			return nil, "", fmt.Errorf("read manifest %s: %w", e.rel, err)
+		}
+		return data, e.rel, nil
+	}
+
+	if sel.explicitManifestRel != "" {
+		want := filepath.ToSlash(filepath.Clean(sel.explicitManifestRel))
+		for _, e := range entries {
+			if filepath.ToSlash(e.rel) == want {
+				return readEntry(e)
+			}
+		}
+		return nil, "", fmt.Errorf("--manifest %q not found in the bundle", sel.explicitManifestRel)
+	}
+
+	isRoot := func(rel string) bool { return !strings.Contains(rel, string(filepath.Separator)) }
+
+	if want, ok := canonicalManifestNames[sel.kind]; ok {
+		for _, e := range entries {
+			if isRoot(e.rel) && strings.EqualFold(e.rel, want) {
+				return readEntry(e)
+			}
+		}
+		return nil, "", fmt.Errorf("no %s found at the root of the bundle for type %q — pass --manifest to specify one explicitly", want, sel.kind)
+	}
+
+	var canonical []bundleEntry
 	for _, e := range entries {
-		if !strings.Contains(e.rel, string(filepath.Separator)) && strings.HasSuffix(strings.ToLower(e.rel), ".md") {
-			data, err := os.ReadFile(e.abs)
-			if err == nil {
-				return data
+		if !isRoot(e.rel) {
+			continue
+		}
+		for _, want := range canonicalManifestNames {
+			if strings.EqualFold(e.rel, want) {
+				canonical = append(canonical, e)
+				break
 			}
 		}
 	}
-	// Fall back to any .md.
+	if len(canonical) > 1 {
+		names := make([]string, len(canonical))
+		for i, e := range canonical {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: found both %s at the bundle root — pass --type or --manifest to disambiguate", strings.Join(names, " and "))
+	}
+	if len(canonical) == 1 {
+		return readEntry(canonical[0])
+	}
+
+	var rootMd []bundleEntry
+	for _, e := range entries {
+		if isRoot(e.rel) && strings.HasSuffix(strings.ToLower(e.rel), ".md") {
+			rootMd = append(rootMd, e)
+		}
+	}
+	if len(rootMd) == 1 {
+		return readEntry(rootMd[0])
+	}
+	if len(rootMd) > 1 {
+		names := make([]string, len(rootMd))
+		for i, e := range rootMd {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: multiple root .md files (%s) match no canonical skill/agent filename — pass --type or --manifest to disambiguate", strings.Join(names, ", "))
+	}
+
+	var anyMd []bundleEntry
 	for _, e := range entries {
 		if strings.HasSuffix(strings.ToLower(e.rel), ".md") {
-			data, err := os.ReadFile(e.abs)
-			if err == nil {
-				return data
-			}
+			anyMd = append(anyMd, e)
 		}
 	}
-	return nil
+	if len(anyMd) == 1 {
+		return readEntry(anyMd[0])
+	}
+	if len(anyMd) > 1 {
+		names := make([]string, len(anyMd))
+		for i, e := range anyMd {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: multiple nested .md files (%s) and no root candidate — pass --manifest to disambiguate", strings.Join(names, ", "))
+	}
+
+	return nil, "", nil
 }

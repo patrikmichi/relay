@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/patrikmichi/relay/internal/agentport"
 	"github.com/patrikmichi/relay/internal/client"
 )
 
@@ -71,6 +72,98 @@ func TestR18_ManifestSelectsSkillOverReadme(t *testing.T) {
 	}
 	if strings.TrimSpace(string(manifest)) == "README" {
 		t.Fatalf("R18: README.md selected as manifest instead of SKILL.md")
+	}
+}
+
+// R17: skillPublishCmd/agentPublishCmd change Use/Short only and never set
+// an alias default type, so an ordinary provider file with no
+// marketplace-specific `type` frontmatter fails type detection through the
+// skill/agent parent commands even though the command name itself declares
+// the intended kind.
+func TestR17_SkillPublishDefaultsTypeForOrdinaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "SKILL.md")
+	// Ordinary skill file: name/description only, no `type` field.
+	src := "---\nname: demo\ndescription: An ordinary skill.\n---\nBody.\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runPublish(nil, path, publishOpts{
+		aliasKind: agentport.KindSkill,
+		channel:   "stable",
+		dryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("R17: ordinary skill file published via the skill alias should default to type=skill, got error: %v", err)
+	}
+}
+
+// R17 (continued): the agent alias must supply the same kind of default.
+func TestR17_AgentPublishDefaultsTypeForOrdinaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent.md")
+	src := "---\nname: demo\ndescription: An ordinary agent.\n---\nBody.\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runPublish(nil, path, publishOpts{
+		aliasKind: agentport.KindAgent,
+		channel:   "stable",
+		dryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("R17: ordinary agent file published via the agent alias should default to type=agent, got error: %v", err)
+	}
+}
+
+// R17 (continued): "The agent alias can also inherit a contradictory type
+// from the document." A document whose own frontmatter names a different
+// kind than the alias it was published through must fail loudly rather than
+// silently pick one.
+func TestR17_PublishRejectsContradictoryAliasType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "SKILL.md")
+	src := "---\nname: demo\ntype: agent\ndescription: Declares a different kind than the alias.\n---\nBody.\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runPublish(nil, path, publishOpts{
+		aliasKind: agentport.KindSkill,
+		channel:   "stable",
+		dryRun:    true,
+	})
+	if err == nil {
+		t.Fatal("R17: expected an error when frontmatter type contradicts the skill/agent alias, got nil")
+	}
+	if !strings.Contains(err.Error(), "contradictory") {
+		t.Errorf("R17: error should name the contradiction explicitly, got: %v", err)
+	}
+}
+
+// R19: publishCmdWithDoer's RunE resolves the gateway and authenticated
+// client unconditionally, before ever reaching the --dry-run branch inside
+// runPublish — so `relay skill publish --dry-run` fails without credentials
+// even though the intended work is entirely local packaging/validation.
+func TestR19_DryRunSucceedsWithoutCredentials(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json or keychain
+	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("GATEWAY_URL", "")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\ntype: skill\nname: demo\n---\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := skillPublishCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{dir, "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("R19: offline dry-run must succeed without any credentials, got: %v", err)
 	}
 }
 
