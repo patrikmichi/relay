@@ -1,14 +1,9 @@
 package agentport
 
-// Regression tests derived from the 2026-09-07 deep review's reproduction
-// evidence (vault/reviews/relay/2026-09-07/evidence/reproduce.py's
-// "permission-loss" probe and cli-probes.jsonl). The evidence bundle only
-// carried a black-box CLI probe for these two findings, not a Go test body
-// — these are written fresh per Phase 0's documented gap. They fail against
-// baseline 931aac4 (agent_config_adapter.go only decodes configured
-// frontmatter keys, so disallowedTools/permissionMode/hooks vanish before
-// loss is ever computed) and must pass once P1.4's fix lands in the same
-// commit.
+// Regression tests for R04 and R22: agent_config_adapter.go only decoded
+// configured frontmatter keys, so Claude's disallowedTools/permissionMode/
+// hooks vanished before loss was ever computed, and denied-tool loss onto
+// claude reported only as ordinary degraded fidelity.
 
 import (
 	"path/filepath"
@@ -79,12 +74,9 @@ func TestR04_ClaudeSecurityFieldsSurfaceAsLoss(t *testing.T) {
 }
 
 // TestR04_ProjectDoesNotSilentlyDropUnknownNonSecurityField is a control:
-// an unrecognized frontmatter field that is NOT in the reviewed
-// security-field table (e.g. a made-up "color" field) is out of scope for
-// this containment fix — Phase 4 handles full unknown-field fidelity. This
-// asserts the security-specific fix doesn't (yet) claim to catch every
-// unknown field, only the reviewed security-relevant ones, so a future
-// broadening of agentSecurityFrontmatterKeys is a deliberate, reviewed edit.
+// an unrecognized field NOT in agentSecurityFrontmatterKeys (e.g. a made-up
+// "color" field) must not be captured — the fix targets the reviewed
+// security-relevant keys only, not every unknown field.
 func TestR04_ProjectDoesNotSilentlyDropUnknownNonSecurityField(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string][]byte{

@@ -48,15 +48,11 @@ type Agent struct {
 
 	// UnmappedSecurityFields captures source frontmatter keys that carry
 	// permission/restriction semantics (Claude disallowedTools/
-	// permissionMode/hooks, opencode permission — review R04) but have no
-	// binding in agent_ir_fields.go's fixed field set, so Load cannot
-	// interpret or round-trip them. This is a containment measure (P1.4),
-	// not fidelity (Phase 4): the raw value is retained only so
-	// computeAgentLoss (agent_caps.go) can report it and Project() can
-	// refuse the migration by default — not to preserve or re-map the
-	// setting itself. A field never silently vanishing behind a "no loss"
-	// report is the fix for R04; giving it an actual translated target
-	// representation is Phase 4 (P4.1/P4.3).
+	// permissionMode/hooks, opencode permission — R04) but have no binding
+	// in agent_ir_fields.go's fixed field set, so Load cannot interpret or
+	// round-trip them. The raw value is retained only so computeAgentLoss
+	// (agent_caps.go) can report it and Project() can refuse the migration
+	// by default — not to preserve or re-map the setting itself.
 	UnmappedSecurityFields []UnmappedSecurityField
 
 	Provenance Provenance

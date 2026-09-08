@@ -121,25 +121,19 @@ func computeAgentLoss(a *Agent, caps AgentCapSet) []LossItem {
 			Field:    f.Key,
 			Kind:     LossDropped,
 			Security: true,
-			Note:     "security/restriction field " + f.Key + " (" + f.Raw + ") has no Agent-IR mapping — cannot be verified or written to the target and is refused rather than silently dropped (review R04)",
+			Note:     "security/restriction field " + f.Key + " (" + f.Raw + ") has no Agent-IR mapping — refused rather than silently dropped (R04)",
 		})
 	}
 	return loss
 }
 
 // agentSecurityFrontmatterKeys is the fixed, reviewed set of source
-// frontmatter keys (lower-cased for matching) documented as permission or
-// lifecycle controls that agentIrFieldDescriptors has no binding for.
-// "hooks" is included per review R04's fix note ("dropping or weakening
-// permission/lifecycle controls" — lifecycle hooks execute code, so their
-// silent disappearance is a restriction-fidelity issue, not cosmetic loss).
-// Deliberately a small, explicit, human-reviewed table — never inferred or
-// pattern-matched — matching claudeOpencodeModelAlias's style above: a
-// false negative here (an unrecognized security key) still surfaces via
-// R22's "define mappings ... refuse when unknown" follow-on in Phase 4, but
-// this table is what makes R04's specific documented fields (Claude
-// disallowedTools/permissionMode/hooks; opencode permission) impossible to
-// silently lose today.
+// frontmatter keys (lower-cased for matching) that are permission or
+// lifecycle controls agentIrFieldDescriptors has no binding for. "hooks" is
+// included because lifecycle hooks execute code — their disappearance is a
+// restriction gap, not cosmetic loss. Deliberately small and hand-reviewed,
+// never inferred or pattern-matched, matching claudeOpencodeModelAlias's
+// style above.
 var agentSecurityFrontmatterKeys = map[string]bool{
 	"disallowedtools": true, // Claude subagent config
 	"permissionmode":  true, // Claude subagent config

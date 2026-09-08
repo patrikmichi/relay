@@ -31,20 +31,16 @@ type LossItem struct {
 	Note  string
 	// Security marks a LossItem whose field carries permission/restriction
 	// semantics (tool allow/deny lists, permission modes, lifecycle hooks,
-	// model constraints — relay-remediation-plan D3, review R04/R22). Unlike
-	// ordinary fidelity loss, a Security loss item is never proceeded past
-	// silently: HasSecurityLoss gates migration regardless of --strict,
-	// --dry-run, or terminal interactivity — "no loss" must never be
-	// reported, and no confirmation prompt can wave it through, until
-	// Phase 4 builds an explicit provider-fidelity mapping or opt-in.
+	// model constraints — see R04/R22). Unlike ordinary fidelity loss, this
+	// is never waved through by --strict, --dry-run, or an interactive
+	// prompt: see HasSecurityLoss.
 	Security bool
 }
 
-// HasSecurityLoss reports whether loss contains any Security-flagged item —
-// the containment gate migrate/install callers must check BEFORE any
-// --strict/--dry-run/interactive-confirmation handling. A caller must treat
-// true as a hard refusal: security-relevant restrictions are never
-// bypassable via a generic override (relay-remediation-plan D3).
+// HasSecurityLoss reports whether loss contains any Security-flagged item.
+// Callers must check this before any --strict/--dry-run/interactive-
+// confirmation handling and treat true as an unconditional refusal —
+// security-relevant restrictions have no generic bypass.
 func HasSecurityLoss(loss []LossItem) bool {
 	for _, l := range loss {
 		if l.Security {
