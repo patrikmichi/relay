@@ -204,7 +204,28 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		}
 	}
 
-	// Step 5: revocation — remove stale plugin dirs.
+	// Step 5: fetch and write managed-settings.
+	rawSettings, err := fetchManagedSettings(d, localDir)
+	if err != nil {
+		return fmt.Errorf("fetch managed-settings: %w", err)
+	}
+	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
+		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
+	}
+
+	// Step 6: write marketplace.json — only once every plugin and
+	// managed-settings write it references has actually landed.
+	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
+		return fmt.Errorf("write marketplace.json: %w", err)
+	}
+
+	// Step 7: revocation — remove stale plugin dirs. Deliberately LAST,
+	// after marketplace.json is confirmed written: revoking first would let
+	// a crash/failure between revocation and the manifest write leave
+	// marketplace.json still pointing at a plugin directory that no longer
+	// exists (R09's "no dangling reference" invariant). Revoking last means
+	// the only failure-direction leftover is a harmless orphaned directory
+	// marketplace.json already doesn't reference.
 	stale, err := stalePluginDirs(localDir, manifest)
 	if err != nil {
 		return fmt.Errorf("list stale plugins: %w", err)
@@ -215,21 +236,6 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 			return fmt.Errorf("remove stale plugin %s: %w", s, err)
 		}
 		fmt.Printf("Removed revoked plugin: plugins/%s/\n", s)
-	}
-
-	// Step 6: fetch and write managed-settings.
-	rawSettings, err := fetchManagedSettings(d, localDir)
-	if err != nil {
-		return fmt.Errorf("fetch managed-settings: %w", err)
-	}
-	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
-		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
-	}
-
-	// Step 7: write marketplace.json last — only once every plugin and
-	// managed-settings write it references has actually landed.
-	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
-		return fmt.Errorf("write marketplace.json: %w", err)
 	}
 
 	// Step 8: print summary.

@@ -100,6 +100,42 @@ func TestWritePluginBundle_InterruptedApplyIsRecoverableAndRetryable(t *testing.
 	}
 }
 
+// TestRunSync_FailureBeforeManifestWritePreservesStalePluginDir proves
+// stale-plugin-directory revocation only runs AFTER marketplace.json is
+// confirmed written: injecting a failure at the managed-settings fetch —
+// the step immediately before both the marketplace.json write and
+// revocation — must leave a stale plugin directory in place. Revoking
+// first (the prior ordering) would let this exact failure point delete the
+// directory while marketplace.json (still the old copy, or never written
+// on a first sync) kept referencing it — a dangling reference. Revoking
+// last means the only leftover in this failure direction is a harmless
+// orphaned directory that nothing references.
+func TestRunSync_FailureBeforeManifestWritePreservesStalePluginDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+
+	srv := buildMockServer(t, nil, map[string]int{
+		"/api/marketplace/managed-settings": http.StatusInternalServerError,
+	})
+	defer srv.Close()
+
+	staleDir := filepath.Join(dir, "plugins", "old-revoked-plugin")
+	if err := os.MkdirAll(staleDir, 0o700); err != nil {
+		t.Fatalf("create stale dir: %v", err)
+	}
+
+	if err := runSync(&testDoer{srv: srv}, dir, false); err == nil {
+		t.Fatal("sync should fail on the managed-settings 500")
+	}
+
+	if _, err := os.Stat(staleDir); err != nil {
+		t.Fatalf("stale plugin dir should not be revoked before marketplace.json is written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "marketplace.json")); !os.IsNotExist(err) {
+		t.Fatalf("marketplace.json should not exist after a failed sync, stat err = %v", err)
+	}
+}
+
 // TestRunSync_FailedPluginFetchPreservesLastCompleteMarketplaceState runs
 // a full successful sync, then a second sync whose manifest changed but
 // whose second plugin fetch fails — the on-disk marketplace.json (what
