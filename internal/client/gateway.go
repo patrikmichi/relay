@@ -12,7 +12,7 @@
 // persisting the rotated pair to the OS keychain before returning. A Client
 // built via the bare New constructor (e.g. GATEWAY_API_KEY bearer auth) has
 // no refresh capability and behaves exactly like a plain bearer-token HTTP
-// client — see canRefresh.
+// client — see canRefreshLocked.
 package client
 
 import (
@@ -48,12 +48,26 @@ type Client struct {
 
 	// Refresh context — populated only by Resolve for a keychain-backed
 	// OAuth session. Zero values (email == "") mean "no refresh capability"
-	// — see canRefresh. Never set for a GATEWAY_API_KEY bearer client.
+	// — see canRefreshLocked. Never set for a GATEWAY_API_KEY bearer client.
+	//
+	// mu is the ONE synchronization policy for every mutable field below
+	// (AccessToken, refreshToken, expiresAt): every read and every write
+	// goes through it, with no unlocked fast path — see bearerSnapshot,
+	// canRefreshLocked, and refreshLocked. email/gatewayOrigin are set once
+	// at construction and never mutated afterward, so they're safe to read
+	// without mu.
 	mu            sync.Mutex
 	email         string
 	gatewayOrigin string
 	refreshToken  string
 	expiresAt     time.Time
+
+	// store/locker coordinate refresh across independently invoked `relay`
+	// processes sharing the same (gatewayOrigin, email) keychain entry —
+	// see refreshLocked. Defaulted by New/Resolve; overridable via
+	// WithSessionStore/WithSessionLocker for tests.
+	store  SessionStore
+	locker SessionLocker
 }
 
 // errRedirectRefused is returned via http.Client.CheckRedirect to refuse
@@ -81,6 +95,8 @@ func New(gatewayURL, accessToken string) *Client {
 		GatewayURL:  strings.TrimRight(gatewayURL, "/"),
 		AccessToken: accessToken,
 		httpClient:  NoRedirectHTTPClient(),
+		store:       keychainSessionStore{},
+		locker:      flockSessionLocker{},
 	}
 }
 
@@ -107,14 +123,23 @@ func New(gatewayURL, accessToken string) *Client {
 // email but no session is bound to this gateway, the returned error
 // explains that a fresh login is required — it never falls back to using
 // the legacy, unscoped session automatically.
-func Resolve(gatewayURL string) (*Client, error) {
+//
+// opts is normally empty; it exists so tests can inject a fake
+// SessionStore/SessionLocker (WithSessionStore/WithSessionLocker) for
+// deterministic refresh-coordination coverage without touching the OS
+// keychain.
+func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 	origin, err := config.NormalizeGatewayURL(gatewayURL)
 	if err != nil {
 		return nil, err
 	}
 
 	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
-		return New(origin, apiKey), nil
+		c := New(origin, apiKey)
+		for _, opt := range opts {
+			opt(c)
+		}
+		return c, nil
 	}
 
 	email, err := config.ResolveEmail()
@@ -141,6 +166,9 @@ func Resolve(gatewayURL string) (*Client, error) {
 	if tokenData.ExpiresAt > 0 {
 		c.expiresAt = time.Unix(tokenData.ExpiresAt, 0)
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
 	return c, nil
 }
 
@@ -157,16 +185,55 @@ func (c *Client) GatewayOrigin() string {
 	return c.gatewayOrigin
 }
 
-// canRefresh reports whether this Client holds enough context (email +
-// gateway identity + refresh token) to attempt a rotation.
-func (c *Client) canRefresh() bool {
+// canRefreshLocked reports whether this Client holds enough context (email
+// + gateway identity + refresh token) to attempt a rotation. Caller must
+// hold c.mu — refreshToken is mutable state (see the Client doc comment).
+func (c *Client) canRefreshLocked() bool {
 	return c.email != "" && c.gatewayOrigin != "" && c.refreshToken != ""
 }
 
-// refreshLocked performs the refresh + keychain persistence. Caller must
-// hold c.mu.
-func (c *Client) refreshLocked() error {
-	result, err := refreshOAuthToken(c.GatewayURL, c.refreshToken)
+// bearerSnapshot returns a point-in-time copy of the current access token
+// under c.mu — never a reference into live Client state, so a request that
+// captured its snapshot is unaffected by a refresh that rotates
+// AccessToken concurrently on another goroutine sharing this Client (R25).
+func (c *Client) bearerSnapshot() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.AccessToken
+}
+
+// refreshLocked performs a coordinated refresh + persistence. Caller must
+// hold c.mu — that serializes every in-process caller sharing this Client
+// (R25). Cross-process coordination is separate: refreshLocked additionally
+// acquires an OS-backed lock scoped to (gatewayOrigin, email) so independent
+// `relay` invocations racing to refresh the same session never both submit
+// the same single-use refresh token (R24). ctx bounds both the lock wait
+// and the HTTP call — a caller's deadline covers the whole refresh, not just
+// the request that triggered it (R23).
+func (c *Client) refreshLocked(ctx context.Context) error {
+	unlock, err := c.locker.Lock(ctx, c.gatewayOrigin, c.email)
+	if err != nil {
+		return fmt.Errorf("acquire cross-process refresh lock: %w", err)
+	}
+	defer unlock.Unlock()
+
+	// Another process may have rotated the token while we waited for the
+	// lock. A single-use refresh token IS this session's generation marker:
+	// if the stored value no longer matches the one we're holding, someone
+	// else already spent it and rotated — adopt their result instead of
+	// submitting our now-stale copy, which the gateway would reject as
+	// reuse and revoke the whole token family for.
+	if current, readErr := c.store.Read(c.gatewayOrigin, c.email); readErr == nil &&
+		current.RefreshToken != "" && current.RefreshToken != c.refreshToken {
+		c.AccessToken = current.AccessToken
+		c.refreshToken = current.RefreshToken
+		if current.ExpiresAt > 0 {
+			c.expiresAt = time.Unix(current.ExpiresAt, 0)
+		}
+		return nil
+	}
+
+	result, err := refreshOAuthToken(ctx, c.GatewayURL, c.refreshToken)
 	if err != nil {
 		return err
 	}
@@ -184,15 +251,18 @@ func (c *Client) refreshLocked() error {
 	// still work (in-memory pair is valid), but every OTHER process reading
 	// the keychain (a concurrently-running `relay` invocation, or the very
 	// next command) would present the now-spent old refresh token and get
-	// its whole token family revoked. Failing the refresh outright on a
-	// write error is safer than risking that.
-	if err := keychain.WriteToken(c.gatewayOrigin, c.email, keychain.TokenData{
+	// its whole token family revoked. A persistence failure here is
+	// therefore returned as a visible, explicit error — never swallowed,
+	// and NEVER retried with this now-spent refresh token within this same
+	// invocation. Recovering may require running `relay login` again; this
+	// never falls back to writing the token to disk unencrypted.
+	if err := c.store.Write(c.gatewayOrigin, c.email, keychain.TokenData{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		ExpiresIn:    expiresIn,
 		ExpiresAt:    expiresAt.Unix(),
 	}); err != nil {
-		return fmt.Errorf("refresh succeeded but persisting the rotated token failed: %w", err)
+		return fmt.Errorf("refresh succeeded but persisting the rotated token to the OS keychain failed (reauthentication via `relay login` may be required): %w", err)
 	}
 
 	c.AccessToken = result.AccessToken
@@ -201,24 +271,19 @@ func (c *Client) refreshLocked() error {
 	return nil
 }
 
-// maybeProactiveRefresh refreshes ahead of a known expiry. Best-effort: a
-// failure here is NOT fatal — the request proceeds with the current token,
-// and the reactive on-401 path in Do is the backstop.
-func (c *Client) maybeProactiveRefresh() {
-	if !c.canRefresh() || c.expiresAt.IsZero() {
-		return
-	}
-	if time.Now().Add(refreshSkew).Before(c.expiresAt) {
-		return
-	}
+// maybeProactiveRefresh refreshes ahead of a known expiry, bounded by ctx.
+// Best-effort: a failure here is NOT fatal — the request proceeds with the
+// current token, and the reactive on-401 path in Do is the backstop.
+func (c *Client) maybeProactiveRefresh(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// Re-check after acquiring the lock — a concurrent call on this same
-	// Client may have already refreshed while we were waiting.
+	if !c.canRefreshLocked() || c.expiresAt.IsZero() {
+		return
+	}
 	if time.Now().Add(refreshSkew).Before(c.expiresAt) {
 		return
 	}
-	_ = c.refreshLocked() // best-effort — Do's reactive 401 path is the backstop
+	_ = c.refreshLocked(ctx) // best-effort — Do's reactive 401 path is the backstop
 }
 
 // unauthorizedResponse builds a synthetic 401 response with an empty,
@@ -279,11 +344,15 @@ func cloneRequest(req *http.Request) (*http.Request, error) {
 // bare New constructor) skips all of the above — the request is sent
 // exactly once, matching the pre-refresh-support behavior of this package.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	c.maybeProactiveRefresh()
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	ctx := req.Context()
+	c.maybeProactiveRefresh(ctx)
+	req.Header.Set("Authorization", "Bearer "+c.bearerSnapshot())
 
 	resp, err := c.httpClient.Do(req)
-	if err != nil || resp.StatusCode != http.StatusUnauthorized || !c.canRefresh() {
+	c.mu.Lock()
+	refreshable := c.canRefreshLocked()
+	c.mu.Unlock()
+	if err != nil || resp.StatusCode != http.StatusUnauthorized || !refreshable {
 		return resp, err
 	}
 
@@ -291,7 +360,8 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	_ = resp.Body.Close()
 
 	c.mu.Lock()
-	refreshErr := c.refreshLocked()
+	refreshErr := c.refreshLocked(ctx)
+	retryToken := c.AccessToken
 	c.mu.Unlock()
 	if refreshErr != nil {
 		return unauthorizedResponse(req), nil
@@ -304,7 +374,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// THIS call still reports 401.
 		return unauthorizedResponse(req), nil
 	}
-	retryReq.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	retryReq.Header.Set("Authorization", "Bearer "+retryToken)
 	return c.httpClient.Do(retryReq)
 }
 
