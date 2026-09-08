@@ -145,12 +145,30 @@ func Write(plan *Plan) error {
 		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
 	}
 	for rel, data := range plan.Files {
+		// Re-check containment immediately before this specific write, not
+		// just once for the whole batch in PreflightWrite above — R05/R11:
+		// a path validated earlier can go stale (an intermediate directory
+		// swapped for a symlink between preflight and this write), so the
+		// actual filesystem-write boundary gets its own check too.
+		if err := verifyPathHasNoSymlinks(plan.TargetPaths, rel); err != nil {
+			return err
+		}
 		dest := filepath.Join(plan.TargetPaths, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return fmt.Errorf("create dir for %s: %w", dest, err)
 		}
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
+		mode := os.FileMode(0o644)
+		if rf, ok := plan.Skill.Resources[rel]; ok {
+			mode = rf.Mode
+		}
+		if err := os.WriteFile(dest, data, mode); err != nil {
 			return fmt.Errorf("write %s: %w", dest, err)
+		}
+		// os.WriteFile only applies mode on CREATE, not on an existing file
+		// (preflight already allowed same-content overwrites) — Chmod makes
+		// the mode authoritative regardless of whether the file pre-existed.
+		if err := os.Chmod(dest, mode); err != nil {
+			return fmt.Errorf("chmod %s: %w", dest, err)
 		}
 	}
 

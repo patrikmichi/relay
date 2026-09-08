@@ -29,6 +29,7 @@ func SkillInstallCmd() *cobra.Command {
 		scopeFlag  string
 		dryRun     bool
 		strict     bool
+		acceptLoss bool
 		version    string
 		channel    string
 		gatewayURL string
@@ -70,6 +71,7 @@ Examples:
 				scope:      scopeFlag,
 				dryRun:     dryRun,
 				strict:     strict,
+				acceptLoss: acceptLoss,
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
@@ -81,6 +83,7 @@ Examples:
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to write to: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write files")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Abort if any field would be dropped")
+	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Proceed despite non-security fidelity loss without an interactive prompt")
 	cmd.Flags().StringVar(&version, "version", "", "Catalog install only: exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "Catalog install only: stable or beta (default: gateway's default channel)")
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $GATEWAY_URL, config, or built-in default)")
@@ -93,6 +96,7 @@ type skillInstallOpts struct {
 	scope      string
 	dryRun     bool
 	strict     bool
+	acceptLoss bool
 	version    string
 	channel    string
 	gatewayURL string
@@ -133,7 +137,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 		return err
 	}
 
-	return applyMigrationToTargets(cmd.OutOrStdout(), src, fromLabel, targets, scope, opts.dryRun, opts.strict)
+	return applyMigrationToTargets(cmd.OutOrStdout(), src, fromLabel, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 // classifyInstallSource decides whether arg is a local filesystem path or a

@@ -381,7 +381,7 @@ func TestApplyAgentMigrationToTargets_MigrateErrorPropagates(t *testing.T) {
 
 	invalid := &agentport.Agent{Name: "Not Valid", Description: "d"}
 	var buf bytes.Buffer
-	err := applyAgentMigrationToTargets(&buf, invalid, "claude", []agentport.AgentAdapter{agentport.NewOpencodeAgentAdapter()}, agentport.ScopeUser, false, false)
+	err := applyAgentMigrationToTargets(&buf, invalid, "claude", []agentport.AgentAdapter{agentport.NewOpencodeAgentAdapter()}, agentport.ScopeUser, false, false, false)
 	if err == nil {
 		t.Fatalf("expected an error migrating an agent with an invalid name")
 	}

@@ -135,6 +135,7 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 	}
 
 	ag.UnmappedSecurityFields = collectUnmappedSecurityFields(&root, configured)
+	ag.UnmappedFields = collectUnmappedFields(&root, configured, agentSecurityFrontmatterKeys, a.ID())
 
 	// No on-disk "name" field is mapped for every shipped agent provider
 	// (e.g. opencode); when frontmatter omits it, infer it from the
@@ -203,6 +204,7 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 		}
 		mapping.Content = append(mapping.Content, keyNode, valNode)
 	}
+	unmappedLoss := projectUnmappedFields(mapping, ag.UnmappedFields, ag.Provenance.SourceProvider, a.ID())
 
 	fmBytes, err := yaml.Marshal(mapping)
 	if err != nil {
@@ -213,6 +215,7 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 	files := map[string][]byte{ag.Name + ".md": content}
 
 	loss := computeAgentLoss(ag, a.caps)
+	loss = append(loss, unmappedLoss...)
 	if modelLoss != nil {
 		loss = append(loss, *modelLoss)
 	}

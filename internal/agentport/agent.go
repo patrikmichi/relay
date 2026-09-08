@@ -55,6 +55,13 @@ type Agent struct {
 	// by default — not to preserve or re-map the setting itself.
 	UnmappedSecurityFields []UnmappedSecurityField
 
+	// UnmappedFields retains frontmatter keys this provider's configured
+	// field set has no binding for and which are NOT security-relevant
+	// (those go into UnmappedSecurityFields instead) — R04, non-security
+	// half. Same-provider Project() re-emits them; a different target
+	// reports their loss instead of guessing a foreign-schema equivalent.
+	UnmappedFields []UnmappedField
+
 	Provenance Provenance
 }
 

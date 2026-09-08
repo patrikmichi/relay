@@ -115,6 +115,12 @@ func WriteAgent(plan *AgentPlan) error {
 		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
 	}
 	for rel, data := range plan.Files {
+		// See engine.go's Write for why this re-checks containment right
+		// before the write instead of trusting PreflightWriteAgent alone
+		// (R05/R11).
+		if err := verifyPathHasNoSymlinks(plan.TargetPaths, rel); err != nil {
+			return err
+		}
 		dest := filepath.Join(plan.TargetPaths, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return fmt.Errorf("create dir for %s: %w", dest, err)

@@ -163,6 +163,13 @@ func computeLoss(s *Skill, caps CapSet) []LossItem {
 	if len(s.Metadata) > 0 && !caps.Metadata {
 		add("Metadata", "target provider has no metadata map equivalent")
 	}
+	for _, ex := range s.ExcludedResources {
+		loss = append(loss, LossItem{
+			Field: "Resources",
+			Kind:  LossDropped,
+			Note:  "excluded resource " + ex.Path + ": " + ex.Reason,
+		})
+	}
 	return loss
 }
 
