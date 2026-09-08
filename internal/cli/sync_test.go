@@ -116,6 +116,7 @@ func buildMockServer(t *testing.T, manifestOverride interface{}, statusOverrides
 
 // TestRunSync_HappyPath verifies that a successful sync creates the expected files.
 func TestRunSync_HappyPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
 	srv := buildMockServer(t, nil, nil)
 	defer srv.Close()
 
@@ -194,6 +195,7 @@ func TestRunSync_DryRun(t *testing.T) {
 
 // TestRunSync_Revocation verifies that a plugin dir absent from the new manifest is removed.
 func TestRunSync_Revocation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
 	srv := buildMockServer(t, nil, nil)
 	defer srv.Close()
 
@@ -448,8 +450,8 @@ func TestRunSync_PathTraversal_PluginSource(t *testing.T) {
 				t.Fatalf("source %q: expected rejection error, got nil", tc.source)
 			}
 
-			// No files should have been written (marketplace.json would be written
-			// before plugins are processed — verify the *plugins* dir is absent).
+			// The unsafe source must be rejected before any plugin directory
+			// is created.
 			pluginsDir := filepath.Join(dir, "plugins")
 			if _, statErr := os.Stat(pluginsDir); !os.IsNotExist(statErr) {
 				t.Errorf("source %q: plugins dir must not exist after rejection", tc.source)

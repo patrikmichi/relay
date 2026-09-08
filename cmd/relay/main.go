@@ -144,6 +144,8 @@ func newRootCmd() *cobra.Command {
 		cli.AgentCmd(),
 		cli.MCPCmd(),
 		cli.ProvidersCmd(),
+		cli.RecoverCmd(),
+		cli.HistoryCmd(),
 	)
 
 	// Register dynamic service sub-commands lazily.

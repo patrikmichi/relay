@@ -50,11 +50,34 @@ type ManifestEntry struct {
 	// doesn't match the current working directory — R06; see
 	// verifyProjectRollbackTarget in preflight.go.
 	ProjectRoot string `json:"projectRoot,omitempty"`
+	// TransactionID links this entry back to the txn.Journal that produced
+	// it — `relay history`/`relay recover` evidence, and the backup this
+	// entry's bytes were staged from before being written (empty for
+	// entries recorded before the transaction engine existed).
+	TransactionID string `json:"transactionId,omitempty"`
+	// FileModes carries each TargetPaths file's mode (R11: a hash alone
+	// can't tell rollback whether a script needs 0755 restored). Keyed
+	// identically to TargetPaths; absent/missing keys default to 0644.
+	FileModes map[string]uint32 `json:"fileModes,omitempty"`
 }
 
-// Manifest is the on-disk ledger shape: a flat, append-only list of entries.
+// manifestSchemaVersion is bumped only when the on-disk Manifest shape
+// changes incompatibly. A manifest written by a newer relay build must
+// never be silently misread (and then rewritten, corrupting it) by an
+// older one — LoadManifest refuses anything newer than this (D6). Absent
+// (0) on disk means "schema v1, predates this field" — the same
+// zero-value-is-legacy convention Kind already uses.
+const manifestSchemaVersion = 1
+
+// ErrFutureManifestSchema means the manifest was written by a newer relay
+// version than this build understands.
+var ErrFutureManifestSchema = errors.New("manifest uses a newer schema than this relay build supports — upgrade relay before running any mutating command")
+
+// Manifest is the on-disk ledger shape: a flat, append-only list of
+// entries, plus its own schema version for the downgrade guard above.
 type Manifest struct {
-	Entries []ManifestEntry `json:"entries"`
+	SchemaVersion int             `json:"schemaVersion,omitempty"`
+	Entries       []ManifestEntry `json:"entries"`
 }
 
 // normalizeManifestKinds sets Kind to KindSkill on every entry whose Kind
@@ -101,6 +124,9 @@ func LoadManifest() (Manifest, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return Manifest{}, fmt.Errorf("parse manifest %s: %w", path, err)
 	}
+	if m.SchemaVersion > manifestSchemaVersion {
+		return Manifest{}, fmt.Errorf("%w: %s has schema %d, this build supports up to %d", ErrFutureManifestSchema, path, m.SchemaVersion, manifestSchemaVersion)
+	}
 	normalizeManifestKinds(&m)
 	return m, nil
 }
@@ -119,6 +145,7 @@ func SaveManifest(m Manifest) error {
 	if err != nil {
 		return err
 	}
+	m.SchemaVersion = manifestSchemaVersion
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)

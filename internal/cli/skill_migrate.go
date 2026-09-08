@@ -119,6 +119,8 @@ func runSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts) err
 // confirmation. Running without a terminal attached must never be treated
 // as silent consent to accept the loss — it aborts instead.
 func applyMigrationToTargets(out io.Writer, src *agentport.Skill, fromLabel string, targets []agentport.Adapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
+	var toWrite []*agentport.Plan
+
 	for _, target := range targets {
 		plan, err := agentport.Migrate(src, target, scope)
 		if err != nil {
@@ -152,8 +154,25 @@ func applyMigrationToTargets(out io.Writer, src *agentport.Skill, fromLabel stri
 			}
 		}
 
+		toWrite = append(toWrite, plan)
+	}
+
+	// All-target preflight (R08): validate every target that survived the
+	// loop above BEFORE writing any of them, so a later target's conflict
+	// aborts with zero prior writes rather than a partially-applied
+	// migration. Each Write below still opens its own independent
+	// transaction — targets can land in entirely different directories or
+	// filesystems, which cannot be committed as a single atomic group —
+	// but this closes the gap where an earlier target's write already
+	// landed before a later target's preflight was even checked.
+	for _, plan := range toWrite {
+		if err := agentport.PreflightWrite(plan); err != nil {
+			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)
+		}
+	}
+	for _, plan := range toWrite {
 		if err := agentport.Write(plan); err != nil {
-			return fmt.Errorf("write %s -> %s: %w", fromLabel, target.ID(), err)
+			return fmt.Errorf("write %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
 		fmt.Fprintf(out, "written: %s\n", plan.TargetPaths)
 	}

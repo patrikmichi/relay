@@ -22,14 +22,16 @@ import (
 // R09: writing a new bundle version doesn't reconcile the previous file
 // set, so a file removed upstream survives on disk.
 func TestR09_SyncBundleUpdateRemovesStaleFiles(t *testing.T) {
-	dir := t.TempDir()
-	if err := writePluginBundle(dir, []byte(`{"files":{"old.md":"old","keep.md":"one"}}`)); err != nil {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
+	localDir := t.TempDir()
+	pluginDir := filepath.Join(localDir, "plugins", "demo")
+	if err := writePluginBundle(localDir, "demo", pluginDir, []byte(`{"files":{"old.md":"old","keep.md":"one"}}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := writePluginBundle(dir, []byte(`{"files":{"keep.md":"two"}}`)); err != nil {
+	if err := writePluginBundle(localDir, "demo", pluginDir, []byte(`{"files":{"keep.md":"two"}}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "old.md")); err == nil {
+	if _, err := os.Stat(filepath.Join(pluginDir, "old.md")); err == nil {
 		t.Fatal("R09: old.md removed from the new bundle still exists after update")
 	}
 }
@@ -37,12 +39,17 @@ func TestR09_SyncBundleUpdateRemovesStaleFiles(t *testing.T) {
 // R05: a symlinked intermediate directory inside the plugin directory
 // lets sync write outside the plugin root.
 func TestR05_SyncRejectsSymlinkEscape(t *testing.T) {
-	dir := t.TempDir()
-	outside := t.TempDir()
-	if err := os.Symlink(outside, filepath.Join(dir, "nested")); err != nil {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
+	localDir := t.TempDir()
+	pluginDir := filepath.Join(localDir, "plugins", "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_ = writePluginBundle(dir, []byte(`{"files":{"nested/sentinel":"changed"}}`))
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(pluginDir, "nested")); err != nil {
+		t.Fatal(err)
+	}
+	_ = writePluginBundle(localDir, "demo", pluginDir, []byte(`{"files":{"nested/sentinel":"changed"}}`))
 	if raw, err := os.ReadFile(filepath.Join(outside, "sentinel")); err == nil {
 		t.Fatalf("R05: sync wrote outside the plugin directory through a symlinked component: %s", raw)
 	}

@@ -121,6 +121,8 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 // the Agent-IR analogue of applyMigrationToTargets. See its doc comment for
 // the noninteractive-consent rule (R04).
 func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
+	var toWrite []*agentport.AgentPlan
+
 	for _, target := range targets {
 		plan, err := agentport.MigrateAgent(src, target, scope)
 		if err != nil {
@@ -154,8 +156,19 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 			}
 		}
 
+		toWrite = append(toWrite, plan)
+	}
+
+	// All-target preflight (R08) — see applyMigrationToTargets (skill_migrate.go)
+	// for the full rationale; the agent analogue of the same fix.
+	for _, plan := range toWrite {
+		if err := agentport.PreflightWriteAgent(plan); err != nil {
+			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)
+		}
+	}
+	for _, plan := range toWrite {
 		if err := agentport.WriteAgent(plan); err != nil {
-			return fmt.Errorf("write %s -> %s: %w", fromLabel, target.ID(), err)
+			return fmt.Errorf("write %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
 		fmt.Fprintf(out, "written: %s\n", plan.TargetPaths)
 	}
