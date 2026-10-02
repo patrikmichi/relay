@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,28 +25,30 @@ func WhoamiCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
 			defer cancel()
 			info, err := auth.Whoami(ctx, c, full)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "whoami failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("whoami failed: %w", err)
 			}
 
-			fmt.Printf("Email:    %s\n", info.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Email:    %s\n", info.Email)
 			if info.GoogleSub != "" {
-				fmt.Printf("Sub:      %s\n", info.GoogleSub)
+				fmt.Fprintf(cmd.OutOrStdout(), "Sub:      %s\n", info.GoogleSub)
 			}
 			if len(info.Services) > 0 {
-				fmt.Printf("Services: %s\n", strings.Join(info.Services, ", "))
+				fmt.Fprintf(cmd.OutOrStdout(), "Services: %s\n", strings.Join(info.Services, ", "))
 			} else {
-				fmt.Println("Services: all")
+				fmt.Fprintln(cmd.OutOrStdout(), "Services: all")
 			}
-			fmt.Printf("Issued:   %s\n", info.IssuedAt)
+			fmt.Fprintf(cmd.OutOrStdout(), "Issued:   %s\n", info.IssuedAt)
 			if full && len(info.Groups) > 0 {
-				fmt.Printf("Groups:   %s\n", strings.Join(info.Groups, ", "))
+				fmt.Fprintf(cmd.OutOrStdout(), "Groups:   %s\n", strings.Join(info.Groups, ", "))
 			}
 			return nil
 		},

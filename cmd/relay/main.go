@@ -35,25 +35,12 @@ func buildVersionString(version, commit, date string) string {
 	return fmt.Sprintf("%s (%s, %s)", version, commit, date)
 }
 
-// staticCommandNames are every static (non-dynamic) top-level command name
-// plus the handful of nested sub-command names (tokens' list/revoke,
-// config's set-gateway/get-gateway/show) that also need to skip dynamic
-// registration. Anything NOT in this set is assumed to be a dynamic
-// service/tool command name (or an attempt at one).
-//
-// "recover" and "history" were missing here until this fix — both are real
-// registered top-level commands (see newRootCmd), so a discovered service
-// literally named "recover" or "history" would have silently collided with
-// them instead of being caught. This hand-maintained list is only the
-// pre-resolution fast-path check now; BuildServiceCommands' own
-// commandNameCollides check against the live command tree is the
-// authoritative guard (R13) and can't drift the same way.
 var staticCommandNames = map[string]bool{
 	"login": true, "logout": true, "whoami": true, "authorize": true,
 	"call": true, "services": true, "tokens": true, "config": true,
 	"help-tools": true, "help": true, "completion": true, "sync": true,
 	"publish": true, "skill": true, "agent": true, "mcp": true,
-	"providers": true, "recover": true, "history": true,
+	"providers": true, "doctor": true, "recover": true, "history": true,
 	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
@@ -97,22 +84,6 @@ func discoveryCandidate(args []string) (string, bool) {
 	return "", false
 }
 
-// prepareDynamicCommands runs gateway discovery BEFORE Cobra resolves the
-// command tree for args, registering it on root synchronously. This is the
-// fix for R13: Cobra's own Find() rejects an unregistered command before
-// any PersistentPreRunE hook can run, so a hook-based call to
-// BuildServiceCommands (the previous approach) never actually fires for the
-// one case it exists to serve — a not-yet-registered dynamic service/tool
-// command. Calling it here, ahead of Execute, means the command already
-// exists in the tree by the time Cobra tries to resolve it.
-//
-// Skips discovery entirely (no gateway dial) whenever: there's no candidate
-// command word (bare `relay`, `--help`, `--offline` alone), the candidate is
-// a static/reserved name, --offline is present, or no gateway is
-// configured — the last of which degrades gracefully rather than erroring,
-// matching BuildServiceCommands' own degradation posture. Returns a non-nil
-// error only for a real collision (see BuildServiceCommands), which the
-// caller must treat as fatal rather than silently continuing.
 func prepareDynamicCommands(root *cobra.Command, args []string) error {
 	candidate, ok := discoveryCandidate(args)
 	if !ok {
@@ -167,13 +138,6 @@ func rewriteOfflineUnknownCommandErr(err error, args []string) error {
 	return errors.New(cli.OfflineGuidance())
 }
 
-// newRootCmd builds the relay root cobra command with every static
-// sub-command registered. Extracted from main() so tests can Execute() the
-// full command tree (e.g. to prove --offline never dials the gateway)
-// without needing a built binary. Dynamic service/tool commands are NOT
-// registered here — see prepareDynamicCommands, which main() calls before
-// Execute (R13: a PersistentPreRunE hook never fires for a command Cobra's
-// own Find() couldn't already resolve).
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "relay",
@@ -208,6 +172,7 @@ func newRootCmd() *cobra.Command {
 		cli.AgentCmd(),
 		cli.MCPCmd(),
 		cli.ProvidersCmd(),
+		cli.DoctorCmd(),
 		cli.RecoverCmd(),
 		cli.HistoryCmd(),
 	)
@@ -236,11 +201,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// A SIGINT/SIGTERM cancels cmd.Context() everywhere it's threaded
-	// through (login/device-code polling, logout, whoami, refresh, ...) —
-	// commands that ignore it entirely still run to completion, but every
-	// command wired to cmd.Context() gets clean, immediate cancellation
-	// instead of relying solely on its own operation timeout (R23).
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

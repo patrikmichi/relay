@@ -3,7 +3,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -41,22 +40,20 @@ is not available.`,
 			ctx := cmd.Context()
 
 			if deviceFlow {
-				result, err := auth.DeviceLogin(ctx, resolvedURL)
+				result, err := auth.DeviceLogin(ctx, resolvedURL, cmd.OutOrStdout())
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Login failed:", err)
-					os.Exit(1)
+					return fmt.Errorf("login failed: %w", err)
 				}
-				fmt.Printf("Logged in as %s\n", result.Email)
+				fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s\n", result.Email)
 				return nil
 			}
 
-			result, err := auth.Login(ctx, resolvedURL)
+			result, err := auth.Login(ctx, resolvedURL, cmd.ErrOrStderr())
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Login failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("login failed: %w", err)
 			}
 
-			fmt.Printf("Logged in as %s\n", result.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s\n", result.Email)
 			return nil
 		},
 	}

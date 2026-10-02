@@ -16,26 +16,25 @@ func ProvidersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "providers",
 		Short: "List supported agent-skill providers and detection status",
-		Long: `List the built-in skill-manager providers (claude, codex, opencode, cursor):
-whether each is detected as installed on this machine (any of its user skill
-directories exist), and the user/project directories relay searches for
-skills of that provider.`,
+		Long:  `List registered skill providers, detection status, and user/project directories.`,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			for _, a := range agentport.AllAdapters() {
 				status := "not detected"
 				if a.Detect() {
 					status = "detected"
 				}
-				fmt.Printf("%-10s %s\n", a.ID(), status)
-				fmt.Println("  user dirs:")
+				_, supportsAgents := agentport.AgentAdapterByID(a.ID())
+				fmt.Fprintf(cmd.OutOrStdout(), "%-10s %s; agents: %t\n", a.ID(), status, supportsAgents)
+				fmt.Fprintln(cmd.OutOrStdout(), "  user dirs:")
 				for _, d := range a.UserDirs() {
-					fmt.Printf("    %s\n", d)
+					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", d)
 				}
-				fmt.Println("  project dirs:")
+				fmt.Fprintln(cmd.OutOrStdout(), "  project dirs:")
 				for _, d := range a.ProjectDirs() {
-					fmt.Printf("    %s\n", d)
+					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", d)
 				}
-				fmt.Println()
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 			return nil
 		},

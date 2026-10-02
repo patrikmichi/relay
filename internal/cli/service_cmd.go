@@ -3,8 +3,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -42,29 +45,15 @@ type IntegrationsResponse struct {
 	Services     []DiscoveryService `json:"services"`
 }
 
-// fetchIntegrations calls the always-on GET /api/integrations discovery
-// endpoint and returns the full service+tool catalog (with descriptions and
-// input schemas) for the calling principal.
-//
-// This REPLACES the previous discovery path, which called `gateway.catalog`
-// via the aggregate `POST /api/mcp` JSON-RPC endpoint. That endpoint 503s
-// whenever AGGREGATE_MCP_ENABLED != 'true' (default OFF — see gateway
-// app/api/mcp/route.ts), which silently broke `relay services`,
-// `relay help-tools`, and dynamic per-service sub-command registration on
-// any gateway that hadn't explicitly opted into the (intentional) aggregate
-// kill-switch. /api/integrations is a dedicated, dispatch-free, always-on
-// discovery endpoint (auth: verifyMcpAuth, same as every MCP surface) that
-// was added specifically to serve this need — see gateway
-// app/api/integrations/route.ts's doc comment.
-//
-// Returns (nil, nil) — not an error — when the caller is unauthenticated
-// (401, i.e. c.Do's transparent refresh-and-retry ALSO failed), matching the
-// previous fetchCatalog behavior: callers that want a hard auth failure
-// (e.g. `relay services`) perform their own request instead of going
-// through this helper so they can print the re-authenticate prompt and
-// exit(1).
-func fetchIntegrations(c *client.Client) (*IntegrationsResponse, error) {
-	resp, err := c.Get("/api/integrations")
+// fetchIntegrations calls the always-on GET /api/integrations discovery endpoint and returns the full service+tool catalog (with descriptions and input schemas) for the calling principal.
+func fetchIntegrations(c *client.Client, parents ...context.Context) (*IntegrationsResponse, error) {
+	parent := context.Background()
+	if len(parents) > 0 && parents[0] != nil {
+		parent = parents[0]
+	}
+	ctx, cancel := context.WithTimeout(parent, defaultOpTimeout)
+	defer cancel()
+	resp, err := c.GetContext(ctx, "/api/integrations")
 	if err != nil {
 		return nil, fmt.Errorf("GET /api/integrations: %w", err)
 	}
@@ -101,11 +90,6 @@ type mcpRPCError struct {
 	Message string `json:"message"`
 }
 
-// mcpToolResult mirrors the JSON-RPC 2.0 "result" object of an MCP
-// tools/call response. Content blocks are kept as raw JSON — rather than
-// decoded into a text-only struct — so renderContentBlock can preserve and
-// print non-text block types (image, audio, resource, resource_link, ...)
-// instead of silently dropping them (R16).
 type mcpToolResult struct {
 	IsError bool              `json:"isError"`
 	Content []json.RawMessage `json:"content"`
@@ -120,13 +104,6 @@ type mcpEnvelope struct {
 	Error  *mcpRPCError   `json:"error"`
 }
 
-// decodeMCPEnvelope parses and validates an MCP JSON-RPC 2.0 response body.
-// A body that fails to parse, or names neither result nor error, or names
-// both, is rejected — an unrelated/malformed 200 OK body must never be
-// treated as an empty success (R15): MCP explicitly distinguishes
-// tool-level failure (result.isError) from protocol-level failure (the
-// error field), and a caller that can't identify which one it got must not
-// guess "success".
 func decodeMCPEnvelope(body []byte) (*mcpEnvelope, error) {
 	var env mcpEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
@@ -165,13 +142,6 @@ func contentBlockText(raw json.RawMessage) (string, bool) {
 	return typed.Text, true
 }
 
-// renderContentBlock renders one MCP content block for human-readable
-// output. A text block whose text is itself JSON is pretty-printed
-// (preserves prior behavior); any other block — including a text block
-// whose text isn't JSON, or a non-text type (image, audio, resource,
-// resource_link, or a future type this CLI doesn't know about) — is never
-// dropped: non-JSON text prints as-is, and every other shape prints as its
-// own indented raw JSON so nothing behind Content[1:] is lost (R16).
 func renderContentBlock(raw json.RawMessage) string {
 	if text, ok := contentBlockText(raw); ok {
 		var parsed interface{}
@@ -200,29 +170,13 @@ func renderContentBlocks(blocks []json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-// callTool is the shared execution path for both `relay <service> <tool>
-// [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and
-// `relay call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
-//
-// EXECUTION REPOINT: previously POSTed to the REST `/api/<service>/call`
-// endpoint with a flat `{tool, arguments}` body. Now POSTs to the canonical
-// per-service MCP JSON-RPC endpoint (`/api/<service>/mcp`, method
-// "tools/call") with `{name, arguments}` params, so CLI execution goes
-// through the SAME transport as any other MCP client — matching
-// `relay help-tools` / discovery, which already used the per-service MCP
-// surface for tools/list. Governance (rate-limit, allow/block policy,
-// prompt-injection, schema validation, egress/SSRF, audit, redaction —
-// lib/dispatch/run-tool.ts) is byte-for-byte identical either way; only the
-// transport envelope changes (JSON-RPC result/error vs. the REST
-// {ok, result|error} body `/call` used). `/call` itself is unchanged and
-// still works (kept for scripts/back-compat) — this only repoints the CLI.
-//
-// jsonOut, when true, prints the full raw JSON-RPC response body verbatim
-// instead of the human-rendered content blocks — for scripting against the
-// unmodified structured result. It does not change exit-status semantics:
-// isError/error responses still return a non-nil error either way, so a
-// script can rely on the exit code without parsing stdout for failure.
+// callTool is the shared execution path for both `relay <service> <tool> [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and `relay call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
 func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut bool) error {
+	return callToolWithContext(context.Background(), c, service, tool, rawArgs, jsonOut, os.Stdout)
+}
+func callToolWithContext(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut bool, out io.Writer) error {
+	ctx, cancel := context.WithTimeout(parent, defaultOpTimeout)
+	defer cancel()
 	arguments := make(map[string]interface{})
 	for _, raw := range rawArgs {
 		k, v, ok := strings.Cut(raw, "=")
@@ -252,7 +206,7 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 	}
 
 	path := "/api/" + service + "/mcp"
-	resp, err := c.Post(path, "application/json", bytes.NewReader(body))
+	resp, err := c.PostContext(ctx, path, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -264,22 +218,13 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-		os.Exit(1)
+		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 	}
 
 	if jsonOut {
-		fmt.Println(string(respBody))
+		fmt.Fprintln(out, string(respBody))
 	}
 
-	// JSON-RPC envelope: {jsonrpc, id, result: {isError, content:[...]}} on
-	// success, {jsonrpc, id, error: {code, message}} on failure. The gateway
-	// mostly responds 200 even for tool-level errors (JSON-RPC convention),
-	// but returns real HTTP status codes for rate-limit (429, with a
-	// Retry-After header) and a few policy rejections (400/403) — see
-	// gateway app/api/[service]/mcp/route.ts's jsonRpcError helper. A body
-	// matching neither shape (or both) is rejected by decodeMCPEnvelope
-	// rather than treated as a raw-output success (R15).
 	env, envErr := decodeMCPEnvelope(respBody)
 	if envErr != nil {
 		if resp.StatusCode != http.StatusOK {
@@ -299,8 +244,6 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 		return fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 
-	// A valid MCP tool-level failure (the request succeeded, but the tool
-	// itself reported failure) must never be reported as success (R15).
 	if env.Result.IsError {
 		return fmt.Errorf("tool reported failure: %s", renderContentBlocks(env.Result.Content))
 	}
@@ -310,32 +253,17 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 	}
 
 	if len(env.Result.Content) == 0 {
-		fmt.Println("{}")
+		fmt.Fprintln(out, "{}")
 		return nil
 	}
 
-	// Render every content block in order — a prior version printed only
-	// Content[0], silently discarding the rest (R16).
 	for _, block := range env.Result.Content {
-		fmt.Println(renderContentBlock(block))
+		fmt.Fprintln(out, renderContentBlock(block))
 	}
 	return nil
 }
 
 // buildToolCmd creates a leaf cobra command for a single tool.
-// The command delegates to callTool.
-//
-// gatewayURL here is already the resolved URL BuildServiceCommands used to
-// discover this tool in the first place (it only runs when !cli.Offline(),
-// see cmd/relay/main.go's PersistentPreRunE) — but RunE re-resolves through
-// resolveGatewayURLOrFailClosed anyway rather than closing over gatewayURL
-// directly, so a dynamic tool command built during an earlier (online)
-// invocation can never dial the gateway if --offline is passed to a later
-// invocation of the same already-registered command. Cobra commands aren't
-// rebuilt per-invocation within a single process, but resolveClient
-// otherwise has no fail-closed check of its own — every gateway-dialing
-// RunE in this package must resolve through resolveGatewayURLOrFailClosed
-// so --offline is enforced uniformly, not just at discovery time.
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
 	var rawArgs []string
 	var jsonOut bool
@@ -348,8 +276,11 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			if err != nil {
 				return err
 			}
-			c := resolveClient(gURL)
-			return callTool(c, serviceName, toolName, rawArgs, jsonOut)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			return callToolWithContext(cmd.Context(), c, serviceName, toolName, rawArgs, jsonOut, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable, JSON values supported)")
@@ -387,30 +318,13 @@ func commandNameCollides(root *cobra.Command, name string) bool {
 	return false
 }
 
-// BuildServiceCommands fetches the gateway's integrations catalog and
-// registers one cobra command per accessible service, with one sub-command
-// per tool (tool metadata — name + description — comes embedded in the same
-// discovery response, so no additional per-service round trip is needed).
-//
-// Must be called BEFORE Cobra resolves the command tree for a candidate
-// dynamic service/tool command — cmd/relay/main.go's pre-Execute discovery
-// step does this, not a cobra PersistentPreRunE hook. Cobra's own Find()
-// rejects an unregistered command before any pre-run hook can fire, so a
-// hook-based call site never runs for the one case this exists to serve
-// (R13). If the user is not logged in or the gateway is unreachable, this
-// is a no-op (static help still works).
-//
-// Returns a non-nil error only when a discovered service name collides with
-// an already-registered command name (static, reserved, or a previously
-// discovered dynamic one) — never silently shadowing one command with the
-// other or letting the most-recently-registered one silently win.
 func BuildServiceCommands(root *cobra.Command, gatewayURL string) error {
 	c, err := client.Resolve(gatewayURL)
 	if err != nil {
 		return nil // not logged in — skip dynamic registration
 	}
 
-	info, err := fetchIntegrations(c)
+	info, err := fetchIntegrations(c, root.Context())
 	if err != nil || info == nil || len(info.Services) == 0 {
 		return nil // unreachable/unauthenticated — degrade gracefully
 	}

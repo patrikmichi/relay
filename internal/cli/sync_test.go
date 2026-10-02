@@ -31,14 +31,6 @@ func (td *testDoer) Get(path string) (*http.Response, error) {
 	return http.Get(td.srv.URL + path)
 }
 
-// lastPath returns the most recently requested path (for backward compat).
-func (td *testDoer) lastPath() string {
-	if len(td.paths) == 0 {
-		return ""
-	}
-	return td.paths[len(td.paths)-1]
-}
-
 // ---- fixtures ----
 
 var testManifest = marketplaceManifest{

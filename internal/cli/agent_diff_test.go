@@ -94,7 +94,7 @@ func TestAgentDiff_UnknownProvidersError(t *testing.T) {
 	cmd := AgentDiffCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"reviewer", "--from", "codex", "--to", "opencode"})
+	cmd.SetArgs([]string{"reviewer", "--from", "unsupported", "--to", "opencode"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected an error for an unsupported --from provider")
 	}
@@ -102,7 +102,7 @@ func TestAgentDiff_UnknownProvidersError(t *testing.T) {
 	cmd2 := AgentDiffCmd()
 	var buf2 bytes.Buffer
 	cmd2.SetOut(&buf2)
-	cmd2.SetArgs([]string{"reviewer", "--from", "claude", "--to", "cursor"})
+	cmd2.SetArgs([]string{"reviewer", "--from", "claude", "--to", "unsupported"})
 	if err := cmd2.Execute(); err == nil {
 		t.Fatalf("expected an error for an unsupported --to provider")
 	}

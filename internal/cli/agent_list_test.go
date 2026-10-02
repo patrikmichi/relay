@@ -75,7 +75,7 @@ func TestAgentList_UnknownProviderErrors(t *testing.T) {
 	cmd := AgentListCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"--provider", "cursor"})
+	cmd.SetArgs([]string{"--provider", "unsupported"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected an error for an unknown/unsupported --provider")
 	}

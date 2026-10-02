@@ -47,10 +47,6 @@ type pluginBundle struct {
 	Files map[string]string `json:"files"`
 }
 
-// managedSettings is the shape returned by GET /api/marketplace/managed-settings.
-// Written verbatim to managed-settings.fragment.json.
-type managedSettings = json.RawMessage
-
 // ---- syncDoer interface — allows tests to swap in an httptest.Server ----
 
 // syncDoer is the minimal HTTP interface SyncCmd uses.
@@ -80,6 +76,7 @@ func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync the marketplace from the gateway to a local Claude Code directory",
+		Args:  cobra.NoArgs,
 		Long: `Pull the caller's marketplace from the gateway and write a local-path
 Claude Code marketplace under ~/.config/relay/marketplace/<name>/.
 
@@ -98,7 +95,7 @@ Flags:
 					return err
 				}
 			}
-			return runSync(d, customDir, dryRun)
+			return runSync(commandDoer{d, cmd.Context()}, customDir, dryRun, cmd.OutOrStdout())
 		},
 	}
 
@@ -130,30 +127,30 @@ func resolveSyncDoer(overrideURL string) (syncDoer, error) {
 // ---- Core sync logic ----
 
 // runSync implements the sync workflow.
-func runSync(d syncDoer, customDir string, dryRun bool) error {
-	// Step 1: fetch manifest.
+func runSync(d syncDoer, customDir string, dryRun bool, writers ...io.Writer) error {
+	out := outputWriter(writers)
+
 	manifest, rawManifest, err := fetchManifest(d)
 	if err != nil {
 		return err
 	}
 
-	// Step 2: determine local dir.
 	localDir, err := resolveLocalDir(customDir, manifest.Name)
 	if err != nil {
 		return fmt.Errorf("resolve local dir: %w", err)
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] marketplace: %s\n", manifest.Name)
-		fmt.Printf("[dry-run] local dir:   %s\n", localDir)
-		fmt.Printf("[dry-run] plugins (%d):\n", len(manifest.Plugins))
+		fmt.Fprintf(out, "[dry-run] marketplace: %s\n", manifest.Name)
+		fmt.Fprintf(out, "[dry-run] local dir:   %s\n", localDir)
+		fmt.Fprintf(out, "[dry-run] plugins (%d):\n", len(manifest.Plugins))
 		for _, p := range manifest.Plugins {
 			// C1 (dry-run): validate before using.
 			id, err := safePluginID(p.Source)
 			if err != nil {
 				return fmt.Errorf("manifest plugin rejected: %w", err)
 			}
-			fmt.Printf("  would write: plugins/%s/ (version %s)\n", id, p.Version)
+			fmt.Fprintf(out, "  would write: plugins/%s/ (version %s)\n", id, p.Version)
 		}
 		// N7: propagate the error instead of silently discarding it.
 		stale, err := stalePluginDirs(localDir, manifest)
@@ -161,23 +158,17 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 			return fmt.Errorf("list stale plugins: %w", err)
 		}
 		for _, s := range stale {
-			fmt.Printf("[dry-run] would remove stale plugin: plugins/%s/\n", s)
+			fmt.Fprintf(out, "[dry-run] would remove stale plugin: plugins/%s/\n", s)
 		}
-		fmt.Printf("[dry-run] would write: marketplace.json\n")
-		fmt.Printf("[dry-run] would write: managed-settings.fragment.json\n")
+		fmt.Fprintf(out, "[dry-run] would write: marketplace.json\n")
+		fmt.Fprintf(out, "[dry-run] would write: managed-settings.fragment.json\n")
 		return nil
 	}
 
-	// Step 3: create dir.
 	if err := os.MkdirAll(localDir, 0o700); err != nil {
 		return fmt.Errorf("create marketplace dir %s: %w", localDir, err)
 	}
 
-	// Step 4: fetch and write each plugin. marketplace.json is deliberately
-	// NOT written yet — it's the last thing this function writes, so a
-	// failure partway through plugin/settings fetching leaves the manifest
-	// Claude Code actually reads pointing at the last fully-synced state,
-	// never a mix of old and new plugin revisions (R09).
 	for _, p := range manifest.Plugins {
 		// C1: validate id before using it in filesystem paths.
 		id, err := safePluginID(p.Source)
@@ -204,7 +195,6 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		}
 	}
 
-	// Step 5: fetch and write managed-settings.
 	rawSettings, err := fetchManagedSettings(d, localDir)
 	if err != nil {
 		return fmt.Errorf("fetch managed-settings: %w", err)
@@ -213,19 +203,10 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
 	}
 
-	// Step 6: write marketplace.json — only once every plugin and
-	// managed-settings write it references has actually landed.
 	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
 		return fmt.Errorf("write marketplace.json: %w", err)
 	}
 
-	// Step 7: revocation — remove stale plugin dirs. Deliberately LAST,
-	// after marketplace.json is confirmed written: revoking first would let
-	// a crash/failure between revocation and the manifest write leave
-	// marketplace.json still pointing at a plugin directory that no longer
-	// exists (R09's "no dangling reference" invariant). Revoking last means
-	// the only failure-direction leftover is a harmless orphaned directory
-	// marketplace.json already doesn't reference.
 	stale, err := stalePluginDirs(localDir, manifest)
 	if err != nil {
 		return fmt.Errorf("list stale plugins: %w", err)
@@ -235,24 +216,23 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("remove stale plugin %s: %w", s, err)
 		}
-		fmt.Printf("Removed revoked plugin: plugins/%s/\n", s)
+		fmt.Fprintf(out, "Removed revoked plugin: plugins/%s/\n", s)
 	}
 
-	// Step 8: print summary.
-	fmt.Printf("Synced marketplace: %s\n", manifest.Name)
-	fmt.Printf("Local directory:    %s\n", localDir)
-	fmt.Printf("Plugins synced:     %d\n", len(manifest.Plugins))
+	fmt.Fprintf(out, "Synced marketplace: %s\n", manifest.Name)
+	fmt.Fprintf(out, "Local directory:    %s\n", localDir)
+	fmt.Fprintf(out, "Plugins synced:     %d\n", len(manifest.Plugins))
 	if len(stale) > 0 {
-		fmt.Printf("Stale plugins removed: %d\n", len(stale))
+		fmt.Fprintf(out, "Stale plugins removed: %d\n", len(stale))
 	}
-	fmt.Println()
-	fmt.Println("Managed-settings fragment written to:")
-	fmt.Printf("  %s\n", filepath.Join(localDir, "managed-settings.fragment.json"))
-	fmt.Println()
-	fmt.Println("Next step — register the marketplace in Claude Code:")
-	fmt.Printf("  /plugin marketplace add %s\n", localDir)
-	fmt.Println("(Merge managed-settings.fragment.json into your Claude Code managed settings")
-	fmt.Println(" to auto-register and enable granted plugins.)")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Managed-settings fragment written to:")
+	fmt.Fprintf(out, "  %s\n", filepath.Join(localDir, "managed-settings.fragment.json"))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Register the marketplace in Claude Code:")
+	fmt.Fprintf(out, "  /plugin marketplace add %s\n", localDir)
+	fmt.Fprintln(out, "(Merge managed-settings.fragment.json into your Claude Code managed settings")
+	fmt.Fprintln(out, " to auto-register and enable granted plugins.)")
 	return nil
 }
 
@@ -330,18 +310,6 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
 // never a network wait.
 const syncTxnTimeout = 30 * time.Second
 
-// writePluginBundle validates every artifact returned by the gateway and
-// applies it through the same durable transaction engine
-// install/migrate/rollback use: stage the complete new file set, remove
-// whatever this plugin previously owned that the new bundle no longer
-// includes (R09 — a script dropped from a newer version actually
-// disappears), and only record the new owned-file set once every write
-// has landed. A file under pluginDir the user added by hand — never
-// recorded in a prior sync's owned set — is never a removal candidate,
-// regardless of what the new bundle contains. Before the bundle contract
-// existed, the endpoint returned a raw plugin manifest; accept that
-// legacy shape and place it at Claude Code's required
-// .claude-plugin/plugin.json path so older gateways remain usable.
 func writePluginBundle(localDir, pluginID, pluginDir string, raw []byte) error {
 	var bundle pluginBundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {

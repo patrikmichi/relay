@@ -39,7 +39,10 @@ func tokensListCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
 			defer cancel()
@@ -50,14 +53,11 @@ func tokensListCmd() *cobra.Command {
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusUnauthorized {
-				fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-				os.Exit(1)
+				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				var errBody map[string]string
-				_ = json.NewDecoder(resp.Body).Decode(&errBody)
-				return fmt.Errorf("tokens list failed (%d): %s", resp.StatusCode, errBody["error"])
+				return fmt.Errorf("tokens list failed (HTTP %d)", resp.StatusCode)
 			}
 
 			// whoamiResponse mirrors auth.WhoamiResponse but is local to avoid import cycle.
@@ -72,18 +72,18 @@ func tokensListCmd() *cobra.Command {
 				return fmt.Errorf("decode response: %w", err)
 			}
 
-			fmt.Printf("Email:     %s\n", info.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Email:     %s\n", info.Email)
 			if len(info.Services) > 0 {
-				fmt.Printf("Services:  %s\n", strings.Join(info.Services, ", "))
+				fmt.Fprintf(cmd.OutOrStdout(), "Services:  %s\n", strings.Join(info.Services, ", "))
 			} else {
-				fmt.Println("Services:  all")
+				fmt.Fprintln(cmd.OutOrStdout(), "Services:  all")
 			}
-			fmt.Printf("Issued at: %s\n", info.IssuedAt)
+			fmt.Fprintf(cmd.OutOrStdout(), "Issued at: %s\n", info.IssuedAt)
 			if info.ExpiresAt != "" {
-				fmt.Printf("Expires:   %s\n", info.ExpiresAt)
+				fmt.Fprintf(cmd.OutOrStdout(), "Expires:   %s\n", info.ExpiresAt)
 			}
 			// Indicate token is stored in keychain (not printed for security)
-			fmt.Printf("Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
+			fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
 			return nil
 		},
 	}
@@ -93,15 +93,6 @@ func tokensListCmd() *cobra.Command {
 }
 
 // tokensRevokeCmd returns `relay tokens revoke`.
-// Calls POST /api/cli/logout and removes the local keychain entry.
-//
-// Same two-halves shape as LogoutCmd (logout.go) — deleting the local OS
-// keychain entry never needs the network and must work under --offline;
-// only the server-side revoke (POST /api/cli/logout) is gateway-touching
-// and subject to fail-closed resolution. See logout.go's doc comment for
-// the full rationale; kept identical here since `tokens revoke` and
-// `logout` perform the exact same two operations through two different
-// command surfaces.
 func tokensRevokeCmd() *cobra.Command {
 	var gatewayURL string
 	var legacy bool
@@ -130,17 +121,19 @@ func tokensRevokeCmd() *cobra.Command {
 
 			// Building the client never dials the network — it only reads
 			// GATEWAY_API_KEY / the OS keychain.
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 			if c.Email() == "" {
-				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke.")
-				os.Exit(1)
+				return errors.New("authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke")
 			}
 
 			if Offline() {
 				if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
-				fmt.Printf("Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
+				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
 				return nil
 			}
 
@@ -148,14 +141,13 @@ func tokensRevokeCmd() *cobra.Command {
 			defer cancel()
 			result, err := auth.Logout(ctx, c)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Revoke failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("revoke failed: %w", err)
 			}
 			if !result.RemoteRevoked {
 				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
 			}
 
-			fmt.Println("Session revoked")
+			fmt.Fprintln(cmd.OutOrStdout(), "Session revoked")
 			return nil
 		},
 	}

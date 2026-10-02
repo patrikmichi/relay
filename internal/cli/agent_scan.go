@@ -9,10 +9,6 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport"
 )
 
-// AgentScanCmd returns the `relay agent scan <name>` cobra command — a
-// thin wrapper over agentport.AgentScan, the Agent-IR analogue of
-// SkillScanCmd. There is deliberately no `relay agent score` companion
-// command (unlike skills' scan/score pair) — see relay-standalone P1.9.
 func AgentScanCmd() *cobra.Command {
 	var (
 		fromFlag  string
@@ -28,7 +24,7 @@ credentials. Prints findings, exactly what was scanned, and a heuristic
 quality score — not an execution-safety certification. Exits non-zero if
 any finding has "high" severity.
 
-Supported providers: claude, opencode.`,
+Supported providers: claude, opencode, codex, cursor, gemini-cli.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentScan(cmd, args[0], fromFlag, scopeFlag)
@@ -48,7 +44,7 @@ func loadAgentFromProvider(from, scopeStr, name string) (*agentport.Agent, error
 		return nil, err
 	}
 	if from == "" {
-		return nil, fmt.Errorf("--from is required (claude or opencode)")
+		return nil, fmt.Errorf("--from is required (claude, opencode, codex, cursor, or gemini-cli)")
 	}
 	a, ok := agentport.AgentAdapterByID(agentport.ProviderID(from))
 	if !ok {

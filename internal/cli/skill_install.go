@@ -14,15 +14,6 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-// SkillInstallCmd returns the `relay skill install <path|catalog-id>` cobra
-// command — loads a skill either from an arbitrary LOCAL directory (or a
-// direct path to a SKILL.md file), or from the gateway CATALOG by resource
-// id/slug, and projects it into one or more --to providers, printing a
-// fidelity-loss report for each. Unless --dry-run, files are written and a
-// manifest entry is recorded — the same engine as 'relay skill migrate'.
-//
-// If --to is omitted, installs to every provider detected as installed on
-// this machine.
 func SkillInstallCmd() *cobra.Command {
 	var (
 		toFlags    []string
@@ -157,13 +148,6 @@ func classifyInstallSource(arg string) (isLocal bool, err error) {
 	return false, nil
 }
 
-// fetchFromGateway resolves an authenticated gateway client and fetches
-// catalogID via catalog.FetchSkill, translating auth/offline/gateway-error
-// failures into the fail-closed degradation guidance (design spec
-// §6.1/§6.6). No files are ever written on any of these paths.
-// resolveGatewayURLOrFailClosed itself checks the root --offline flag
-// (cli.Offline()) and refuses with offlineGuidance before this ever reaches
-// client.Resolve.
 func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(opts.gatewayURL)
 	if err != nil {
@@ -185,8 +169,6 @@ func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill
 	return skill, nil
 }
 
-// translateGatewayFetchError maps catalog.FetchSkill's sentinel errors to
-// the user-facing guidance from the design spec's §6.6 degradation table.
 func translateGatewayFetchError(catalogID string, err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrNoAccess):

@@ -8,35 +8,11 @@ import (
 	"github.com/patrikmichi/relay/internal/config"
 )
 
-// defaultOpTimeout bounds a single quick gateway request issued directly by
-// a CLI command (whoami, logout/tokens revoke, tokens list). Long-running
-// operations (search, download, tool execution, sync/publish) define their
-// own larger timeouts near their own call sites — this is deliberately not
-// one blanket timeout for every gateway interaction, since those are a
-// different operation class (R23).
 const defaultOpTimeout = 30 * time.Second
 
-// offlineGuidance is the fail-closed degradation message shown whenever a
-// gateway-touching (catalog) command is attempted with no gateway reachable
-// — no gateway configured, --offline, or an auth failure client.Resolve
-// can't recover from. Mirrors the design spec's §6.1/§6.6 degradation
-// table. Every catalog verb (skill install <catalog-id>, skill search,
-// publish, sync, services, call, help-tools, tokens, whoami, login,
-// logout, authorize) surfaces this single message so the guidance is
-// consistent CLI-wide. Local-only verbs (skill install <path>, skill
-// migrate) never reference it.
-const offlineGuidance = "no gateway configured. Run `relay config set-gateway <url>` then `relay login` to install from the catalog. Local `relay skill install <path>` and `relay skill migrate` work offline."
+const offlineGuidance = "no gateway configured. Run `relay config set-gateway <url>` then `relay login` to install from the catalog. Local `relay skill install <path>` and `relay skill migrate` work offline"
 
-// OfflineGuidance exposes offlineGuidance to cmd/relay/main.go, which needs
-// the exact same fail-closed message for one case this package's own
-// commands can't produce it for: `relay --offline <unregistered-dynamic-command>`.
-// With dynamic service/tool sub-command registration skipped under
-// --offline (main.go's PersistentPreRunE), cobra's own command resolution
-// fails the request with a generic "unknown command" error before any of
-// this package's RunE functions ever run — main.go rewrites that specific
-// error into this same offline guidance so the caller sees one consistent
-// message instead of two different-looking failures for the same root
-// cause. See main.go's rewriteOfflineUnknownCommandErr.
+// OfflineGuidance exposes offlineGuidance to cmd/relay/main.go, which needs the exact same fail-closed message for one case this package's own commands can't produce it for: `relay --offline <unregistered-dynamic-command>`.
 func OfflineGuidance() string { return offlineGuidance }
 
 // offlineFlag holds the process-wide state of the root `--offline`
@@ -59,19 +35,6 @@ func SetOffline(v bool) { offlineFlag = v }
 // PersistentPreRunE, so tests call SetOffline(true) directly instead).
 func Offline() bool { return offlineFlag }
 
-// resolveGatewayURLOrFailClosed resolves the gateway URL a catalog-touching
-// command should dial: the explicit override (typically a --gateway-url
-// flag value) if non-empty, otherwise config.GatewayURL()'s resolution order
-// (env var -> config file -> config.DefaultGatewayURL). Every candidate is
-// normalized and policy-checked (config.NormalizeGatewayURL). If --offline
-// was passed at the root, config.GatewayURL() returned an error (e.g. a
-// corrupt config file — that error is returned as-is, never papered over
-// with a fallback host), or the resolved value is still empty, this returns
-// an error wrapping offlineGuidance instead of silently dialing an
-// empty/relative URL or a gateway the caller explicitly asked to skip.
-// Every catalog verb must route its gateway URL resolution through this
-// helper so the fail-closed behavior — and its exact user-facing message —
-// is identical everywhere.
 func resolveGatewayURLOrFailClosed(override string) (string, error) {
 	if Offline() {
 		return "", errors.New(offlineGuidance)

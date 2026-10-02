@@ -44,9 +44,7 @@ project it to one or more --to providers, print a fidelity-loss report, and
 If --to is omitted, migrates to every agent provider detected as installed
 on this machine (excluding --from).
 
-Supported providers: claude, opencode. Codex has no single agent-file
-primitive (TOML profile != md agent) and Cursor has no subagent primitive —
-neither is supported as an agent migration target.
+Supported providers in this build: claude, opencode, codex, cursor, gemini-cli.
 
 Examples:
   relay agent migrate reviewer --from claude --to opencode
@@ -65,7 +63,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&fromFlag, "from", "", "Source provider: claude or opencode (required)")
+	cmd.Flags().StringVar(&fromFlag, "from", "", "Source provider: claude, opencode, codex, cursor, or gemini-cli (required)")
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected agent providers except --from")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search/write: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write the file")
@@ -91,7 +89,7 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 	}
 
 	if opts.from == "" {
-		return fmt.Errorf("--from is required (claude or opencode)")
+		return fmt.Errorf("--from is required (claude, opencode, codex, cursor, or gemini-cli)")
 	}
 	fromAdapter, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.from))
 	if !ok {
@@ -115,11 +113,6 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
-// applyAgentMigrationToTargets projects src into each target (via
-// agentport.MigrateAgent), printing a fidelity-loss report for each, and
-// (unless dryRun) writes the projected file and records a manifest entry —
-// the Agent-IR analogue of applyMigrationToTargets. See its doc comment for
-// the noninteractive-consent rule (R04).
 func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
 	var toWrite []*agentport.AgentPlan
 
@@ -159,8 +152,6 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 		toWrite = append(toWrite, plan)
 	}
 
-	// All-target preflight (R08) — see applyMigrationToTargets (skill_migrate.go)
-	// for the full rationale; the agent analogue of the same fix.
 	for _, plan := range toWrite {
 		if err := agentport.PreflightWriteAgent(plan); err != nil {
 			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)

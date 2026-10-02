@@ -28,7 +28,7 @@ to --to, and print the field-level differences plus the fidelity-loss
 report — without writing anything to --to's real agent directory or
 recording a manifest entry. This is a preview of 'relay agent migrate'.
 
-Supported providers: claude, opencode.`,
+Supported providers: claude, opencode, codex, cursor, gemini-cli.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentDiff(cmd, args[0], agentDiffOpts{from: fromFlag, to: toFlag, scope: scopeFlag})
@@ -85,9 +85,6 @@ func runAgentDiff(cmd *cobra.Command, name string, opts agentDiffOpts) error {
 	fmt.Fprintf(out, "would write to: %s\n", plan.TargetPaths)
 	printLossReport(out, plan.Loss)
 
-	// Project into a scratch temp dir (never plan.TargetPaths) so we can
-	// re-Load it and report field-level differences without writing
-	// anything under the real target directory or touching the manifest.
 	tmp, err := os.MkdirTemp("", "relay-agent-diff-*")
 	if err != nil {
 		return fmt.Errorf("create scratch dir: %w", err)

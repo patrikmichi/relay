@@ -29,13 +29,13 @@ where each agent was installed/migrated from (when relay recorded it).
 Scope 'project' is resolved relative to the current working directory only
 (no parent-directory search, unlike 'relay agent migrate --from').
 
-Supported providers: claude, opencode.`,
+Supported providers: claude, opencode, codex, cursor, gemini-cli.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runAgentList(cmd, agentListOpts{provider: providerFlag, scope: scopeFlag, provenance: provenance})
 		},
 	}
 
-	cmd.Flags().StringVar(&providerFlag, "provider", "", "Restrict to one provider: claude or opencode (default: all)")
+	cmd.Flags().StringVar(&providerFlag, "provider", "", "Restrict to one provider: claude, opencode, codex, cursor, or gemini-cli (default: all)")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to list: user or project")
 	cmd.Flags().BoolVar(&provenance, "provenance", false, "Show where each agent was installed/migrated from")
 

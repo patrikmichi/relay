@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -28,10 +29,6 @@ import (
 // Declared as var (not const) so tests can temporarily lower it.
 var artifactMaxBytes int64 = 25 << 20 // 25 MiB
 
-// artifactMaxEntries bounds how many filesystem entries a directory publish
-// may walk, independent of artifactMaxBytes — a directory with an enormous
-// number of tiny files can exhaust memory/time well before the byte cap
-// triggers. Declared as var so tests can temporarily lower it (R29).
 var artifactMaxEntries = 20000
 
 // publishAPIPath is the endpoint on the gateway.
@@ -143,11 +140,6 @@ func PublishCmd() *cobra.Command {
 	return publishCmdWithDoer(nil, "")
 }
 
-// publishCmdWithDoer is the internal constructor; doer==nil means resolve at
-// runtime. aliasKind is set by skillPublishCmd/agentPublishCmd ("skill" /
-// "agent") to give an ordinary provider file a sensible default type without
-// requiring --type, and to catch a document whose own frontmatter declares a
-// contradictory type (R17).
 func publishCmdWithDoer(doer publishDoer, aliasKind agentport.ArtifactKind) *cobra.Command {
 	var (
 		flagType       string
@@ -195,9 +187,7 @@ Flags:
 			}
 			d := doer
 			resolvedURL := flagGatewayURL
-			// R19: dry-run is local packaging/validation only — never resolve
-			// (and thus never require) an authenticated client for it. Auth is
-			// resolved lazily, only on the path that will actually call the API.
+
 			if d == nil && !flagDryRun {
 				var err error
 				d, resolvedURL, err = resolvePublishDoerWithURL(flagGatewayURL)
@@ -205,7 +195,8 @@ Flags:
 					return err
 				}
 			}
-			return runPublish(d, publishPath, publishOpts{
+			return runPublish(commandDoer{d, cmd.Context()}, publishPath, publishOpts{
+				out:               cmd.OutOrStdout(),
 				resourceType:      flagType,
 				aliasKind:         aliasKind,
 				manifestPath:      flagManifest,
@@ -244,9 +235,6 @@ Flags:
 	return cmd
 }
 
-// skillPublishCmd returns `relay skill publish <path>` — thin alias. Setting
-// aliasKind gives an ordinary SKILL.md with no marketplace-specific type
-// frontmatter a working default (R17).
 func skillPublishCmd() *cobra.Command {
 	cmd := publishCmdWithDoer(nil, agentport.KindSkill)
 	cmd.Use = "publish <path>"
@@ -307,10 +295,6 @@ func mcpPublishCmd() *cobra.Command {
 	return cmd
 }
 
-// SkillCmd returns the `relay skill` parent command with `publish`,
-// `migrate`, and the Wave 2 agentport manager sub-commands (install, list,
-// diff, scan, score, uninstall, rollback), plus the Phase-2 gateway-catalog
-// commands (search, and install's catalog-id source — see SkillInstallCmd).
 func SkillCmd() *cobra.Command {
 	skill := &cobra.Command{
 		Use:   "skill",
@@ -342,11 +326,9 @@ func AgentCmd() *cobra.Command {
 		Short: "Agent commands",
 		Long: `Agent commands.
 
-Supported agent providers: claude, opencode. Codex (TOML profile != md
-agent) and Cursor (no subagent primitive) are not supported as agent
-migration targets.`,
+Supported agent providers in this build: claude, opencode.`,
 	}
-	agent.AddCommand(agentPublishCmd())
+	agent.AddCommand(agentPublishCmd(), AgentInstallCmd())
 	agent.AddCommand(AgentMigrateCmd())
 	agent.AddCommand(AgentListCmd())
 	agent.AddCommand(AgentDiffCmd())
@@ -362,7 +344,7 @@ func MCPCmd() *cobra.Command {
 		Use:   "mcp",
 		Short: "MCP server commands",
 	}
-	mcp.AddCommand(mcpPublishCmd())
+	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd())
 	return mcp
 }
 
@@ -413,16 +395,13 @@ func resolvePublishStatusDoer(overrideURL string) (publishStatusDoer, error) {
 // ---- publish options ----
 
 type publishOpts struct {
+	out          io.Writer
 	resourceType string
-	// aliasKind is set by the skill/agent parent commands (never by top-level
-	// `relay publish`) to supply a default resourceType and to detect a
-	// document whose frontmatter declares a contradictory type (R17).
+
 	aliasKind agentport.ArtifactKind
-	// manifestPath is an explicit bundle-relative manifest/descriptor path
-	// (--manifest), bypassing SKILL.md/agent.md convention discovery (R18).
+
 	manifestPath string
-	// includeFiles force-includes bundle-relative paths the default
-	// secret-screening policy would otherwise exclude (R29).
+
 	includeFiles []string
 	name         string
 	slug         string
@@ -469,24 +448,27 @@ func mcpPublishOptionsFromContext(ctx context.Context) publishMcpOptions {
 }
 
 type mcpDescriptor struct {
-	Name          string   `json:"name,omitempty"`
-	Slug          string   `json:"slug,omitempty"`
-	Version       string   `json:"version,omitempty"`
-	Description   string   `json:"description,omitempty"`
-	Transport     string   `json:"transport"`
-	Endpoint      string   `json:"endpoint,omitempty"`
-	Command       string   `json:"command,omitempty"`
-	AuthRef       string   `json:"authRef,omitempty"`
-	Source        string   `json:"source,omitempty"`
-	AuthType      string   `json:"authType,omitempty"`
-	AuthScope     string   `json:"authScope,omitempty"`
-	DeclaredTools []string `json:"declaredTools,omitempty"`
+	RuntimeEgressHosts []string `json:"runtimeEgressHosts,omitempty"`
+	V                  int      `json:"v,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	Slug               string   `json:"slug,omitempty"`
+	Version            string   `json:"version,omitempty"`
+	Description        string   `json:"description,omitempty"`
+	Transport          string   `json:"transport"`
+	Endpoint           string   `json:"endpoint,omitempty"`
+	Command            string   `json:"command,omitempty"`
+	AuthRef            string   `json:"authRef,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	AuthType           string   `json:"authType,omitempty"`
+	AuthScope          string   `json:"authScope,omitempty"`
+	DeclaredTools      []string `json:"declaredTools,omitempty"`
 }
 
 // ---- core publish logic ----
 
 // runPublish implements the publish workflow.
 func runPublish(d publishDoer, path string, opts publishOpts) error {
+	out := outputWriter([]io.Writer{opts.out})
 	// Validate channel.
 	ch := opts.channel
 	if ch == "" {
@@ -496,9 +478,6 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		return fmt.Errorf("invalid --channel %q: must be stable or beta", ch)
 	}
 
-	// R17: an explicit --type that contradicts the skill/agent parent command
-	// is never silently honored — the command name is itself a declaration
-	// of intent.
 	if opts.aliasKind != "" && opts.resourceType != "" && opts.resourceType != string(opts.aliasKind) {
 		return fmt.Errorf("contradictory type: this is `relay %s publish`, which publishes type %q, but --type=%q was given",
 			opts.aliasKind, opts.aliasKind, opts.resourceType)
@@ -564,11 +543,6 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		}
 	}
 
-	// Detect resource type from frontmatter, overridable by --type. The
-	// skill/agent alias default (opts.aliasKind) only applies when nothing
-	// more specific is given, and never silently overrides a document that
-	// declares a different type (R17) — that is a contradiction, not a
-	// default to fall back on.
 	fm := parseFrontmatter(manifestContent)
 	resourceType := opts.resourceType
 	if resourceType == "" && descriptor != nil {
@@ -606,45 +580,43 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 
 	// --dry-run: print what WOULD be sent, exit 0, no API call.
 	if opts.dryRun {
-		fmt.Println("[dry-run] would publish to:", publishAPIPath)
-		fmt.Printf("[dry-run] type:    %s\n", resourceType)
-		fmt.Printf("[dry-run] name:    %s\n", name)
-		fmt.Printf("[dry-run] slug:    %s\n", slug)
-		fmt.Printf("[dry-run] channel: %s\n", ch)
+		fmt.Fprintln(out, "[dry-run] would publish to:", publishAPIPath)
+		fmt.Fprintf(out, "[dry-run] type:    %s\n", resourceType)
+		fmt.Fprintf(out, "[dry-run] name:    %s\n", name)
+		fmt.Fprintf(out, "[dry-run] slug:    %s\n", slug)
+		fmt.Fprintf(out, "[dry-run] channel: %s\n", ch)
 		if isDir {
-			fmt.Printf("[dry-run] bundle files (%d):\n", len(bundleFiles))
+			fmt.Fprintf(out, "[dry-run] bundle files (%d):\n", len(bundleFiles))
 			for _, f := range bundleFiles {
-				fmt.Printf("[dry-run]   %s\n", f)
+				fmt.Fprintf(out, "[dry-run]   %s\n", f)
 			}
 			if len(excludedFiles) > 0 {
-				fmt.Printf("[dry-run] excluded files (%d) — default secret-screening policy, use --include to override:\n", len(excludedFiles))
+				fmt.Fprintf(out, "[dry-run] excluded files (%d) — default secret-screening policy, use --include to override:\n", len(excludedFiles))
 				for _, x := range excludedFiles {
-					fmt.Printf("[dry-run]   %s (%s)\n", x.rel, x.reason)
+					fmt.Fprintf(out, "[dry-run]   %s (%s)\n", x.rel, x.reason)
 				}
 			}
-			fmt.Printf("[dry-run] bundle size: %d bytes\n", len(bundleBytes))
+			fmt.Fprintf(out, "[dry-run] bundle size: %d bytes\n", len(bundleBytes))
 		} else {
-			fmt.Printf("[dry-run] manifest file: %s (%d bytes)\n", bundleFiles[0], len(manifestContent))
+			fmt.Fprintf(out, "[dry-run] manifest file: %s (%d bytes)\n", bundleFiles[0], len(manifestContent))
 		}
 		if resourceType == "mcp_server" {
-			descriptorJSON, _ := json.MarshalIndent(descriptor, "", "  ")
-			fmt.Printf("[dry-run] MCP descriptor:\n%s\n", descriptorJSON)
+			descriptorJSON, _ := json.MarshalIndent(map[string]any{"source": descriptor.Source, "transport": descriptor.Transport, "authType": descriptor.AuthType, "authScope": descriptor.AuthScope, "hasAuthReference": descriptor.AuthRef != "", "declaredToolCount": len(descriptor.DeclaredTools)}, "", "  ")
+			fmt.Fprintf(out, "[dry-run] MCP descriptor:\n%s\n", descriptorJSON)
 		}
-		fmt.Println("[dry-run] no API call made")
+		fmt.Fprintln(out, "[dry-run] no API call made")
 		return nil
 	}
 
-	// R29: the outgoing file set is always shown, not only on --dry-run —
-	// exclusion is deliberate and visible, never a silent accident.
 	if isDir {
-		fmt.Printf("publishing %d files", len(bundleFiles))
+		fmt.Fprintf(out, "publishing %d files", len(bundleFiles))
 		if len(excludedFiles) > 0 {
-			fmt.Printf(", %d excluded by default secret-screening policy (use --include to override):\n", len(excludedFiles))
+			fmt.Fprintf(out, ", %d excluded by default secret-screening policy (use --include to override):\n", len(excludedFiles))
 			for _, x := range excludedFiles {
-				fmt.Printf("  %s (%s)\n", x.rel, x.reason)
+				fmt.Fprintf(out, "  %s (%s)\n", x.rel, x.reason)
 			}
 		} else {
-			fmt.Println()
+			fmt.Fprintln(out)
 		}
 	}
 
@@ -726,12 +698,12 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 	defer resp.Body.Close()
 
 	// Read capped response body.
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	rawBody, err := readLimitedResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
 
-	if err := handlePublishResponse(resp.StatusCode, resp.Header, rawBody, opts.gatewayURL); err != nil {
+	if err := handlePublishResponse(resp.StatusCode, resp.Header, rawBody, opts.gatewayURL, out); err != nil {
 		return err
 	}
 
@@ -745,8 +717,8 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 			if !ok {
 				return fmt.Errorf("--watch requires a client that supports status polling (internal error)")
 			}
-			fmt.Println()
-			return watchPublishStatus(statusDoer, pub.VersionID)
+			fmt.Fprintln(out)
+			return watchPublishStatus(statusDoer, pub.VersionID, out)
 		}
 	}
 
@@ -756,13 +728,29 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 func resolveMcpDescriptor(opts publishOpts) (mcpDescriptor, error) {
 	var descriptor mcpDescriptor
 	if opts.mcpDescriptorPath != "" {
-		raw, err := os.ReadFile(opts.mcpDescriptorPath)
+		file, err := os.OpenFile(opts.mcpDescriptorPath, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if err != nil {
-			return descriptor, fmt.Errorf("read MCP descriptor %s: %w", opts.mcpDescriptorPath, err)
+			return descriptor, fmt.Errorf("read MCP descriptor: %w", err)
 		}
-		if err := json.Unmarshal(raw, &descriptor); err != nil {
-			return descriptor, fmt.Errorf("parse MCP descriptor JSON: %w", err)
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			return descriptor, fmt.Errorf("MCP descriptor must be a regular file")
 		}
+		raw, err := readLimitedResponse(file, 1<<20)
+		if err != nil {
+			return descriptor, fmt.Errorf("MCP descriptor unreadable or too large")
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&descriptor); err != nil {
+			return descriptor, fmt.Errorf("invalid MCP descriptor fields: %w", err)
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			return descriptor, fmt.Errorf("MCP descriptor must contain one JSON object")
+		}
+
 	}
 
 	if opts.mcpTransport != "" {
@@ -790,23 +778,8 @@ func resolveMcpDescriptor(opts publishOpts) (mcpDescriptor, error) {
 		descriptor.DeclaredTools = opts.mcpTools
 	}
 
-	switch descriptor.Transport {
-	case "http", "sse":
-		if descriptor.Endpoint == "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q requires --endpoint or endpoint in descriptor JSON", descriptor.Transport)
-		}
-		if descriptor.Command != "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q must not include command", descriptor.Transport)
-		}
-	case "stdio-command":
-		if descriptor.Command == "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q requires --command or command in descriptor JSON", descriptor.Transport)
-		}
-		if descriptor.Endpoint != "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q must not include endpoint", descriptor.Transport)
-		}
-	default:
-		return descriptor, fmt.Errorf("MCP descriptor transport is required and must be http, sse, or stdio-command")
+	if err := validateMcpDescriptor(descriptor); err != nil {
+		return descriptor, err
 	}
 
 	return descriptor, nil
@@ -869,29 +842,30 @@ func buildMcpManifestContent(descriptor mcpDescriptor, name, slug string) ([]byt
 // handlePublishResponse interprets the HTTP status + body and prints output or returns an error.
 // hdr is the response header (used for Retry-After on 429).
 // gatewayURL is the resolved gateway base URL for the catalog link; empty falls back to env/default.
-func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gatewayURL string) error {
+func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gatewayURL string, writers ...io.Writer) error {
+	out := outputWriter(writers)
 	switch statusCode {
 	case http.StatusCreated, http.StatusOK:
 		var pub publishResponse
 		if err := json.Unmarshal(rawBody, &pub); err != nil {
 			return fmt.Errorf("decode publish response: %w", err)
 		}
-		fmt.Printf("Published successfully\n")
-		fmt.Printf("  Resource ID: %s\n", pub.ResourceID)
-		fmt.Printf("  Version ID:  %s\n", pub.VersionID)
-		fmt.Printf("  Semver:      %s\n", pub.Semver)
+		fmt.Fprintf(out, "Published successfully\n")
+		fmt.Fprintf(out, "  Resource ID: %s\n", pub.ResourceID)
+		fmt.Fprintf(out, "  Version ID:  %s\n", pub.VersionID)
+		fmt.Fprintf(out, "  Semver:      %s\n", pub.Semver)
 		ch := pub.Channel
 		if ch == "" {
 			ch = "stable"
 		}
-		fmt.Printf("  Channel:     %s\n", ch)
-		fmt.Printf("  State:       %s\n", pub.State)
-		fmt.Printf("  Catalog URL: %s\n", catalogURL(pub.ResourceID, gatewayURL))
+		fmt.Fprintf(out, "  Channel:     %s\n", ch)
+		fmt.Fprintf(out, "  State:       %s\n", pub.State)
+		fmt.Fprintf(out, "  Catalog URL: %s\n", catalogURL(pub.ResourceID, gatewayURL))
 		if pub.State == "changes_requested" {
-			fmt.Println()
-			fmt.Println("The version needs changes before it can be published.")
-			fmt.Println("Review the gate report at the catalog URL above, address the issues,")
-			fmt.Println("then re-run `relay publish <path>` with a bumped version number.")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "The version needs changes before it can be published.")
+			fmt.Fprintln(out, "Review the gate report at the catalog URL above, address the issues,")
+			fmt.Fprintln(out, "then re-run `relay publish <path>` with a bumped version number.")
 		}
 		return nil
 
@@ -1048,7 +1022,7 @@ func fetchPublishStatus(d publishStatusDoer, versionID string) (*publishStatusRe
 	}
 	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	rawBody, err := readLimitedResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -1069,25 +1043,26 @@ func fetchPublishStatus(d publishStatusDoer, versionID string) (*publishStatusRe
 }
 
 // printPublishStatus renders a publishStatusResult as human-readable text.
-func printPublishStatus(status *publishStatusResult) {
-	fmt.Printf("Version:  %s\n", status.VersionID)
-	fmt.Printf("State:    %s\n", status.State)
+func printPublishStatus(status *publishStatusResult, writers ...io.Writer) {
+	out := outputWriter(writers)
+	fmt.Fprintf(out, "Version:  %s\n", status.VersionID)
+	fmt.Fprintf(out, "State:    %s\n", status.State)
 	if len(status.Gates) > 0 {
-		fmt.Println("Gates:")
+		fmt.Fprintln(out, "Gates:")
 		for _, g := range status.Gates {
 			approval := ""
 			if g.RequiresAdminApproval {
 				approval = " (requires admin approval)"
 			}
-			fmt.Printf("  %-14s %s%s\n", g.Gate, g.Status, approval)
+			fmt.Fprintf(out, "  %-14s %s%s\n", g.Gate, g.Status, approval)
 		}
 	}
 	trustScore := "n/a"
 	if status.AiScan.TrustScore != nil {
 		trustScore = fmt.Sprintf("%d/100", *status.AiScan.TrustScore)
 	}
-	fmt.Printf("AI scan:  %s (trust score: %s, findings: %d)\n", status.AiScan.Status, trustScore, status.AiScan.Findings)
-	fmt.Printf("Approvable now: %t\n", status.Approvable)
+	fmt.Fprintf(out, "AI scan:  %s (trust score: %s, findings: %d)\n", status.AiScan.Status, trustScore, status.AiScan.Findings)
+	fmt.Fprintf(out, "Approvable now: %t\n", status.Approvable)
 }
 
 // watchPublishStatus polls fetchPublishStatus until the version reaches a
@@ -1095,7 +1070,8 @@ func printPublishStatus(status *publishStatusResult) {
 // Returns a non-nil error when the final state is changes_requested — so
 // `relay publish --watch` / `relay publish status --watch` exit non-zero and
 // CI can gate on it.
-func watchPublishStatus(d publishStatusDoer, versionID string) error {
+func watchPublishStatus(d publishStatusDoer, versionID string, writers ...io.Writer) error {
+	out := outputWriter(writers)
 	var last string
 	for i := 0; i < publishStatusMaxPolls; i++ {
 		status, err := fetchPublishStatus(d, versionID)
@@ -1103,8 +1079,8 @@ func watchPublishStatus(d publishStatusDoer, versionID string) error {
 			return err
 		}
 		if status.State != last {
-			printPublishStatus(status)
-			fmt.Println()
+			printPublishStatus(status, out)
+			fmt.Fprintln(out)
 			last = status.State
 		}
 		if terminalPublishStates[status.State] {
@@ -1113,7 +1089,9 @@ func watchPublishStatus(d publishStatusDoer, versionID string) error {
 			}
 			return nil
 		}
-		sleepFn(publishStatusPollInterval)
+		if err := waitForPublish(d, publishStatusPollInterval); err != nil {
+			return err
+		}
 	}
 	return fmt.Errorf("timed out waiting for version %s to reach a terminal state after %d polls", versionID, publishStatusMaxPolls)
 }
@@ -1137,19 +1115,21 @@ changes_requested, suspended, archived) and exits non-zero if it lands on
 changes_requested — useful for gating CI on a publish.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
 			versionID := args[0]
 			d, err := resolvePublishStatusDoer(flagGatewayURL)
 			if err != nil {
 				return err
 			}
+			d = commandDoer{d, cmd.Context()}
 			if flagWatch {
-				return watchPublishStatus(d, versionID)
+				return watchPublishStatus(d, versionID, out)
 			}
 			status, err := fetchPublishStatus(d, versionID)
 			if err != nil {
 				return err
 			}
-			printPublishStatus(status)
+			printPublishStatus(status, out)
 			if status.State == "changes_requested" {
 				return fmt.Errorf("publish status: %s — the version needs changes before it can be published", status.State)
 			}
@@ -1169,29 +1149,18 @@ changes_requested — useful for gating CI on a publish.`,
 // buildBundleFor. The zero value auto-detects the manifest by canonical
 // filename and applies the default secret-screening exclusion policy.
 type bundleSelector struct {
-	// kind, when non-empty, requires the canonical manifest filename for
-	// that artifact kind (SKILL.md / agent.md) rather than auto-detecting —
-	// set from --type or the skill/agent alias (R17, R18).
 	kind agentport.ArtifactKind
-	// explicitManifestRel, when non-empty, is a bundle-relative path used as
-	// the manifest verbatim — bypasses all convention discovery (R18).
+
 	explicitManifestRel string
-	// includeOverride force-includes bundle-relative paths (both OS-native
-	// and slash-separated forms are checked) that the default
-	// secret-screening policy would otherwise exclude (R29).
+
 	includeOverride map[string]bool
 }
 
-// canonicalManifestNames maps each supported artifact kind to the one
-// filename that counts as its manifest at the bundle root — never picked by
-// walk-order/alphabetical accident (R18).
 var canonicalManifestNames = map[agentport.ArtifactKind]string{
 	agentport.KindSkill: "SKILL.md",
 	agentport.KindAgent: "agent.md",
 }
 
-// excludedBundleEntry records a file the walk deliberately left out of the
-// bundle, and why, so the exclusion is visible rather than silent (R29).
 type excludedBundleEntry struct {
 	rel    string
 	reason string
@@ -1225,11 +1194,6 @@ func toIncludeSet(paths []string) map[string]bool {
 	return set
 }
 
-// secretExclusionReason returns a non-empty reason if rel's basename matches
-// a default-excluded secret-bearing filename pattern (R29): a plain ".env"
-// or an ".env.<suffix>" variant other than a known-safe template, unencrypted
-// private-key filenames/extensions, and known credential-store dotfiles.
-// Empty return means "not excluded".
 func secretExclusionReason(rel string) string {
 	base := strings.ToLower(filepath.Base(rel))
 	switch base {
@@ -1266,9 +1230,6 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 	return manifestContent, bundleBytes, files, err
 }
 
-// buildBundleFor is buildBundle plus manifest-selection/exclusion control
-// via sel, and returns the excluded-file list alongside the packaged one so
-// callers can display a deliberate, visible outgoing-file inventory (R29).
 func buildBundleFor(root string, sel bundleSelector) (manifestContent []byte, bundleBytes []byte, files []string, excluded []excludedBundleEntry, err error) {
 	// Collect files.
 	var entries []bundleEntry
@@ -1291,9 +1252,6 @@ func buildBundleFor(root string, sel bundleSelector) (manifestContent []byte, bu
 			return nil // skip FIFO / device / socket / irregular
 		}
 
-		// R29: bound total walked entries independent of byte size — an
-		// enormous file count can exhaust memory/time long before the size
-		// cap below ever triggers.
 		visited++
 		if visited > artifactMaxEntries {
 			return fmt.Errorf("bundle exceeds entry-count cap (%d files); reduce the directory contents and retry", artifactMaxEntries)
@@ -1310,14 +1268,10 @@ func buildBundleFor(root string, sel bundleSelector) (manifestContent []byte, bu
 			return err
 		}
 
-		// Symlink check: reject symlinks that escape the bundle root or
-		// resolve to a non-regular file (FIFO/device/socket — R29).
 		if err := checkSymlink(path, root); err != nil {
 			return err
 		}
 
-		// R29: screen secret-bearing filenames before ever reading their
-		// content, unless the caller explicitly opted the path back in.
 		if reason := secretExclusionReason(rel); reason != "" &&
 			!sel.includeOverride[rel] && !sel.includeOverride[filepath.ToSlash(rel)] {
 			excluded = append(excluded, excludedBundleEntry{rel: rel, reason: reason})
@@ -1449,10 +1403,7 @@ func checkSymlink(path, root string) error {
 	if !strings.HasPrefix(resolved+string(filepath.Separator), absRoot+string(filepath.Separator)) {
 		return fmt.Errorf("symlink %s → %s escapes the bundle root — refusing to package it", path, resolved)
 	}
-	// R29: a contained symlink can still point at a FIFO, device, or socket.
-	// os.Stat only reads metadata (never opens the target), so this cannot
-	// itself hang even on a FIFO with no writer — but reading it later with
-	// os.ReadFile would. Reject non-regular resolved targets here instead.
+
 	resolvedInfo, statErr := os.Stat(path)
 	if statErr != nil {
 		return fmt.Errorf("stat symlink target for %s: %w", path, statErr)
@@ -1463,16 +1414,6 @@ func checkSymlink(path, root string) error {
 	return nil
 }
 
-// selectManifest picks exactly one manifest entry from the bundle, never by
-// walk-order/alphabetical accident (R18):
-//  1. sel.explicitManifestRel, if set — verbatim, no further discovery.
-//  2. The canonical root filename for sel.kind, if set — SKILL.md / agent.md.
-//  3. Auto-detect: exactly one canonical root filename among the entries.
-//  4. Exactly one root-level .md file.
-//  5. Exactly one .md file anywhere in the bundle.
-//
-// More than one candidate at any discovery tier is ambiguous and rejected
-// rather than guessed at.
 func selectManifest(entries []bundleEntry, sel bundleSelector) (data []byte, rel string, err error) {
 	readEntry := func(e bundleEntry) ([]byte, string, error) {
 		data, err := os.ReadFile(e.abs)

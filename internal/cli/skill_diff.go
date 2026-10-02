@@ -82,9 +82,6 @@ func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
 	fmt.Fprintf(out, "would write to: %s\n", plan.TargetPaths)
 	printLossReport(out, plan.Loss)
 
-	// Project into a scratch temp dir (never plan.TargetPaths) so we can
-	// re-Load it and report field-level differences without writing
-	// anything under the real target directory or touching the manifest.
 	tmp, err := os.MkdirTemp("", "relay-skill-diff-*")
 	if err != nil {
 		return fmt.Errorf("create scratch dir: %w", err)
@@ -113,10 +110,6 @@ func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
 	return nil
 }
 
-// writeScratchFiles materializes a Plan's Files map under dir — mirrors
-// agentport.Write's file-writing half without the manifest-recording half,
-// used only for skill diff's throwaway preview directory (which must never
-// touch the real target dir or record a manifest entry).
 func writeScratchFiles(dir string, files map[string][]byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

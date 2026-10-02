@@ -35,8 +35,11 @@ Example:
 				return err
 			}
 
-			c := resolveClient(gURL)
-			return callTool(c, args[0], args[1], rawArgs, jsonOut)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			return callToolWithContext(cmd.Context(), c, args[0], args[1], rawArgs, jsonOut, cmd.OutOrStdout())
 		},
 	}
 

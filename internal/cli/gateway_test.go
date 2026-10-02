@@ -329,11 +329,12 @@ func TestLogout_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t *testi
 	cmd := LogoutCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		if err := cmd.RunE(cmd, nil); err != nil {
 			t.Fatalf("LogoutCmd offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}
@@ -368,12 +369,13 @@ func TestTokensRevoke_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t 
 	cmd := TokensCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		cmd.SetArgs([]string{"revoke"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("tokens revoke offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}

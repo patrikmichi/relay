@@ -478,7 +478,11 @@ func TestR29_SecretExclusionCoversCommonCredentialFilenames(t *testing.T) {
 // claim for the service.
 func TestR14_AuthorizeReturnsExplicitUnsupportedError(t *testing.T) {
 	cmd := AuthorizeCmd()
-	cmd.SetArgs([]string{"google-workspace"})
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GATEWAY_API_KEY", "test-token")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }))
+	defer srv.Close()
+	cmd.SetArgs([]string{"google-workspace", "--scope", "gmail_list_messages", "--gateway-url", srv.URL})
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)

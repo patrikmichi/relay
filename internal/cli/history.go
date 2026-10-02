@@ -9,13 +9,6 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
-// HistoryCmd returns `relay history` — lists every recorded write
-// transaction (committed, restored, or still pending recovery) with its
-// journal id, so an operator has a stable, usable id to pass to `relay
-// recover <id>` or `relay history prune <id>` (the plan's R06-adjacent
-// "history IDs are currently unusable" gap: these ids are the same
-// journal ids txn.Begin generates and persists, not re-derived or
-// recomputed at display time).
 func HistoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "history",

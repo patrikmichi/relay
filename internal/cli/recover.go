@@ -8,13 +8,6 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
-// RecoverCmd returns `relay recover [id]` — inspects and completes or
-// rolls back a pending transaction journal left behind by an interrupted
-// skill/agent write (relay-standalone design D5). With no id, it recovers
-// every pending journal found; with an id, only that one. Recovery always
-// either finishes uneventfully (nothing was pending) or restores the
-// artifact's prior state — it never attempts to "complete forward" a
-// write whose source content might have changed since the crash.
 func RecoverCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recover [id]",

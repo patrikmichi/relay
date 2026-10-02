@@ -1,13 +1,13 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"text/tabwriter"
 	"time"
 
@@ -16,18 +16,8 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-// aggregateMcpPath is the aggregate MCP JSON-RPC endpoint. management.* tools
-// (get_skill, search_skills, publish_status, ...) are ONLY registered here —
-// unlike built-in services, there is no per-service /api/management/mcp
-// route (design spec §5.1). This endpoint is gated server-side by the
-// AGGREGATE_MCP_ENABLED kill-switch (default off outside preview/opt-in
-// environments) — see searchSkillsDegradationHint for the guidance shown
-// when that surfaces as a 503.
-const aggregateMcpPath = "/api/mcp"
-
-// searchSkillsToolName is the gateway's discovery wrapper over listCatalog
-// filtered to type:'skill' (lib/marketplace/mcp-search-skills-tool.ts).
-const searchSkillsToolName = "management.search_skills"
+// skillSearchPath is independent of the aggregate MCP feature switch.
+const skillSearchPath = "/api/catalog/skills/search"
 
 // maxSearchResponseBytes bounds the search response body read — a sane cap
 // for a JSON search-results payload, mirroring catalog.readLimited's
@@ -65,7 +55,7 @@ type skillSearchEntry struct {
 // skillSearchDoer is the minimal HTTP interface SkillSearchCmd needs —
 // satisfied by *client.Client.
 type skillSearchDoer interface {
-	PostContext(ctx context.Context, path, contentType string, body io.Reader) (*http.Response, error)
+	GetContext(ctx context.Context, path string) (*http.Response, error)
 }
 
 // searchTimeout bounds a single search request end to end — shorter than
@@ -74,10 +64,7 @@ type skillSearchDoer interface {
 // search` forever). A package-level var so tests can shrink it.
 var searchTimeout = 30 * time.Second
 
-// SkillSearchCmd returns the `relay skill search <query>` cobra command —
-// calls the gateway's management.search_skills MCP tool (aggregate
-// /api/mcp endpoint) and prints matching catalog skills (id, slug,
-// version, trust score, description).
+// SkillSearchCmd searches the dedicated catalog route and prints skill metadata.
 func SkillSearchCmd() *cobra.Command {
 	var (
 		gatewayURL string
@@ -91,9 +78,8 @@ func SkillSearchCmd() *cobra.Command {
 each match's catalog id, slug, latest version, and trust score — feed the
 id/slug directly into 'relay skill install <catalog-id>'.
 
-Requires a reachable, authenticated gateway with the aggregate MCP endpoint
-enabled server-side (AGGREGATE_MCP_ENABLED) — degrades with guidance if
-either is unavailable.
+Requires an authenticated gateway supporting the dedicated catalog search API.
+The aggregate MCP endpoint does not need to be enabled.
 
 Examples:
   relay skill search
@@ -129,7 +115,7 @@ func runSkillSearch(cmd *cobra.Command, query, gatewayURL string, jsonOut bool) 
 		return err
 	}
 
-	results, err := searchSkills(c, query)
+	results, err := searchSkills(cmd.Context(), c, query)
 	if err != nil {
 		return err
 	}
@@ -148,78 +134,39 @@ func runSkillSearch(cmd *cobra.Command, query, gatewayURL string, jsonOut bool) 
 	return nil
 }
 
-// searchSkills calls management.search_skills on the aggregate MCP endpoint
-// and decodes its JSON-RPC result into a slice of skillSearchEntry.
-func searchSkills(doer skillSearchDoer, query string) ([]skillSearchEntry, error) {
-	arguments := map[string]interface{}{}
-	if query != "" {
-		arguments["query"] = query
-	}
-
-	body, err := json.Marshal(map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/call",
-		"params": map[string]interface{}{
-			"name":      searchSkillsToolName,
-			"arguments": arguments,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal request body: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
+// searchSkills queries the dedicated catalog route with a bounded response.
+func searchSkills(parent context.Context, doer skillSearchDoer, query string) ([]skillSearchEntry, error) {
+	ctx, cancel := context.WithTimeout(parent, searchTimeout)
 	defer cancel()
-
-	resp, err := doer.PostContext(ctx, aggregateMcpPath, "application/json", bytes.NewReader(body))
+	resp, err := doer.GetContext(ctx, skillSearchPath+"?query="+url.QueryEscape(query))
 	if err != nil {
-		return nil, fmt.Errorf("POST %s: %w", aggregateMcpPath, err)
+		return nil, fmt.Errorf("catalog search: %w", err)
 	}
 	defer resp.Body.Close()
-
-	respBody, err := readLimitedResponse(resp.Body, maxSearchResponseBytes)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode == http.StatusServiceUnavailable {
-		return nil, fmt.Errorf("skill search is unavailable on this gateway (aggregate MCP endpoint disabled) — try `relay skill install <catalog-id>` directly if you already know the id/slug")
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return nil, fmt.Errorf("gateway does not support the dedicated skill search API; upgrade the gateway or use relay skill install <catalog-id>")
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("%s", offlineGuidance)
 	}
-
-	env, err := decodeMCPEnvelope(respBody)
-	if err != nil {
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("search failed (%d): %w", resp.StatusCode, err)
-		}
-		return nil, err
-	}
-
-	if env.Error != nil {
-		return nil, fmt.Errorf("search failed (code %d): %s", env.Error.Code, env.Error.Message)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("search failed (%d); retry later or use relay skill install <catalog-id>", resp.StatusCode)
 	}
-	if env.Result.IsError {
-		return nil, fmt.Errorf("search failed: %s", renderContentBlocks(env.Result.Content))
+	data, err := readLimitedResponse(resp.Body, maxSearchResponseBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
 	}
-	if len(env.Result.Content) == 0 {
-		return nil, nil
+	var result struct {
+		OK   bool                `json:"ok"`
+		Data *[]skillSearchEntry `json:"data"`
 	}
-
-	text, ok := contentBlockText(env.Result.Content[0])
-	if !ok {
-		return nil, fmt.Errorf("search result's first content block is not text: %s", truncateForError(env.Result.Content[0]))
-	}
-	var results []skillSearchEntry
-	if err := json.Unmarshal([]byte(text), &results); err != nil {
+	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("decode search results: %w", err)
 	}
-	return results, nil
+	if !result.OK || result.Data == nil {
+		return nil, fmt.Errorf("invalid catalog search response: expected ok:true and a data array")
+	}
+	return *result.Data, nil
 }
 
 // printSkillSearchResults prints a tab-aligned table of results, or a

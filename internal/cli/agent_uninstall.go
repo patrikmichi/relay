@@ -27,7 +27,7 @@ given --scope, and drop any matching Kind: agent manifest ledger entries.
 Refuses if the agent isn't found. Prompts for confirmation on an
 interactive terminal unless --yes is set.
 
-Supported providers: claude, opencode.`,
+Supported providers: claude, opencode, codex, cursor, gemini-cli.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentUninstall(cmd, args[0], agentUninstallOpts{from: fromFlag, scope: scopeFlag, yes: yesFlag})
@@ -51,7 +51,7 @@ func runAgentUninstall(cmd *cobra.Command, name string, opts agentUninstallOpts)
 		return err
 	}
 	if opts.from == "" {
-		return fmt.Errorf("--from is required (claude or opencode)")
+		return fmt.Errorf("--from is required (claude, opencode, codex, cursor, or gemini-cli)")
 	}
 	a, ok := agentport.AgentAdapterByID(agentport.ProviderID(opts.from))
 	if !ok {
