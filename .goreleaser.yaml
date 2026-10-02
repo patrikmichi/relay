@@ -1,22 +1,16 @@
-# .goreleaser.yaml — release config for the `relay` CLI (goreleaser v2 schema).
-#
-# This file lives at cli/.goreleaser.yaml inside the monorepo today, but is
-# authored to work unmodified once cli/ is extracted into its own public
-# repo (github.com/patrikmichi/relay) — see Phase 2 of
-# vault/plans/claude-infra/relay-standalone-distribution-plan-2026-07-06.md.
-# Until the split, run goreleaser from inside cli/ (`cd cli && goreleaser ...`)
-# so relative paths (README.md, dist/) resolve correctly.
+# Run from the standalone relay repository root.
 version: 2
 
 project_name: relay
 
-# Explicit owner/repo so `goreleaser release` always targets the eventual
-# public split repo, regardless of what `git remote` currently resolves to
-# (this file is developed inside the private monorepo before extraction).
 release:
   github:
     owner: patrikmichi
     name: relay
+
+before:
+  hooks:
+    - bash scripts/generate-completions.sh
 
 builds:
   - id: relay
@@ -30,14 +24,7 @@ builds:
     goarch:
       - amd64
       - arm64
-    # internal/config.DefaultGatewayURL is already "" in source, so this -X
-    # override is a no-op unless RELAY_DEFAULT_GATEWAY_URL is set. We use the
-    # `index` template func (not `.Env.KEY` dot access) because goreleaser's
-    # template engine runs with missingkey=error for `.Env` — `.Env.KEY` on
-    # an unset key hard-fails the build ("map has no entry for key"), while
-    # `index .Env "KEY"` returns "" for a missing key with no error. An owner
-    # build that wants a baked-in default can opt in without editing this file:
-    #   RELAY_DEFAULT_GATEWAY_URL=https://gw.example.dev goreleaser release --clean
+    # Missing optional gateway defaults resolve to an empty string.
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }} -X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL={{ index .Env "RELAY_DEFAULT_GATEWAY_URL" }}
 
@@ -51,6 +38,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - completions/*
 
 checksum:
   name_template: "checksums.txt"
@@ -79,6 +67,7 @@ changelog:
 snapshot:
   version_template: "{{ .Version }}-next+{{ .ShortCommit }}"
 
+# Retain formula support for Linux and macOS with GoReleaser 2.16.
 brews:
   - name: relay
     ids:
@@ -86,10 +75,7 @@ brews:
     repository:
       owner: patrikmichi
       name: homebrew-tap
-      # Push auth: CI exports HOMEBREW_TAP_GITHUB_TOKEN (a PAT with `repo`
-      # scope on the tap repo) as GITHUB_TOKEN-alike for this specific
-      # goreleaser pipe — see .github/workflows/release.yml.
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
     commit_author:
       name: patrikmichi
       email: yay@patrikmichalicka.com
@@ -97,9 +83,7 @@ brews:
     description: "relay — unified CLI client for the Atlas gateway (multi-service integration hub)."
     install: |
       bin.install "relay"
+      generate_completions_from_executable(bin/"relay", "completion")
     test: |
       system "#{bin}/relay", "--version"
-    # Never let a --snapshot build push to the tap; only real, tagged
-    # releases (goreleaser sets this automatically for snapshots too, but
-    # `auto` makes the intent explicit and covers prerelease/dirty states).
     skip_upload: auto

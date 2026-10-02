@@ -1,10 +1,8 @@
 # relay
 
-`relay` is a CLI for managing AI agent skills (Claude, Codex, OpenCode,
-Cursor) and agent definitions (Claude, opencode) across providers, and, when
-you're connected to a gateway, for pulling skills/agents/MCP servers from a
-shared catalog. Every command works fully offline against your local
-machine; a handful of catalog commands need a gateway to reach.
+`relay` manages AI agent skills across seven providers and agent definitions
+across five providers. Local installation and migration work offline. Catalog
+access, publishing, service calls and account commands use a configured gateway.
 
 ## Install
 
@@ -25,7 +23,7 @@ Both install a single static `relay` binary — no runtime dependencies.
 ## Quickstart
 
 ```bash
-# Authenticate against a gateway (only needed for catalog commands below).
+# Authenticate against a gateway for catalog access and service calls.
 relay login
 
 # Fully offline: migrate a skill you already have installed for one
@@ -41,26 +39,26 @@ relay skill install pr-triage --to claude
 relay agent migrate reviewer --from claude --to opencode
 ```
 
-> MCP-server management verbs (`relay mcp ...` beyond `publish`) are not
-> yet part of this CLI.
+> `relay mcp list` reads permitted catalog metadata; `relay mcp publish` publishes descriptors. Local MCP installation and removal remain unsupported.
 
 ## Agent provider support
 
 `relay agent migrate/list/diff/scan/uninstall/rollback` work offline against
-two providers:
+five providers:
 
 | Provider | Shape | Support |
 |---|---|---|
 | **Claude Code** | flat `<name>.md` (frontmatter + body) at `~/.claude/agents/` (user) / `.claude/agents/` (project) | **Supported** |
-| **opencode** | flat `<name>.md` (frontmatter + body) at `~/.config/opencode/agent/` (user) / `.opencode/agent/` (project); `tools` is reshaped to/from opencode's `{tool: bool}` map | **Supported** |
-| **Codex** | a `[profiles.*]` TOML block in `~/.codex/config.toml` plus a decoupled prompt file in `~/.codex/prompts/*.md` — no single agent-definition file | **Unsupported** — a TOML profile is not equivalent to a markdown agent |
-| **Cursor** | rules (`.cursor/rules/*.mdc`) and settings-defined "modes" | **Unsupported** — Cursor has no first-class subagent primitive |
+| **opencode** | flat `<name>.md` (frontmatter + body) at `~/.config/opencode/agents/` (user) / `.opencode/agents/` (project); `tools` is reshaped to/from opencode's `{tool: bool}` map | **Supported** |
+| **Codex** | `.codex/agents/<name>.toml`, user or project | Supported; unmapped execution settings refused |
+| **Cursor** | `.cursor/agents/<name>.md`, user or project | Supported; unmapped execution settings refused |
+| **Gemini CLI** | `.gemini/agents/<name>.md`, user or project | Supported; unmapped execution settings refused |
 
 Migrating between claude and opencode preserves Name/Description/Body/Model
 (alias-mapped)/Tools (reshaped); Claude's `memory`/`skills` and opencode's
 `temperature`/`mode` have no equivalent on the other side and are reported
 as dropped in the fidelity report. Skill management (`relay skill ...`)
-supports all 4 providers (Claude, Codex, OpenCode, Cursor).
+supports seven providers: Claude, Codex, OpenCode, Cursor, Gemini CLI, Cline, and Windsurf.
 
 ## The offline-vs-gateway model
 
@@ -93,7 +91,7 @@ scripts/CI that must never make a network call.
 | `relay login [--device]` | gateway | Authenticate via Google OAuth (browser or device-code flow) |
 | `relay logout` | gateway | Revoke the current session and remove the stored token |
 | `relay whoami [--full]` | gateway | Show the current authenticated identity |
-| `relay authorize <service>` | gateway | Authorize a specific service (e.g. Google Workspace scopes) |
+| `relay authorize <service> --scope <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay tokens list` | gateway | Show active session info |
 | `relay tokens revoke` | gateway | Revoke the current session token |
 | `relay config set-gateway <url>` | local | Persist a gateway URL to `~/.config/relay/config.json` |
@@ -117,7 +115,9 @@ scripts/CI that must never make a network call.
 | `relay skill scan <name>` / `relay skill score <name>` | local | Inspect a skill's manifest/fidelity |
 | `relay skill uninstall <name>` | local | Remove an installed skill |
 | `relay skill rollback [manifest-entry-id]` | local | Revert to a prior manifest entry |
-| `relay agent migrate <name> --from <p> [--to <p>...]` | local | Project an installed agent from one provider to another (claude, opencode) |
+| `relay agent migrate <name> --from <p> [--to <p>...]` | local | Project an installed agent from one provider to another (five providers) |
+| `relay agent install <source>` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle; supports history and rollback |
+| `relay mcp list` | gateway | List permitted MCP server metadata without displaying credentials |
 | `relay agent list` | local | List installed agents across agent providers |
 | `relay agent diff <name>` | local | Diff an agent's projection across providers |
 | `relay agent scan <name>` | local | Inspect an agent for dangerous shell patterns/hardcoded secrets |
@@ -149,3 +149,31 @@ the OS keychain, auto-refreshing). Non-interactive contexts should set
 ## License
 
 [Apache-2.0](LICENSE)
+
+## Gateway compatibility
+
+Skill search uses `GET /api/catalog/skills/search?query=...`, independent of aggregate MCP. Older gateways need upgrading for search.
+Catalog agent installation requires `X-Resource-Type: agent`, catalog identity and version headers, a verified checksum, and scan verdict. Bundles containing resources the flat agent format cannot preserve are rejected. Local agent installation accepts a Claude Markdown file and works without gateway credentials.
+Source format provenance remains Claude for downloaded agents so tool and model translation remain correct; catalog id and version separately record catalog origin.
+
+Provider formats were checked against [Codex custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Cursor subagents](https://cursor.com/docs/subagents), and [Gemini CLI subagents](https://geminicli.com/docs/core/subagents/). The adapters support the fields documented in [agent formats](docs/agent-formats.md) and refuse migrations that cannot preserve execution restrictions.
+
+`relay authorize <service> --scope <tool>` requests access to gateway tools.
+Repeat `--scope` for multiple tools and use `--account` when selecting a linked
+account. The command polls for approved grants and required credentials, with a
+default timeout of ten minutes (`--timeout`, maximum thirty minutes). Tool grants
+do not verify the upstream provider's OAuth scopes; connect the required account
+in the gateway.
+
+### Diagnostics and format fidelity
+
+`relay doctor [--json]` checks provider directories, current installed hashes and
+permissions, pending recovery journals, override validation and gateway/session
+health. `--offline` skips network checks. Directory permission checks inspect
+mode bits, not ACLs or an actual write probe.
+
+`relay mcp inspect <catalog-id> [--json]` shows source, transport, authentication
+mode/scope and declared tool count. Commands, endpoint URLs and credential
+reference values are excluded from inspection output.
+
+See [agent formats](docs/agent-formats.md) for supported fields and refusal rules.

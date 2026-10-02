@@ -1,10 +1,4 @@
-# .github/workflows/ci.yml — PR/push baseline gate.
-#
-# Runs on every push/PR against this standalone repo. Separate from
-# release.yml (tag-triggered goreleaser release), which currently pins an
-# unsupported Go 1.22 toolchain (tracked as R32, out of this workflow's
-# scope). This workflow uses the current supported toolchain so
-# build/vet/test/race regressions surface before a release is cut.
+# Build and security checks for pull requests and main.
 
 name: CI
 
@@ -46,3 +40,8 @@ jobs:
 
       - name: go test -race
         run: go test -race ./...
+
+      - name: govulncheck
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          go-version-file: go.mod
