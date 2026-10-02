@@ -6,21 +6,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the Agent-IR analogue of ir_fields.go: the bounded, fixed
-// binding between a config's declared canonical-IR field NAME (a string in
-// agents/<id>.yml, e.g. "temperature") and the actual Go field on *Agent.
-// The Agent IR shape itself is fixed Go code (agent.go) — only the mapping
-// from a provider's on-disk KEY to one of these fixed IR names is data.
-// Kept as a distinct switch/map pair from ir_fields.go (rather than a
-// unified, kind-parameterized function) per design §3b Option A: the
-// byte-exact Skill path (config_adapter_parity_test.go) must never be put
-// at risk by agent-only field additions, and a small, reviewable,
-// per-kind switch is the codebase's stated non-goal-compliant alternative
-// to reflection (see ir_fields.go's doc comment).
-//
-// agentIrFieldDescriptors is unioned into config.go's validate() via
-// canonicalIRFieldType (ir_fields.go) — an unrecognized ir name (in either
-// set) is a config validation error, not a silent no-op.
 var agentIrFieldDescriptors = map[string]FieldType{
 	"name":        FieldString,
 	"description": FieldString,

@@ -17,27 +17,16 @@ func agentLockKey(provider ProviderID, scope Scope, name, projectRoot string) st
 	return fmt.Sprintf("agent:%s:%s:%s:%s", provider, scope, name, projectRoot)
 }
 
-// AgentPlan is the Agent-IR analogue of Plan (engine.go): the preview of an
-// agent migration — which file would be written to the target provider, the
-// projected fidelity-loss report, and where it'd land. MigrateAgent builds
-// an AgentPlan without writing anything, mirroring Migrate/Plan exactly.
 type AgentPlan struct {
 	Agent  *Agent
 	Target AgentAdapter
 	Scope  Scope
 	Files  map[string][]byte // relative path -> content, from Target.Project() — always a single "<name>.md" entry (agents carry no resources)
 	Loss   []LossItem
-	// TargetPaths is the absolute directory the files would be written
-	// under. Unlike Plan.TargetPaths (a skill's own "<dir>/<name>/"
-	// subdirectory), this is the provider's directory ITSELF (e.g.
-	// "~/.claude/agents") — agents are flat "<name>.md" files with no
-	// containing subdirectory (see AgentTargetDir).
+
 	TargetPaths string
 }
 
-// HasDropped reports whether the plan's loss report contains any
-// LossDropped item (used by `--strict`) — the AgentPlan analogue of
-// Plan.HasDropped.
 func (p *AgentPlan) HasDropped() bool {
 	for _, l := range p.Loss {
 		if l.Kind == LossDropped {
@@ -47,15 +36,7 @@ func (p *AgentPlan) HasDropped() bool {
 	return false
 }
 
-// AgentTargetDir resolves the absolute directory an agent would be written
-// to (or read back from) for the given target adapter + scope — the
-// Agent-IR analogue of TargetDir. Unlike TargetDir, this does NOT join a
-// "<name>/" subdirectory onto the base: every shipped agent provider is
-// layout: flat (agents/*.yml) — a single "<name>.md" file lives directly
-// inside the provider's own directory, with no per-agent containing
-// subdirectory the way a skill has "<dir>/<name>/SKILL.md". Shared by
-// MigrateAgent (to compute AgentPlan.TargetPaths) and Rollback (for
-// KindAgent manifest entries — see rollback.go).
+// AgentTargetDir resolves the absolute directory an agent would be written to (or read back from) for the given target adapter + scope — the Agent-IR analogue of TargetDir.
 func AgentTargetDir(target pathAdapter, scope Scope) (string, error) {
 	if target == nil {
 		return "", fmt.Errorf("nil target adapter")
@@ -113,13 +94,6 @@ func MigrateAgent(src *Agent, target AgentAdapter, scope Scope) (*AgentPlan, err
 	}, nil
 }
 
-// WriteAgent materializes an AgentPlan's file under plan.TargetPaths and
-// records a manifest ledger entry with Kind: KindAgent, through the same
-// durable transaction engine Write uses (see its doc comment for the full
-// state-machine rationale) — the Agent-IR analogue of Write. Staging the
-// individual "<name>.md" file (never the shared agents directory as a
-// whole) is what keeps this surgical: a crash mid-apply only ever leaves
-// one agent's file needing recovery, never the whole provider directory.
 func WriteAgent(plan *AgentPlan) error {
 	if err := PreflightWriteAgent(plan); err != nil {
 		return err

@@ -16,15 +16,7 @@ type AgentRef struct {
 	Path     string // flat "<name>.md" file
 }
 
-// AgentList enumerates agents present for adapter a in the given scope,
-// across every directory the adapter searches (UserDirs()/ProjectDirs(), in
-// priority order) — the Agent-IR analogue of List. Every shipped agent
-// provider is layout: flat with direct discovery (no SKILL.md-style
-// resource-dir shape, no recursive walk — see agents/*.yml), so this is
-// simpler than List: a direct-children "*.md" scan only. Duplicate names
-// across directories are resolved by priority order (the first directory
-// that has the name wins). Returns an empty (non-nil-error) slice if
-// nothing is found — not an error.
+// AgentList enumerates agents present for adapter a in the given scope, across every directory the adapter searches (UserDirs()/ProjectDirs(), in priority order) — the Agent-IR analogue of List.
 func AgentList(a AgentAdapter, scope Scope) ([]AgentRef, error) {
 	dirs := a.UserDirs()
 	if scope == ScopeProject {
@@ -50,10 +42,10 @@ func AgentList(a AgentAdapter, scope Scope) ([]AgentRef, error) {
 			return nil, fmt.Errorf("scan %s: %w", d, err)
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), agentFileExtension(a)) {
 				continue
 			}
-			name := strings.TrimSuffix(e.Name(), ".md")
+			name := strings.TrimSuffix(e.Name(), agentFileExtension(a))
 			if seen[name] {
 				continue
 			}

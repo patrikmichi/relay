@@ -27,24 +27,6 @@ type genericFrontmatter struct {
 	Metadata               map[string]string `yaml:"metadata,omitempty"`
 }
 
-// LoadGenericSkill loads a skill from an arbitrary LOCAL directory (or a
-// direct path to a SKILL.md file) as a generic Agent-Skills skill — the
-// engine behind `relay skill install <path>`'s local-source path. It
-// recognizes the full union of frontmatter extension fields any of the 4
-// providers understand, plus the optional Codex agents/openai.yaml sidecar
-// (via loadCodexSidecar, shared with the codex-openai SidecarCodec — see
-// hooks.go), so a subsequent Migrate to any target only drops what that
-// target's format genuinely can't represent.
-//
-// If the frontmatter has no `name`, the directory name is used instead (and
-// validated via ValidateName). Unlike the provider adapters' Load, this
-// does NOT require the directory name to match the frontmatter name — an
-// arbitrary source directory isn't a provider's canonical skill root, so
-// there's no round-trip invariant to enforce there.
-//
-// A gateway-sourced install (catalog resource id / semver — see
-// Provenance.CatalogID/Version) is a later phase and is NOT implemented
-// here; this function only ever reads from the local filesystem.
 func LoadGenericSkill(path string) (*Skill, error) {
 	fi, err := os.Stat(path)
 	if err != nil {

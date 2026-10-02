@@ -260,7 +260,7 @@ func TestResolveTargetForEntry_AgentKindResolvesAgentAdapter(t *testing.T) {
 func TestResolveTargetForEntry_UnknownAgentProviderErrors(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if _, err := resolveTargetForEntry(ManifestEntry{Provider: ProviderCodex, Kind: KindAgent}); err == nil {
+	if _, err := resolveTargetForEntry(ManifestEntry{Provider: ProviderID("unsupported"), Kind: KindAgent}); err == nil {
 		t.Fatalf("resolveTargetForEntry(codex, KindAgent): expected an error (codex has no agent provider config)")
 	}
 }

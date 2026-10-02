@@ -6,17 +6,7 @@ import (
 	"sort"
 )
 
-// FieldDiff compares two Skills field-by-field (the common fields plus the
-// typed-optional provider-extension fields) and returns a human-readable
-// line for every field that differs. Used by `relay skill diff` to show
-// what a migration would change or drop, alongside the LossItem report
-// (which only reports fields the TARGET FORMAT can't represent at all —
-// FieldDiff also catches anything else that changed in a round trip).
-//
-// Body is reported as changed/unchanged only (not a full text diff) to
-// keep output short. Resources are compared by key set only — byte content
-// is expected to round-trip verbatim; the interesting signal is whether a
-// resource file was dropped or added, not its bytes.
+// FieldDiff compares two Skills field-by-field (the common fields plus the typed-optional provider-extension fields) and returns a human-readable line for every field that differs.
 func FieldDiff(src, other *Skill) []string {
 	var diffs []string
 	add := func(field string, from, to interface{}) {
@@ -92,9 +82,6 @@ func resourceKeys(m map[string]ResourceFile) []string {
 	return keys
 }
 
-// modeChangedResources returns, sorted, the relative paths present in both
-// src and other whose ResourceFile.Mode differs (R11) — a permission
-// regression that byte-key comparison alone (resourceKeys) can't see.
 func modeChangedResources(src, other map[string]ResourceFile) []string {
 	var changed []string
 	for rel, s := range src {

@@ -20,24 +20,16 @@ type ScanFinding struct {
 // account of what was and wasn't pattern-matched, and a quality score.
 type ScanResult struct {
 	Findings []ScanFinding
-	Scanned  []string   // labels of every input pattern-matched (R28)
-	Skipped  []ScanSkip // labels of every input NOT pattern-matched, with why (R28)
-	Score    int        // 0-100
+	Scanned  []string
+	Skipped  []ScanSkip
+	Score    int // 0-100
 }
 
-// ScanSkip records one scan input that was deliberately not pattern-matched
-// (a binary resource, a file loadResources already excluded, ...) so a scan
-// report can never imply full coverage when part of the artifact was
-// actually skipped — R28.
 type ScanSkip struct {
 	File   string
 	Reason string
 }
 
-// ScoreDisclaimer is appended by CLI renderers of a scan score so the
-// heuristic pattern-match result is never read as an execution-safety or
-// trust certification — R28: "clean lint" means no configured pattern
-// matched, nothing more.
 const ScoreDisclaimer = "heuristic pattern-match score, not an execution-safety or trust certification — absence of findings means no configured pattern matched, not that the artifact is safe to run"
 
 type patternDef struct {
@@ -66,13 +58,6 @@ var secretPatterns = []patternDef{
 	{"slack-token", regexp.MustCompile(`\bxox[baprs]-[A-Za-z0-9-]{10,}\b`), "high"},
 }
 
-// Scan performs a deterministic, local, no-network scan of a Skill for
-// dangerous shell patterns and obvious hardcoded secrets, plus a simple
-// quality score. Coverage spans the body, every original frontmatter field
-// (including provider-specific and otherwise-unmapped keys), every loaded
-// resource and sidecar value, and reports — rather than silently drops —
-// anything it could not pattern-match (binary resources, symlinked/control
-// files loadResources already excluded) — R28.
 func Scan(s *Skill) ScanResult {
 	var (
 		findings []ScanFinding
@@ -149,11 +134,6 @@ func Scan(s *Skill) ScanResult {
 	return ScanResult{Findings: findings, Scanned: scanned, Skipped: skipped, Score: qualityScore(s, findings)}
 }
 
-// excerpt returns a short surrounding snippet of text around a regex match
-// location, for display in scan output. When redact is true (secretPatterns
-// matches), the matched span itself is replaced by a non-reversible
-// fingerprint so the credential value never appears in any scan output —
-// CLI print, JSON, or logs all render from this same Excerpt field (R27).
 func excerpt(text string, loc []int, redact bool) string {
 	start := 0
 	if loc[0] > 20 {

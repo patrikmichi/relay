@@ -5,7 +5,7 @@ import "fmt"
 // builtinAgentProviderOrder is the stable display/enumeration order for the
 // 2 shipped agent providers — the Agent-IR analogue of
 // builtinProviderOrder.
-var builtinAgentProviderOrder = []string{"claude", "opencode"}
+var builtinAgentProviderOrder = []string{"claude", "opencode", "codex", "cursor", "gemini-cli"}
 
 // AllAgentAdapters returns one agentConfigAdapter per loaded agent provider
 // config (agents/*.yml plus any user/project overrides) — the Agent-IR

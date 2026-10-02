@@ -17,11 +17,6 @@ type SkillRef struct {
 	Path     string // skill directory (containing SKILL.md), or a legacy flat <name>.md file
 }
 
-// recursiveDiscoverer is an additive, OPTIONAL capability interface (§2.4
-// of the config-driven-adapters design) List uses instead of a hard-coded
-// `a.(cursorAdapter)` type assertion — the one coupling to a concrete
-// adapter type this package had. configAdapter implements it from its
-// `discovery` config field; the Adapter interface itself is unchanged.
 type recursiveDiscoverer interface {
 	// DiscoversRecursively reports whether this provider's discovery for
 	// the given scope should walk the full subtree for any SKILL.md,
@@ -29,26 +24,6 @@ type recursiveDiscoverer interface {
 	DiscoversRecursively(scope Scope) bool
 }
 
-// List enumerates skills present for adapter a in the given scope, across
-// every directory the adapter searches (UserDirs()/ProjectDirs(), in
-// priority order — including any other providers' directories the adapter
-// also reads for compatibility, mirroring ResolveSkillPath's search order).
-// Duplicate names across directories are resolved by priority order (the
-// first directory that has the name wins), same as
-// ResolveSkillPath/findSkillInDirs. Returns an empty (non-nil-error) slice
-// if nothing is found — not an error.
-//
-// ScopeProject directories are resolved relative to the current working
-// directory only (unlike ResolveSkillPath, List does not walk up to a repo
-// root — listing is a "what's here" operation, not a single-skill lookup).
-//
-// Cursor's project scope is discovered recursively — skills can live
-// nested anywhere under .cursor/skills/ (foo/bar/<name>/SKILL.md); identity
-// is the SKILL.md's own directory name, matching how the Cursor adapter's
-// Load validates a skill's name against its directory (see
-// recursiveDiscoverer above). Every other adapter/scope combination only
-// looks at direct children of each base directory (plus, for Claude, legacy
-// flat <name>.md files).
 func List(a Adapter, scope Scope) ([]SkillRef, error) {
 	dirs := a.UserDirs()
 	if scope == ScopeProject {
@@ -84,14 +59,7 @@ func List(a Adapter, scope Scope) ([]SkillRef, error) {
 				continue
 			}
 			seen[h.Name] = true
-			// A name appearing more than once WITHIN this single directory
-			// tree is an explicit ambiguity, not a silent first-hit pick —
-			// the same rule findSkillByName (adapter.go) enforces for a
-			// named lookup, so an artifact List shows is never one a
-			// subsequent scan/migrate/uninstall by that name can't actually
-			// resolve (R30). Duplicate names across DIFFERENT directories
-			// remain ordinary priority-order shadowing (the earlier
-			// directory wins), unchanged.
+
 			if len(byName[h.Name]) > 1 {
 				matches := append([]string(nil), byName[h.Name]...)
 				sort.Strings(matches)
@@ -138,11 +106,7 @@ func discoverSkillHits(base string, recursive bool) ([]skillHit, error) {
 	var hits []skillHit
 	for _, e := range entries {
 		entryPath := filepath.Join(base, e.Name())
-		// e.IsDir() (from os.ReadDir's Lstat-based DirEntry) is false for a
-		// symlinked skill directory — isSymlinkToDir follows it explicitly
-		// so an explicitly-selected/discovered symlinked skill root is
-		// still found by `skill list`, matching what named resolution
-		// (findSkillInDirs, which uses os.Stat) already accepts (R12).
+
 		if e.IsDir() || isSymlinkToDir(entryPath) {
 			skillMd := filepath.Join(entryPath, "SKILL.md")
 			if fi, statErr := os.Stat(skillMd); statErr == nil && !fi.IsDir() {

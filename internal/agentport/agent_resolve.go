@@ -16,9 +16,9 @@ func ResolveAgentPath(a AgentAdapter, scope Scope, name string) (string, error) 
 		return "", err
 	}
 	if scope == ScopeProject {
-		return resolveProjectAgentPath(a.ProjectDirs(), name)
+		return resolveProjectAgentPath(a.ProjectDirs(), name, agentFileExtension(a))
 	}
-	path, ok := findAgentInDirs(a.UserDirs(), name)
+	path, ok := findAgentInDirs(a.UserDirs(), name, agentFileExtension(a))
 	if !ok {
 		return "", fmt.Errorf("agent %q not found for provider %s (user scope)", name, a.ID())
 	}
@@ -38,7 +38,7 @@ func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, erro
 
 	if scope == ScopeProject {
 		dirs := ownDirs(a.ProjectDirs(), a.OwnProjectDirCount())
-		path, err := resolveProjectAgentPath(dirs, name)
+		path, err := resolveProjectAgentPath(dirs, name, agentFileExtension(a))
 		if err != nil {
 			return "", fmt.Errorf("agent %q not found for provider %s (project scope, own dirs only): %w", name, a.ID(), err)
 		}
@@ -46,7 +46,7 @@ func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, erro
 	}
 
 	dirs := ownDirs(a.UserDirs(), a.OwnUserDirCount())
-	path, ok := findAgentInDirs(dirs, name)
+	path, ok := findAgentInDirs(dirs, name, agentFileExtension(a))
 	if !ok {
 		return "", fmt.Errorf("agent %q not found for provider %s (user scope, own dirs only)", name, a.ID())
 	}
@@ -57,9 +57,9 @@ func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, erro
 // "<dir>/<name>.md", returning the first match — the Agent-IR analogue of
 // findSkillInDirs, minus the SKILL.md-directory branch (agents have no
 // resource-bearing directory shape).
-func findAgentInDirs(dirs []string, name string) (string, bool) {
+func findAgentInDirs(dirs []string, name string, extensions ...string) (string, bool) {
 	for _, d := range dirs {
-		flatFile := filepath.Join(d, name+".md")
+		flatFile := filepath.Join(d, name+extensionOrMarkdown(extensions))
 		if fi, err := os.Stat(flatFile); err == nil && !fi.IsDir() {
 			return flatFile, true
 		}
@@ -68,9 +68,9 @@ func findAgentInDirs(dirs []string, name string) (string, bool) {
 }
 
 // resolveProjectAgentPath searches relDirs (relative to the current working
-// directory, walking up to the filesystem root) for name+".md" — the
+// directory, walking up to the filesystem root) for name+extensionOrMarkdown(extensions) — the
 // Agent-IR analogue of resolveProjectSkillPath.
-func resolveProjectAgentPath(relDirs []string, name string) (string, error) {
+func resolveProjectAgentPath(relDirs []string, name string, extensions ...string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("get working directory: %w", err)
@@ -81,7 +81,7 @@ func resolveProjectAgentPath(relDirs []string, name string) (string, error) {
 		for i, rel := range relDirs {
 			bases[i] = filepath.Join(dir, rel)
 		}
-		if path, ok := findAgentInDirs(bases, name); ok {
+		if path, ok := findAgentInDirs(bases, name, extensions...); ok {
 			return path, nil
 		}
 		parent := filepath.Dir(dir)
@@ -91,4 +91,17 @@ func resolveProjectAgentPath(relDirs []string, name string) (string, error) {
 		dir = parent
 	}
 	return "", fmt.Errorf("agent %q not found in project dirs (searched from %s upward)", name, cwd)
+}
+
+func agentFileExtension(a AgentAdapter) string {
+	if a.ID() == ProviderCodex {
+		return ".toml"
+	}
+	return ".md"
+}
+func extensionOrMarkdown(extensions []string) string {
+	if len(extensions) > 0 {
+		return extensions[0]
+	}
+	return ".md"
 }

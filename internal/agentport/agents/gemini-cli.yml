@@ -1,0 +1,13 @@
+id: gemini-cli
+layout: flat
+discovery: direct
+dirs:
+  user:
+    - { path: "~/.gemini/agents", role: own }
+  project:
+    - { path: ".gemini/agents", role: own }
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: model, key: model, type: string, presence: optional }
+  - { ir: tools, key: tools, type: string-or-list, presence: optional }

@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// pollInterval mirrors internal/client/sessionlock's flock retry cadence —
-// same kernel-liveness reasoning applies here: a held lock always means a
-// live holder, never a guess based on file age (R33).
 const pollInterval = 20 * time.Millisecond
 
 // LockSet holds every per-key advisory lock acquired for one operation.

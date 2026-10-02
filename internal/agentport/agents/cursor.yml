@@ -1,0 +1,12 @@
+id: cursor
+layout: flat
+discovery: direct
+dirs:
+  user:
+    - { path: "~/.cursor/agents", role: own }
+  project:
+    - { path: ".cursor/agents", role: own }
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: model, key: model, type: string, presence: optional }

@@ -77,7 +77,7 @@ func TestAgentConfigAdapter_ClaudeRoundTrip(t *testing.T) {
 func TestAgentConfigAdapter_OpencodeNameInferredFromFilename(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string][]byte{
-		"reviewer.md": []byte("---\ndescription: Reviews code.\nmode: subagent\nmodel: anthropic/claude-sonnet-4\ntemperature: 0.2\n---\n\nReview the diff.\n"),
+		"reviewer.md": []byte("---\ndescription: Reviews code.\nmode: subagent\nmodel: anthropic/claude-sonnet-5\ntemperature: 0.2\n---\n\nReview the diff.\n"),
 	})
 
 	oc := NewOpencodeAgentAdapter()
@@ -94,7 +94,7 @@ func TestAgentConfigAdapter_OpencodeNameInferredFromFilename(t *testing.T) {
 
 	// Project the opencode-sourced agent onto claude: Temperature/Mode are
 	// dropped (claude has no equivalent), and Model degrades via the
-	// alias-mapping table (opencode "anthropic/claude-sonnet-4" -> claude
+	// alias-mapping table (opencode "anthropic/claude-sonnet-5" -> claude
 	// "sonnet").
 	claude := NewClaudeAgentAdapter()
 	files, loss, err := claude.Project(ag)
@@ -257,8 +257,8 @@ func TestAgentConfigAdapter_DirsAndCapabilities(t *testing.T) {
 			t.Errorf("%s: ProjectDirs() is empty", a.ID())
 		}
 		caps := a.Capabilities()
-		if !caps.Model || !caps.Tools {
-			t.Errorf("%s: Capabilities() = %#v, want Model and Tools both true for every shipped provider", a.ID(), caps)
+		if !caps.Model || (caps.Tools != (a.ID() != ProviderCodex && a.ID() != ProviderCursor)) {
+			t.Errorf("%s: Capabilities() = %#v, unexpected model/tool capabilities", a.ID(), caps)
 		}
 	}
 
@@ -311,7 +311,7 @@ func TestAllAgentAdapters_StableOrder(t *testing.T) {
 // provider id (e.g. codex/cursor — no agent-file primitive) reports
 // ok=false rather than a zero-value adapter.
 func TestAgentAdapterByID_UnknownReturnsFalse(t *testing.T) {
-	if _, ok := AgentAdapterByID(ProviderCodex); ok {
+	if _, ok := AgentAdapterByID(ProviderID("unsupported")); ok {
 		t.Fatalf("AgentAdapterByID(codex): ok = true, want false (no agent provider config)")
 	}
 }

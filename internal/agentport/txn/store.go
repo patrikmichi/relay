@@ -87,11 +87,7 @@ type FileState struct {
 	NewMode    fs.FileMode `json:"newMode,omitempty"`
 	NewHash    string      `json:"newHash,omitempty"`
 	Applied    bool        `json:"applied"` // set once this specific file's write/removal has landed
-	// Remove marks this entry as a deletion rather than a replacement — the
-	// mechanism Rollback uses to undo a fresh install's files (there is no
-	// "new content" to stage, only a prior state to either delete down to
-	// or restore back to). Compensating an applied removal restores the
-	// same backup bytes a replacement's compensation would.
+
 	Remove bool `json:"remove,omitempty"`
 }
 
@@ -154,9 +150,6 @@ func journalPath(id string) (string, error) {
 	return filepath.Join(base, id+".json"), nil
 }
 
-// save persists j atomically: unique temp file + rename, mirroring
-// agentport's manifest save discipline (R33 — never a shared predictable
-// "<path>.tmp" two writers could both open).
 func (j *Journal) save() error {
 	j.UpdatedAt = time.Now().UTC()
 	path, err := journalPath(j.ID)

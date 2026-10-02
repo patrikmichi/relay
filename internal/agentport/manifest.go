@@ -12,11 +12,6 @@ import (
 	"time"
 )
 
-// ArtifactKind discriminates which canonical IR a ManifestEntry records —
-// Skill (the only kind that existed before this field) or Agent
-// (relay-standalone design §3e). A single manifest file holds entries of
-// both kinds, discriminated by this field, rather than a parallel ledger —
-// simpler and preserves the one-lock invariant (withManifestLock).
 type ArtifactKind string
 
 const (
@@ -43,21 +38,14 @@ type ManifestEntry struct {
 	TargetPaths    map[string]string `json:"targetPaths"` // relative file path -> sha256 hex digest
 	Timestamp      time.Time         `json:"timestamp"`
 	Provenance     Provenance        `json:"provenance"`
-	// ProjectRoot records the absolute working directory Write/WriteAgent
-	// ran from, for a Scope: project entry only (empty for Scope: user,
-	// which has one destination per provider regardless of CWD).
-	// Rollback refuses a project-scope entry whose ProjectRoot is empty or
-	// doesn't match the current working directory — R06; see
-	// verifyProjectRollbackTarget in preflight.go.
+
 	ProjectRoot string `json:"projectRoot,omitempty"`
 	// TransactionID links this entry back to the txn.Journal that produced
 	// it — `relay history`/`relay recover` evidence, and the backup this
 	// entry's bytes were staged from before being written (empty for
 	// entries recorded before the transaction engine existed).
 	TransactionID string `json:"transactionId,omitempty"`
-	// FileModes carries each TargetPaths file's mode (R11: a hash alone
-	// can't tell rollback whether a script needs 0755 restored). Keyed
-	// identically to TargetPaths; absent/missing keys default to 0644.
+
 	FileModes map[string]uint32 `json:"fileModes,omitempty"`
 }
 
@@ -131,15 +119,6 @@ func LoadManifest() (Manifest, error) {
 	return m, nil
 }
 
-// SaveManifest writes the ledger atomically: marshal to a uniquely-named
-// temp file in the manifest's directory (os.CreateTemp — never a shared
-// "<path>.tmp" name, which two racing writers could both open/truncate),
-// then rename it over the real path. Rename is atomic on the same
-// filesystem, so a reader never observes a partially-written manifest.
-//
-// This alone does not make concurrent RecordEntry/RemoveEntry/
-// RemoveEntriesFor calls race-safe end to end — see withManifestLock, which
-// wraps their whole load-mutate-save cycle.
 func SaveManifest(m Manifest) error {
 	path, err := manifestPath()
 	if err != nil {
@@ -190,22 +169,6 @@ const (
 	lockAcquireTimeout = 5 * time.Second
 )
 
-// withManifestLock runs fn while holding an exclusive, advisory, cross-
-// platform file lock on the manifest, serializing concurrent
-// load-mutate-save cycles (RecordEntry/RemoveEntry/RemoveEntriesFor all do
-// LoadManifest -> mutate -> SaveManifest with no lock otherwise) so two
-// racing callers can't silently clobber each other's writes — the second
-// SaveManifest to finish would otherwise overwrite the first writer's
-// change with a Manifest snapshot that never saw it, losing an entry.
-//
-// The lock is a plain file created with O_CREATE|O_EXCL: whichever caller
-// creates it first holds the lock; others retry on a short interval until
-// it's released (removed) or judged stale (a crashed process never removes
-// its lock file, so without a staleness check a single crash would wedge
-// every future manifest write forever) and steal it. This is intentionally
-// NOT flock/unix-specific — a lock *file*, not an OS-level advisory lock —
-// so it needs no build tags and works identically on every platform relay
-// ships to.
 func withManifestLock(fn func() error) error {
 	lockPath, err := manifestLockPath()
 	if err != nil {
@@ -289,12 +252,6 @@ func LastEntry(m Manifest) (ManifestEntry, bool) {
 	return m.Entries[len(m.Entries)-1], true
 }
 
-// LastEntryOfKind returns the most recently recorded entry whose Kind
-// matches kind (scanning from the end), or ok=false if none match. Used by
-// `relay agent rollback --last` so it rolls back the most recent AGENT
-// entry specifically, never a skill entry that happens to sort later in
-// the single shared ledger (relay-standalone design §3e: one manifest file
-// holds both kinds).
 func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
 	for i := len(m.Entries) - 1; i >= 0; i-- {
 		if m.Entries[i].Kind == kind {
@@ -304,13 +261,6 @@ func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
 	return ManifestEntry{}, false
 }
 
-// LastEntryFor returns the most recent entry matching name+provider+scope+
-// kind (scanning from the end), or ok=false if none match. Used by
-// `relay skill list --provenance` to join manifest provenance onto
-// discovered skills. kind-aware since P1.5: a skill entry and an agent
-// entry can legitimately share name+provider+scope (e.g. a "reviewer"
-// skill and a "reviewer" agent both targeting claude/user) without one
-// masking the other.
 func LastEntryFor(m Manifest, name string, provider ProviderID, scope Scope, kind ArtifactKind) (ManifestEntry, bool) {
 	for i := len(m.Entries) - 1; i >= 0; i-- {
 		e := m.Entries[i]
@@ -346,12 +296,6 @@ func RemoveEntry(id string) error {
 	})
 }
 
-// RemoveEntriesFor deletes every entry matching name+provider+scope+kind,
-// returning the count removed (0 if none matched — not an error, so
-// callers like `skill uninstall` can treat "no manifest record" as a
-// harmless no-op rather than a failure). kind-aware since P1.5, for the
-// same reason as LastEntryFor: uninstalling a skill must never remove an
-// agent entry (or vice versa) that happens to share name+provider+scope.
 func RemoveEntriesFor(name string, provider ProviderID, scope Scope, kind ArtifactKind) (int, error) {
 	var removed int
 	err := withManifestLock(func() error {

@@ -6,14 +6,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// UnmappedField retains one frontmatter/sidecar key a provider's configured
-// field set has no binding for, together with a source provider tag — R04
-// (non-security half): a same-provider round trip must be able to write the
-// value back out, and a cross-provider projection must be able to name it
-// in a loss report, rather than either silently vanishing or being
-// reinterpreted under a foreign schema. node is retained only for
-// same-provider re-encoding and is deliberately unexported — Raw is the
-// only cross-package-visible, re-parseable-adjacent representation.
 type UnmappedField struct {
 	Key      string
 	Raw      string

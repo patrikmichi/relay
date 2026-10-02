@@ -12,26 +12,6 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
-// Rollback reverses a manifest-recorded install/migrate through the same
-// durable transaction engine Write/WriteAgent use (R07): it restores each
-// file's PRIOR bytes/mode from that install's own backed-up transaction
-// when one is linked and still available, or removes the file when the
-// install created it fresh — never merely deleting-by-hash as if a
-// restore and a removal were the same operation. A legacy entry with no
-// linked transaction (recorded before this engine existed, or whose
-// transaction was later pruned) has no recorded prior bytes to restore
-// and falls back to removal only, exactly as Rollback always behaved —
-// D6's rule against fabricating content that was never captured.
-//
-// Because this runs through txn.Begin/Stage/Persist/Apply/Commit like any
-// other mutation, an interrupted rollback is itself resumable via `relay
-// recover`, and a concurrent write/rollback of the same artifact is
-// refused rather than raced.
-//
-// The verify pass (hash + symlink checks) runs to completion BEFORE any
-// transaction begins, so a single changed file (without --force) aborts
-// the whole rollback with nothing touched, rather than leaving a
-// half-rolled-back skill on disk.
 func Rollback(entry ManifestEntry, force bool) error {
 	if entry.Scope == ScopeProject {
 		if err := verifyProjectRollbackTarget(entry); err != nil {
@@ -44,12 +24,6 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return err
 	}
 
-	// Kind-aware directory resolution: a skill's recorded TargetPaths are
-	// relative to its own "<dir>/<name>/" subdirectory (TargetDir), while an
-	// agent's are relative to the provider's directory ITSELF — every
-	// shipped agent provider is layout: flat, a single "<name>.md" with no
-	// per-agent containing subdirectory (AgentTargetDir; see
-	// relay-standalone design §3e).
 	var dir string
 	if entry.Kind == KindAgent {
 		dir, err = AgentTargetDir(target, entry.Scope)
@@ -60,11 +34,6 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return err
 	}
 
-	// Refuse to act through a symlink anywhere under the resolved target —
-	// R05: an owned file, or a directory it lives in, could be replaced
-	// with a symlink so this verify/restore pass reads or removes something
-	// outside dir instead. Checked before the verify pass so a single
-	// symlinked entry aborts the whole rollback with nothing touched.
 	for rel := range entry.TargetPaths {
 		if err := verifyPathHasNoSymlinks(dir, rel); err != nil {
 			return err

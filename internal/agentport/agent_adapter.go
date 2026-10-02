@@ -1,15 +1,6 @@
 package agentport
 
-// AgentAdapter converts between one provider's on-disk agent format and the
-// canonical Agent IR — the Agent-IR analogue of Adapter (adapter.go).
-// Deliberately a SEPARATE interface (not a type parameter / generic
-// Adapter[T]) per relay-standalone design §3b Option A: the byte-exact
-// Skill path (config_adapter_parity_test.go) must never be put at risk by
-// agent-only plumbing, and every Skill call site keeps using the exact
-// Adapter/*Skill signatures it always has.
 type AgentAdapter interface {
-	// ID returns the provider identifier (claude|opencode today — Codex and
-	// Cursor have no agent-file primitive; see relay-standalone design §3d).
 	ID() ProviderID
 
 	// UserDirs returns the per-user (global) directories this provider

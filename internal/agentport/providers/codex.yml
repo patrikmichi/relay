@@ -1,12 +1,3 @@
-# Codex provider config — replaces the shipped adapter_codex.go.
-#
-# Skill locations: user ~/.agents/skills/<name>/SKILL.md (plus the read-only
-# admin scope /etc/codex/skills), project .agents/skills/<name>/SKILL.md.
-#
-# SKILL.md frontmatter is exactly name + description. An optional sidecar
-# file at <skill-dir>/agents/openai.yaml carries Codex-only extras, owned by
-# the codex-openai named codec (nested interface/policy/dependencies shape
-# — not a flat field map, so it isn't declared via `frontmatter`).
 id: codex
 skill_file: SKILL.md
 resource_dirs: [scripts, references, assets]
@@ -14,8 +5,8 @@ discovery: direct
 
 dirs:
   user:
-    - { path: "~/.agents/skills", role: own } # dirs[0] = writable_primary
-    - { path: "/etc/codex/skills", role: admin } # read-only org scope — never a write/delete target
+    - { path: "~/.agents/skills", role: own }
+    - { path: "/etc/codex/skills", role: admin }
   project:
     - { path: ".agents/skills", role: own }
 

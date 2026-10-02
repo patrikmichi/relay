@@ -9,13 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file defines the provider-config YAML schema (§1 of the
-// config-driven-adapters design): the data shape that replaces the 4
-// hard-coded adapter_{claude,codex,cursor,opencode}.go implementations.
-// See providers/*.yml for the shipped configs and config_adapter.go for the
-// generic Adapter implementation built from a parsed ProviderConfig.
-
-// DirRole classifies one entry of a provider's dirs list — see §1.2.
 type DirRole string
 
 const (
@@ -70,12 +63,6 @@ var validFieldTypes = map[FieldType]bool{
 	FieldFloat:        true,
 }
 
-// Presence declares whether a frontmatter field is required or optional —
-// see §1.3. (Load never hard-fails on an absent key purely because of this
-// declaration; it documents intent and is validated for shape. The one
-// exception, "name", falls back to the skill directory's base name when
-// absent from frontmatter — a fixed IR-level rule, identical across every
-// provider, reproducing the shipped adapters' behavior exactly.)
 type Presence string
 
 const (
@@ -83,10 +70,6 @@ const (
 	PresenceOptional Presence = "optional"
 )
 
-// FrontmatterField maps one canonical-IR field to a platform frontmatter
-// key — see §1.3. Frontmatter is an ORDERED list: order = serialized key
-// order, which is what makes Project() byte-exact with the pre-refactor
-// per-provider structs.
 type FrontmatterField struct {
 	IR       string    `yaml:"ir"`
 	Key      string    `yaml:"key"`
@@ -105,8 +88,6 @@ type SidecarFieldSpec struct {
 	Type FieldType `yaml:"type"`
 }
 
-// SidecarConfig declares a provider's optional secondary file (Codex's
-// agents/openai.yaml) — see §1.4.
 type SidecarConfig struct {
 	Path   string             `yaml:"path"`
 	Format string             `yaml:"format"`
@@ -114,9 +95,6 @@ type SidecarConfig struct {
 	Fields []SidecarFieldSpec `yaml:"fields"`
 }
 
-// DiscoveryMode selects how project-scope List()/list.go discovery walks a
-// provider's directories — see §2.4. User scope is always direct,
-// regardless of this setting.
 type DiscoveryMode string
 
 const (
@@ -124,16 +102,6 @@ const (
 	DiscoveryRecursive DiscoveryMode = "recursive"
 )
 
-// Layout classifies a provider's on-disk artifact shape (relay-standalone
-// design §3a). "dir" is the standard Agent Skills shape — a resource-
-// bearing directory `<name>/<skill_file>` — and is every shipped skill
-// provider's layout today. "flat" is a single markdown file `<name>.md`
-// with no containing directory and no resources; this is the native shape
-// of agent providers (Claude/opencode agent definitions) and is promoted
-// here from what was previously only reachable as a load-hook special case
-// (Claude's legacy `commands/<name>.md` files, which remain layout: dir +
-// the claude-legacy-commands hook, unchanged). Defaults to "dir" when
-// omitted, so every existing provider config is unaffected.
 type Layout string
 
 const (
@@ -141,9 +109,6 @@ const (
 	LayoutFlat Layout = "flat"
 )
 
-// ProviderConfig is the parsed+validated shape of one providers/<id>.yml —
-// everything the generic configAdapter needs to implement the Adapter
-// interface for one platform. See §1.1.
 type ProviderConfig struct {
 	ID        string `yaml:"id"`
 	SkillFile string `yaml:"skill_file"`
@@ -163,10 +128,6 @@ type ProviderConfig struct {
 	Capabilities []string           `yaml:"capabilities"`
 	LoadHooks    []string           `yaml:"load_hooks"`
 
-	// Extends names another provider config (already loaded at a lower
-	// tier) whose fields this config shallow-overlays on top of, for
-	// partial-patch overrides (§4.2). Only meaningful for override tiers,
-	// not the embedded defaults.
 	Extends string `yaml:"extends"`
 
 	// nameRe is the compiled NameRegex (or the package default), set by
@@ -174,12 +135,6 @@ type ProviderConfig struct {
 	nameRe *regexp.Regexp
 }
 
-// parseProviderConfig unmarshals and validates one provider config document
-// against kind's IR field set — KindSkill for providers/*.yml (Skill IR,
-// ir_fields.go) or KindAgent for agents/*.yml (Agent IR,
-// agent_ir_fields.go). registeredHooks/registeredCodecs are the load-hook/
-// sidecar-codec registry key sets, used to validate load_hooks/
-// sidecar.codec references — see §4.4.
 func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[string]bool, kind ArtifactKind) (*ProviderConfig, error) {
 	var cfg ProviderConfig
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
@@ -191,14 +146,6 @@ func parseProviderConfig(raw []byte, registeredHooks, registeredCodecs map[strin
 	return &cfg, nil
 }
 
-// validate enforces §4.4's schema rules: required fields present,
-// dirs[scope][0].role == own, every dir path is traversal-safe and
-// scope/role-appropriate (own/compat dirs are "~/..." for user scope or
-// relative for project scope; only role admin may be absolute — see the
-// dirs-path-safety block below), frontmatter types recognized AND matching
-// each ir name's fixed canonical type, capability names resolve to CapSet
-// fields, and every load_hooks/sidecar.codec name is registered. Never
-// panics — every failure is a returned error naming the offending field.
 func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]bool, kind ArtifactKind) error {
 	if c.ID == "" {
 		return fmt.Errorf("missing required field \"id\"")
@@ -206,10 +153,7 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 	if c.SkillFile == "" {
 		c.SkillFile = "SKILL.md"
 	}
-	// R34: skill_file is joined onto a resolved skill directory (Load/
-	// Project, config_adapter.go) exactly like dirs.*.path is joined onto a
-	// resolved base — it needs the same containment check, which the
-	// pre-fix validate() applied to dirs.*.path only.
+
 	if pathHasDotDotSegment(c.SkillFile) || strings.HasPrefix(c.SkillFile, "/") {
 		return fmt.Errorf("skill_file: must be a relative path with no \"..\" segment, got %q", c.SkillFile)
 	}
@@ -260,16 +204,7 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 				return fmt.Errorf("dirs.%s[%d].role: invalid role %q", scope, i, d.Role)
 			}
 
-			// Path safety (security-critical): these dirs feed destructive
-			// operations downstream — engine.go TargetDir/Write,
-			// adapter.go ResolveOwnSkillPath -> skill_uninstall.go
-			// os.RemoveAll, and rollback.go os.Remove. A path-traversal
-			// segment or an unexpectedly-absolute override (especially
-			// from a user-tier config in ~/.config/relay/providers/*.yml,
-			// loaded unconditionally by embed.go) would let a provider
-			// config point a writable/removable dir anywhere on disk.
-			// Checked for EVERY role (own/compat/admin) in BOTH scopes,
-			// since Detect()/List() also walk compat/admin dirs.
+			// Path safety (security-critical): these dirs feed destructive operations downstream — engine.go TargetDir/Write, adapter.go ResolveOwnSkillPath -> skill_uninstall.go os.RemoveAll, and rollback.go os.Remove.
 			if pathHasDotDotSegment(d.Path) {
 				return fmt.Errorf("dirs.%s[%d].path: must not contain \"..\"", scope, i)
 			}
@@ -300,14 +235,7 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 		if f.IR == "" {
 			return fmt.Errorf("frontmatter[%d].ir: must not be empty", i)
 		}
-		// R34: check against ONLY kind's own IR field set, not the union of
-		// both — irFieldDescriptors (Skill) and agentIrFieldDescriptors
-		// (Agent) overlap by name ("tools" means different things to
-		// neither/either) but their decoders (decodeIRField/
-		// decodeAgentIRField) are separate, kind-specific switches. Before
-		// this, a config was accepted here yet still failed with a
-		// confusing "unknown canonical IR field" error at Load/Project time
-		// whenever it declared a field belonging to the OTHER kind.
+
 		expectedType, ok := canonicalIRFieldTypeForKind(f.IR, kind)
 		if !ok {
 			return fmt.Errorf("frontmatter[%d].ir: unknown %s IR field %q", i, kind, f.IR)
@@ -344,9 +272,7 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 		if c.Sidecar.Path == "" {
 			return fmt.Errorf("sidecar.path: must not be empty")
 		}
-		// R34: sidecar.path is joined onto the resolved skill directory the
-		// same way skill_file is (hooks.go's codexOpenAICodec) — same
-		// containment requirement.
+
 		if pathHasDotDotSegment(c.Sidecar.Path) || strings.HasPrefix(c.Sidecar.Path, "/") {
 			return fmt.Errorf("sidecar.path: must be a relative path with no \"..\" segment, got %q", c.Sidecar.Path)
 		}
@@ -373,15 +299,7 @@ func (c *ProviderConfig) validate(registeredHooks, registeredCodecs map[string]b
 	return nil
 }
 
-// pathHasDotDotSegment reports whether path contains a literal ".."
-// path segment. Intentionally checked by splitting on "/" rather than
-// filepath.Clean: "~" is a special home-directory token expanded later, at
-// call time (config_adapter.go's expandHome), not a real path component
-// filepath understands — running Clean on the raw config string would
-// silently resolve (and hide) an escape like "~/../etc". Any ".." segment
-// is rejected outright, even one that would algebraically cancel out
-// (e.g. "a/../b"), since none of the shipped configs need one and a
-// conservative rule is simplest to reason about for a security check.
+// pathHasDotDotSegment reports whether path contains a literal ".." path segment.
 func pathHasDotDotSegment(path string) bool {
 	for _, seg := range strings.Split(path, "/") {
 		if seg == ".." {
@@ -400,8 +318,6 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// validCapNames is the set of CapSet field names a config's "capabilities"
-// list may reference — see §1.5.
 var validCapNames = map[string]bool{
 	"AllowedTools":            true,
 	"Paths":                   true,
@@ -442,8 +358,6 @@ func buildCapSet(names []string) CapSet {
 	return c
 }
 
-// ownDirCount returns the count of leading contiguous DirRoleOwn entries —
-// the derivation backing OwnUserDirCount()/OwnProjectDirCount() (§1.2).
 func ownDirCount(entries []DirEntry) int {
 	n := 0
 	for _, d := range entries {
@@ -455,10 +369,6 @@ func ownDirCount(entries []DirEntry) int {
 	return n
 }
 
-// detectDirs returns the paths (still containing "~", unexpanded — callers
-// expand at call time) of every entry whose role is own or admin — the
-// derivation backing Detect() (§1.2): "any dir with role in {own, admin}
-// exists".
 func detectDirs(entries []DirEntry) []DirEntry {
 	var out []DirEntry
 	for _, d := range entries {

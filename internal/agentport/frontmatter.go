@@ -2,10 +2,12 @@ package agentport
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -96,51 +98,23 @@ func splitFlexList(s string) []string {
 	return out
 }
 
-// loadResources walks skillDir and reads every regular file except those in
-// exclude (paths relative to skillDir, forward-slash separated) into a
-// relative-path -> ResourceFile map. Returns an empty (non-nil) map if
-// skillDir has no resource files.
-//
-// R10 fix: every regular file under the root is preserved regardless of
-// which directory it lives in (or whether it lives in one at all) —
-// recommended resource-directory names (scripts/, references/, assets/)
-// are documentation, not an exhaustive schema, so a stray top-level helper
-// script or a custom subdirectory is no longer silently dropped. The only
-// files ever excluded are exclude's exact paths (the skill's own manifest
-// file, a provider sidecar) and controlMetadataNames (generated/VCS state —
-// see its doc comment); every such exclusion is reported in the returned
-// excluded slice, never silent.
-//
-// skillDir itself is resolved through exactly one level of symlink first
-// (resolveSkillRoot) — R12: an explicitly-selected skill root that happens
-// to be a symlink (e.g. a dotfiles-managed skill directory) must still have
-// its resources discovered; filepath.WalkDir does not descend into a
-// symlinked root on its own. A symlink found ANYWHERE NESTED inside that
-// resolved root, by contrast, is never followed: a malicious `relay skill
-// install <path>` source package could contain e.g. a resource file that's
-// actually a symlink to ~/.ssh/id_rsa, and Project()/Write() would then
-// happily copy that target's content into every provider's directory. Each
-// walked entry is Lstat'd before being read; a symlink (or any other
-// non-regular-file entry — device files, sockets, etc.) is skipped rather
-// than read, and recorded in excluded so the caller can surface it — and so
-// a fidelity/loss report can name it — instead of the file silently
-// vanishing without a trace.
 func loadResources(skillDir string, exclude map[string]bool) (resources map[string]ResourceFile, excluded []ExcludedResource, err error) {
 	root, resolveErr := resolveSkillRoot(skillDir)
 	if resolveErr != nil {
 		return nil, nil, resolveErr
 	}
 
+	scoped, openErr := os.OpenRoot(root)
+	if openErr != nil {
+		return nil, nil, openErr
+	}
+	defer scoped.Close()
 	resources = map[string]ResourceFile{}
-	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+	walkErr := fs.WalkDir(scoped.FS(), ".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		rel = filepath.ToSlash(rel)
+		rel := filepath.ToSlash(path)
 		if rel == "." {
 			return nil
 		}
@@ -160,7 +134,7 @@ func loadResources(skillDir string, exclude map[string]bool) (resources map[stri
 			return nil
 		}
 
-		info, lstatErr := os.Lstat(path)
+		info, lstatErr := scoped.Lstat(path)
 		if lstatErr != nil {
 			return lstatErr
 		}
@@ -169,9 +143,25 @@ func loadResources(skillDir string, exclude map[string]bool) (resources map[stri
 			return nil
 		}
 
-		data, readErr := os.ReadFile(path)
+		file, readErr := scoped.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if readErr != nil {
 			return readErr
+		}
+		opened, statErr := file.Stat()
+		if statErr != nil || !opened.Mode().IsRegular() {
+			_ = file.Close()
+			return fmt.Errorf("resource is not a regular file: %s", rel)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, (25<<20)+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(data) > 25<<20 {
+			return fmt.Errorf("resource exceeds 25 MiB: %s", rel)
 		}
 		resources[rel] = ResourceFile{Data: data, Mode: safeMode(info.Mode())}
 		return nil

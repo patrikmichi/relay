@@ -32,11 +32,7 @@ type LossItem struct {
 	Field string
 	Kind  LossKind
 	Note  string
-	// Security marks a LossItem whose field carries permission/restriction
-	// semantics (tool allow/deny lists, permission modes, lifecycle hooks,
-	// model constraints — see R04/R22). Unlike ordinary fidelity loss, this
-	// is never waved through by --strict, --dry-run, or an interactive
-	// prompt: see HasSecurityLoss.
+
 	Security bool
 }
 
@@ -203,13 +199,6 @@ func ResolveSkillPath(a Adapter, scope Scope, name string) (string, error) {
 	return path, nil
 }
 
-// nameValidator is an additive capability interface (mirrors
-// recursiveDiscoverer, list.go) letting the name-based resolvers honor a
-// provider's configured custom name_regex instead of always validating
-// against the package-default nameRegex — R34: a provider with a custom
-// name_regex has Load/Project already accept names the public
-// ResolveSkillPath/ResolveAgentPath would otherwise wrongly reject (or,
-// for a looser custom regex, wrongly accept) by checking the wrong rule.
 type nameValidator interface {
 	validateName(name string) error
 }
@@ -225,10 +214,6 @@ func validateNameFor(a interface{}, name string) error {
 	return ValidateName(name)
 }
 
-// adapterDiscoversRecursively reports whether a's discovery for scope
-// should walk the full subtree (list.go's recursiveDiscoverer) — shared by
-// List and every name-based resolver so "what list shows" and "what a
-// subsequent lookup by that name finds" can never drift apart (R30).
 func adapterDiscoversRecursively(a interface{}, scope Scope) bool {
 	if rd, ok := a.(recursiveDiscoverer); ok {
 		return rd.DiscoversRecursively(scope)
@@ -236,19 +221,6 @@ func adapterDiscoversRecursively(a interface{}, scope Scope) bool {
 	return false
 }
 
-// ResolveOwnSkillPath finds the on-disk location of a named skill within
-// ONLY the given adapter's own writable directories (the leading
-// OwnUserDirCount()/OwnProjectDirCount() entries of UserDirs()/
-// ProjectDirs()) — it never searches another provider's compatibility-read
-// directory, and never resolves into a read-only admin directory (e.g.
-// Codex's /etc/codex/skills).
-//
-// This is the resolver DESTRUCTIVE operations (skill uninstall) must use.
-// ResolveSkillPath, by contrast, is a READ-path resolver used by
-// migrate/scan/diff and deliberately searches every documented
-// compatibility-read fallback directory too — using it for a destructive
-// delete would let e.g. `relay skill uninstall foo --from cursor` remove a
-// Claude-owned skill it merely reads for compatibility.
 func ResolveOwnSkillPath(a Adapter, scope Scope, name string) (string, error) {
 	if err := validateNameFor(a, name); err != nil {
 		return "", err
@@ -285,15 +257,6 @@ func ownDirs(dirs []string, n int) []string {
 	return dirs[:n]
 }
 
-// findSkillByName searches each candidate base directory (in order) for
-// name, using the SAME discovery walk List uses for the same adapter+scope
-// (discoverSkillHits, list.go) — recursively when recursive is true — so a
-// resolver's notion of "found" can never drift from what `skill list`
-// already showed (R30: a nested Cursor skill was listable but unusable by
-// name because this function used to only check the non-recursive
-// <dir>/<name>/SKILL.md and <dir>/<name>.md shapes). A directory whose scan
-// finds more than one entry matching name is an explicit, deterministic
-// ambiguity error rather than a silent first-match pick.
 func findSkillByName(dirs []string, recursive bool, name string) (string, error) {
 	for _, d := range dirs {
 		if !dirExists(d) {

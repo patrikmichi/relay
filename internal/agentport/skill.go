@@ -1,15 +1,4 @@
 // Package agentport is a provider-agnostic Agent Skills manager engine.
-//
-// It is intentionally gateway-agnostic: no imports of relay's gateway
-// client, auth, or config packages. This keeps it dependency-clean
-// (stdlib + gopkg.in/yaml.v3 only) so it can be extracted verbatim into a
-// standalone OSS module (github.com/agentport/agentport) later.
-//
-// The package implements the Agent Skills open standard
-// (https://agentskills.io): a skill is a directory `<name>/SKILL.md` (YAML
-// frontmatter + markdown body) with optional `scripts/`, `references/`, and
-// `assets/` resource directories. Four providers are supported in Wave 1:
-// Claude Code, Codex, opencode, and Cursor — see adapter_*.go.
 package agentport
 
 import (
@@ -62,11 +51,6 @@ type CodexInterface struct {
 	DefaultPrompt    string
 }
 
-// CodexToolDependency mirrors one entry of a Codex `agents/openai.yaml`
-// `dependencies.tools` list — a structured tool/MCP-server dependency
-// declaration (R20). Per the current vendor documentation
-// (https://learn.chatgpt.com/docs/build-skills), every field is an
-// optional string; there is no documented bare-string-list form.
 type CodexToolDependency struct {
 	Type        string
 	Value       string
@@ -95,19 +79,10 @@ type Skill struct {
 	Body        string // markdown body after the frontmatter block
 	License     string
 	Metadata    map[string]string
-	Resources   map[string]ResourceFile // relative path (scripts/, references/, assets/, ...) -> file content + mode (R11)
+	Resources   map[string]ResourceFile
 
-	// ExcludedResources records every file found under the skill root that
-	// was NOT loaded into Resources (a symlink/non-regular entry, or
-	// recognized control/generated metadata — R10/R12) together with why.
-	// computeLoss turns each into a LossDropped LossItem so a skipped file
-	// can never look like a clean "no loss" migration.
 	ExcludedResources []ExcludedResource
 
-	// UnmappedFields retains frontmatter keys this provider's configured
-	// field set has no binding for (R04, non-security half). Same-provider
-	// Project() re-emits them; a different target reports their loss
-	// instead of guessing a foreign-schema equivalent.
 	UnmappedFields []UnmappedField
 
 	// --- typed-optional platform extensions (nil/zero = not set) ---

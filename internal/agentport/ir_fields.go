@@ -6,18 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the bounded, fixed binding between a config's declared
-// canonical-IR field NAME (a string in providers/<id>.yml, e.g.
-// "allowed_tools") and the actual Go field on *Skill. The Skill IR shape
-// itself is fixed Go code (skill.go) — only the mapping from a provider's
-// on-disk KEY to one of these fixed IR names is data. This keeps the
-// generic frontmatter codec simple and reviewable (a switch over ~8 known
-// names) rather than reflection-driven, honoring the "not a Turing-complete
-// YAML" non-goal.
-//
-// irFieldDescriptors is also the source of truth config.go's validate()
-// checks a frontmatter[].ir value against — an unrecognized ir name is a
-// config validation error, not a silent no-op.
+// This file is the bounded, fixed binding between a config's declared canonical-IR field NAME (a string in providers/<id>.yml, e.g.
 var irFieldDescriptors = map[string]FieldType{
 	"name":                      FieldString,
 	"description":               FieldString,
@@ -32,18 +21,6 @@ var irFieldDescriptors = map[string]FieldType{
 	"codex_tools":               FieldList, // sidecar-only; codec-owned
 }
 
-// canonicalIRFieldType looks up ir's fixed canonical FieldType across BOTH
-// registered IR shapes — the Skill IR (irFieldDescriptors) and the Agent IR
-// (agentIrFieldDescriptors, agent_ir_fields.go) — so a single, kind-agnostic
-// config.go validate() pass accepts either a skill or an agent provider
-// config without needing a self-describing "kind" field on ProviderConfig:
-// which IR a config actually targets is determined by which embed
-// directory/constructor loads it (providers/*.yml + configAdapter for
-// skills, agents/*.yml + agentConfigAdapter for agents), not by this
-// lookup. The two descriptor sets' overlapping names ("name",
-// "description") already agree on FieldString, so a union lookup is safe:
-// Skill IR is checked first (cheap, and preserves the exact error/behavior
-// for every pre-existing skill config).
 func canonicalIRFieldType(ir string) (FieldType, bool) {
 	if t, ok := irFieldDescriptors[ir]; ok {
 		return t, true
@@ -54,14 +31,6 @@ func canonicalIRFieldType(ir string) (FieldType, bool) {
 	return "", false
 }
 
-// canonicalIRFieldTypeForKind is canonicalIRFieldType scoped to ONE IR
-// (R34): config.go's validate() uses this — not the union above — so a
-// skill provider config declaring an agent-only field (or vice versa) is
-// rejected at validate() time with a clear error, instead of being
-// accepted here and only failing later, confusingly, when decodeIRField/
-// decodeAgentIRField's kind-specific switch has no case for it. kind
-// values other than KindAgent are treated as KindSkill (the package's
-// original, only-ever-had-one-kind default).
 func canonicalIRFieldTypeForKind(ir string, kind ArtifactKind) (FieldType, bool) {
 	if kind == KindAgent {
 		t, ok := agentIrFieldDescriptors[ir]

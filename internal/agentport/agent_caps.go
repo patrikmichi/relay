@@ -7,36 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the Agent-IR analogue of the CapSet/computeLoss mechanism in
-// adapter.go (relay-standalone design §3c). Providers: claude (primary),
-// opencode (primary) — Codex/Cursor have no agent-file primitive and are
-// out of scope (design §3d/Risks).
-//
-// Unlike skills' CapSet (config-driven via a provider config's
-// `capabilities:` list — see config.go/buildCapSet), agent capability sets
-// are small, fixed Go tables (agentCapsByProviderID below): only 2
-// providers exist, and Model/Tools need bespoke degraded-mapping logic
-// (modelLossForTarget/toolsLossForTarget) that a flat YAML capability list
-// can't express anyway.
-//
-// Tools fidelity design note (explicitly-denied opencode tools): opencode's
-// on-disk tools shape is a {tool: bool} MAP, so it can express "explicitly
-// denied" (`tool: false`) — something Claude's CSV/list allowlist shape
-// fundamentally cannot represent (absence there means "unset", never
-// "denied"). Reshaping straight into the canonical Tools []string field
-// (toolsMapToList) would silently discard `false` entries with no loss
-// record at all. To avoid that, Agent carries a second, non-canonical
-// side-channel field, DeniedTools (agent.go), populated only for opencode
-// sources (agent_config_adapter.go's Load, via deniedTools below). Project()
-// then: (a) re-encodes DeniedTools as `tool: false` when the TARGET is
-// opencode too (toolsListToMap), so an opencode -> opencode round trip
-// preserves denial semantics instead of losing them, and (b) reports a
-// LossDropped item (toolsLossForTarget) naming the denied tools when the
-// target is anything else (claude) — the smallest change that keeps this
-// fidelity gap visible without inventing a new LossKind or touching the
-// canonical IR field-binding tables (agent_ir_fields.go) that the parity
-// gate depends on.
-
 // AgentCapSet declares which Agent IR extension fields a provider's
 // on-disk format can represent at all. Model and Tools are always
 // representable by BOTH shipped providers (true for both claude and
@@ -52,17 +22,10 @@ type AgentCapSet struct {
 	Skills      bool
 }
 
-// agentCapsByProviderID is the fixed, reviewed capability table for the 2
-// shipped agent providers (relay-standalone design §3c matrix):
-//
-//	IR field     claude      opencode
-//	Model        preserved   degraded (both can represent it; see modelLossForTarget)
-//	Tools        preserved   degraded (both can represent it; see toolsLossForTarget)
-//	Temperature  dropped     preserved
-//	Mode         dropped     preserved
-//	Memory       preserved   dropped
-//	Skills       preserved   dropped
 var agentCapsByProviderID = map[ProviderID]AgentCapSet{
+	ProviderCodex:            {Model: true},
+	ProviderCursor:           {Model: true},
+	ProviderID("gemini-cli"): {Model: true, Tools: true},
 	ProviderClaude: {
 		Model:       true,
 		Tools:       true,
@@ -89,16 +52,7 @@ func agentCapSetFor(id ProviderID) AgentCapSet {
 	return agentCapsByProviderID[id]
 }
 
-// computeAgentLoss inspects an Agent for populated fields the target
-// adapter's AgentCapSet cannot represent AT ALL, returning a LossDropped
-// LossItem for each — the Agent-IR analogue of computeLoss. Model and Tools
-// are deliberately NOT handled here even though both are declared in
-// AgentCapSet: they're always representable by both shipped providers, so
-// they never produce a LossDropped item from this function; their fidelity
-// loss (degraded, not dropped) is reported separately by
-// modelLossForTarget/toolsLossForTarget, which an agent adapter's Project()
-// layers on top of this function's result — mirroring how
-// codexOpenAICodec.Project adds its own LossItems on top of computeLoss's.
+// computeAgentLoss inspects an Agent for populated fields the target adapter's AgentCapSet cannot represent AT ALL, returning a LossDropped LossItem for each — the Agent-IR analogue of computeLoss.
 func computeAgentLoss(a *Agent, caps AgentCapSet) []LossItem {
 	var loss []LossItem
 	add := func(field, note string) {
@@ -121,7 +75,7 @@ func computeAgentLoss(a *Agent, caps AgentCapSet) []LossItem {
 			Field:    f.Key,
 			Kind:     LossDropped,
 			Security: true,
-			Note:     "security/restriction field " + f.Key + " (" + f.Raw + ") has no Agent-IR mapping — refused rather than silently dropped (R04)",
+			Note:     "security/restriction field " + f.Key + " (" + f.Raw + ") has no Agent-IR mapping — refused rather than silently dropped",
 		})
 	}
 	return loss
@@ -138,7 +92,11 @@ var agentSecurityFrontmatterKeys = map[string]bool{
 	"disallowedtools": true, // Claude subagent config
 	"permissionmode":  true, // Claude subagent config
 	"hooks":           true, // Claude subagent config (lifecycle, executes code)
-	"permission":      true, // opencode agent config
+	"permission":      true,
+	"readonly":        true,
+	"mcpservers":      true,
+	"sandbox_mode":    true,
+	"approval_policy": true, // opencode agent config
 }
 
 // collectUnmappedSecurityFields walks root's top-level frontmatter mapping
@@ -194,9 +152,9 @@ func renderNodeCompact(node *yaml.Node) string {
 // passthrough (the raw alias string, so nothing is silently dropped) with a
 // LossDegraded note explaining the mapping is inexact/unmapped.
 var claudeOpencodeModelAlias = map[string]string{
-	"opus":   "anthropic/claude-opus-4",
-	"sonnet": "anthropic/claude-sonnet-4",
-	"haiku":  "anthropic/claude-haiku-4",
+	"opus":   "anthropic/claude-opus-5",
+	"sonnet": "anthropic/claude-sonnet-5",
+	"haiku":  "anthropic/claude-haiku-4-5-20251001",
 }
 
 // opencodeClaudeModelAlias is the reverse of claudeOpencodeModelAlias,
@@ -234,10 +192,10 @@ func modelLossForTarget(model string, source, target ProviderID) (mapped string,
 	case source == ProviderOpencode && target == ProviderClaude:
 		table = opencodeClaudeModelAlias
 	default:
-		return model, &LossItem{
+		return "", &LossItem{
 			Field: "Model",
-			Kind:  LossDegraded,
-			Note:  "no model-alias mapping table between " + string(source) + " and " + string(target) + " — passed through unmapped",
+			Kind:  LossDropped,
+			Note:  "no model-alias mapping table between " + string(source) + " and " + string(target) + " — omitted; target uses its default",
 		}
 	}
 
@@ -248,23 +206,13 @@ func modelLossForTarget(model string, source, target ProviderID) (mapped string,
 			Note:  "mapped " + string(source) + " model alias " + model + " -> " + string(target) + " " + m,
 		}
 	}
-	return model, &LossItem{
+	return "", &LossItem{
 		Field: "Model",
-		Kind:  LossDegraded,
-		Note:  "unrecognized " + string(source) + " model " + model + " — passed through unmapped to " + string(target),
+		Kind:  LossDropped,
+		Note:  "unrecognized " + string(source) + " model " + model + " — omitted; target uses its default to " + string(target),
 	}
 }
 
-// toolsListToMap reshapes Claude's CSV/list allowlist shape (plus any
-// canonical-IR DeniedTools) into opencode's {tool: bool} map shape: every
-// allowed tool maps to true, and every explicitly-denied tool (denied is
-// only ever non-empty when the source was itself an opencode agent with
-// `tool: false` entries — see agent_config_adapter.go's Load, which
-// populates Agent.DeniedTools via deniedTools below) maps to false. This
-// is what lets an opencode -> opencode round trip preserve denial
-// semantics instead of silently dropping them — see toolsLossForTarget for
-// the complementary case: projecting DeniedTools onto a target, like
-// claude, that has no boolean-denial shape at all.
 func toolsListToMap(tools []string, denied []string) map[string]bool {
 	if len(tools) == 0 && len(denied) == 0 {
 		return nil
@@ -321,17 +269,6 @@ func deniedTools(tools map[string]bool) []string {
 	return out
 }
 
-// claudeOpencodeToolAlias maps a Claude Code built-in tool name (as used in
-// Claude agent frontmatter's CSV/list `tools:` key) to opencode's
-// documented lowercase permission-key vocabulary
-// (https://opencode.ai/docs/agents/ — read/write/edit/bash/glob/grep/list/
-// webfetch/websearch/task/todowrite). Without this, a projected opencode
-// {tool: bool} map carried Claude's case-preserved names (e.g. "Read":
-// true), which match none of opencode's real permission keys — the
-// restriction becomes inert rather than merely differently-cased (R22). An
-// unmapped name (a custom/MCP tool id, which both formats key by literal
-// name) is left untranslated by translateToolName below — best-effort,
-// never a guess.
 var claudeOpencodeToolAlias = map[string]string{
 	"Read":      "read",
 	"Write":     "write",
@@ -386,33 +323,10 @@ func translateToolNames(names []string, source, target ProviderID) []string {
 	return out
 }
 
-// claudeAllowlistIsRestrictive reports whether a non-empty Tools list whose
-// ORIGINAL source is Claude implies every unlisted tool is denied. Claude's
-// `tools:` CSV is a strict allowlist — its mere presence means "only
-// these" — but opencode's {tool: bool} map has no such implicit default:
-// an unlisted key there defaults to allowed. Projecting a Claude allowlist
-// onto opencode without an explicit "*": false entry would silently turn a
-// restricted agent into an unrestricted one the moment it lands in a
-// format whose unlisted-tool default is permissive (R22). This applies
-// only when the SOURCE was Claude — an opencode-sourced Tools list carries
-// no such implicit "everything else denied" meaning, so no wildcard is
-// synthesized for it.
 func claudeAllowlistIsRestrictive(tools []string, source ProviderID) bool {
 	return source == ProviderClaude && len(tools) > 0
 }
 
-// toolsLossForTarget reports tools-shape fidelity loss for a target
-// provider:
-//   - projecting a non-empty Tools allowlist onto opencode is always a
-//     LossDegraded reshape (list -> map), even when denied is empty;
-//   - projecting a non-empty DeniedTools onto any target OTHER than
-//     opencode is a LossDropped item — an allowlist-only shape (claude)
-//     cannot express "explicitly denied" at all, so unlike the opencode
-//     case above this is a genuine loss of semantics, not just a shape
-//     change.
-//
-// Returns nil when there is nothing to report for the given target (e.g.
-// claude with no DeniedTools — no reshape needed and nothing dropped).
 func toolsLossForTarget(tools []string, denied []string, target ProviderID) *LossItem {
 	if target == ProviderOpencode {
 		if len(tools) == 0 {
@@ -443,6 +357,6 @@ func toolsLossForTarget(tools []string, denied []string, target ProviderID) *Los
 		Field:    "Tools",
 		Kind:     LossDropped,
 		Security: true,
-		Note:     "explicitly-denied tools {" + strings.Join(specific, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost (review R22)",
+		Note:     "explicitly-denied tools {" + strings.Join(specific, ", ") + "} cannot be represented on " + string(target) + " — denial semantics lost",
 	}
 }

@@ -7,20 +7,11 @@ import "strings"
 // ScanResult.
 type AgentScanResult struct {
 	Findings []ScanFinding
-	Scanned  []string   // labels of every input pattern-matched (R28)
-	Skipped  []ScanSkip // labels of every input NOT pattern-matched, with why (R28)
-	Score    int        // 0-100
+	Scanned  []string
+	Skipped  []ScanSkip
+	Score    int // 0-100
 }
 
-// AgentScan performs the same deterministic, local, no-network scan as
-// Scan — dangerous shell patterns (dangerousPatterns) and obvious hardcoded
-// secrets (secretPatterns) — over an Agent's body and every original
-// frontmatter field (including provider-specific and otherwise-unmapped
-// keys, and security-relevant unmapped keys like Claude's `hooks`), plus a
-// quality score. Agents carry no Resources/sidecar file (every shipped
-// agent provider is a single flat "<name>.md"), so Skipped is always empty
-// today — kept on the result type for symmetry with ScanResult and in case
-// a future agent provider introduces one.
 func AgentScan(a *Agent) AgentScanResult {
 	var (
 		findings []ScanFinding

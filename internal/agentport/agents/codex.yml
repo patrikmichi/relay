@@ -1,0 +1,12 @@
+id: codex
+layout: flat
+discovery: direct
+dirs:
+  user:
+    - { path: "~/.codex/agents", role: own }
+  project:
+    - { path: ".codex/agents", role: own }
+frontmatter:
+  - { ir: name, key: name, type: string, presence: required }
+  - { ir: description, key: description, type: string, presence: required }
+  - { ir: model, key: model, type: string, presence: optional }

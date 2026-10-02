@@ -27,10 +27,6 @@ func skillLockKey(provider ProviderID, scope Scope, name, projectRoot string) st
 	return fmt.Sprintf("skill:%s:%s:%s:%s", provider, scope, name, projectRoot)
 }
 
-// Plan is the preview of a migration: which files would be written to the
-// target provider, the projected fidelity-loss report, and where they'd
-// land. Migrate builds a Plan without writing anything, so callers (the CLI)
-// can print the loss report and let the user decide before calling Write.
 type Plan struct {
 	Skill       *Skill
 	Target      Adapter
@@ -40,8 +36,6 @@ type Plan struct {
 	TargetPaths string // absolute directory the files would be written under (<dir>/<name>/)
 }
 
-// HasDropped reports whether the plan's loss report contains any
-// LossDropped item (used by `--strict`).
 func (p *Plan) HasDropped() bool {
 	for _, l := range p.Loss {
 		if l.Kind == LossDropped {
@@ -65,14 +59,6 @@ type pathAdapter interface {
 	ProjectDirs() []string
 }
 
-// TargetDir resolves the absolute directory a skill or agent named name
-// would be written to (or read back from) for the given target adapter +
-// scope: UserDirs()[0] for ScopeUser (already absolute), or
-// ProjectDirs()[0] resolved against the current working directory for
-// ScopeProject. Shared by Migrate (to compute Plan.TargetPaths) and
-// Rollback (to relocate the files a manifest entry recorded without
-// re-deriving this logic) — kind-agnostic since P1.6: target may be a Skill
-// Adapter or an AgentAdapter.
 func TargetDir(target pathAdapter, scope Scope, name string) (string, error) {
 	if target == nil {
 		return "", fmt.Errorf("nil target adapter")
@@ -96,15 +82,6 @@ func TargetDir(target pathAdapter, scope Scope, name string) (string, error) {
 	return filepath.Join(base, name), nil
 }
 
-// resolveTargetForEntry picks the correctly-kinded adapter for a manifest
-// entry's Provider: an AgentAdapter when entry.Kind == KindAgent, a Skill
-// Adapter otherwise (KindSkill, or the pre-P1.5 default LoadManifest
-// normalizes absent Kind to). This is the "resolver that picks which
-// adapter to load-back" relay-standalone design §3e calls out —
-// TargetPaths hashing, Write, withManifestLock, atomic save, and
-// rollback.go's hash-verify-then-remove are already kind-agnostic (they
-// operate on map[relpath]sha256); only adapter SELECTION needed to become
-// kind-aware.
 func resolveTargetForEntry(entry ManifestEntry) (pathAdapter, error) {
 	if entry.Kind == KindAgent {
 		a, ok := AgentAdapterByID(entry.Provider)
@@ -120,8 +97,6 @@ func resolveTargetForEntry(entry ManifestEntry) (pathAdapter, error) {
 	return a, nil
 }
 
-// Migrate projects src (already-canonical IR) into target's on-disk format,
-// producing a previewable Plan. It does not write anything.
 func Migrate(src *Skill, target Adapter, scope Scope) (*Plan, error) {
 	if src == nil {
 		return nil, fmt.Errorf("source skill is nil")
@@ -153,16 +128,6 @@ func Migrate(src *Skill, target Adapter, scope Scope) (*Plan, error) {
 	}, nil
 }
 
-// Write materializes a Plan's files under Plan.TargetPaths and records a
-// manifest ledger entry, through the durable transaction/recovery engine
-// (relay-standalone design D5): preflight -> staged -> prepared journal ->
-// applying -> committed. It refuses to touch the filesystem at all unless
-// PreflightWrite passes, both before acquiring the artifact's lock and
-// again immediately after (protects against a stale decision if another
-// process changed the ledger or destination between planning and
-// locking), and refuses to start at all if a prior interrupted write on
-// the same artifact left a pending journal (`relay recover` owns that
-// case) — R05, R07, R08.
 func Write(plan *Plan) error {
 	if err := PreflightWrite(plan); err != nil {
 		return err
@@ -207,10 +172,7 @@ func Write(plan *Plan) error {
 	if err := tx.Persist(); err != nil {
 		return tx.Discard(err)
 	}
-	// Apply re-verifies containment immediately before each write (R05/
-	// R11: a path validated at preflight can go stale — an intermediate
-	// directory swapped for a symlink between then and now), reusing
-	// verifyPathHasNoSymlinks directly rather than duplicating its logic.
+
 	if err := tx.Apply(verifyPathHasNoSymlinks); err != nil {
 		return tx.Discard(err)
 	}
@@ -231,10 +193,6 @@ func Write(plan *Plan) error {
 	return tx.Commit(func() error { return RecordEntry(entry) })
 }
 
-// fileModes projects each written file's resolved mode (0644 default,
-// or the resource's own mode when tracked) into the ledger-storable
-// map[relpath]uint32 shape — R11: a hash alone can't tell a later
-// rollback whether a script needs its executable bit restored.
 func fileModes(files map[string][]byte, resources map[string]ResourceFile) map[string]uint32 {
 	out := make(map[string]uint32, len(files))
 	for rel := range files {

@@ -20,11 +20,6 @@ import (
 // raced.
 var ErrPending = errors.New("a prior operation on this artifact did not finish and needs recovery")
 
-// Tx is one in-flight transaction: a held LockSet plus the journal
-// describing it. Callers Stage every file, Persist the journal (durable,
-// before any destination write), Apply the writes, then Commit alongside
-// their own ledger update. Discard aborts before any destination write was
-// attempted (e.g. a post-lock preflight recheck failed).
 type Tx struct {
 	j     *Journal
 	locks *LockSet
@@ -107,12 +102,6 @@ func checkPending(keys []string) error {
 	return fmt.Errorf("%w: journal %s (op %q, state %s) — run `relay recover %s`", ErrPending, pending[0].ID, pending[0].Op, pending[0].State, pending[0].ID)
 }
 
-// Stage records dest's (root+rel) prior bytes/mode into a private backup
-// file and writes newData into a private staged file — both durable on
-// disk before Persist writes the journal describing them, and long before
-// Apply touches dest itself. It refuses a destination that is itself a
-// symlink; Apply re-verifies the full path (including parent components)
-// immediately before writing, since time passes between Stage and Apply.
 func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error {
 	dest := filepath.Join(root, filepath.FromSlash(rel))
 	idx := len(t.j.Files)
@@ -190,9 +179,6 @@ func (t *Tx) StageRemoval(root, rel string) error {
 	return nil
 }
 
-// Persist durably writes the prepared journal — the point after which an
-// interrupted process leaves something `relay recover` can find and act
-// on. Must be called after every Stage and before Apply.
 func (t *Tx) Persist() error {
 	if t.j.State == "" {
 		t.j.State = StatePrepared
@@ -276,10 +262,6 @@ func (t *Tx) Commit(ledgerFn func() error) error {
 	return t.j.save()
 }
 
-// Discard compensates whatever Apply managed to write (if anything — a
-// no-op if Apply was never called or wrote nothing) and releases locks.
-// Use this after Persist/Apply fails, or after a post-lock preflight
-// recheck rejects the operation before Stage/Apply ever ran.
 func (t *Tx) Discard(applyErr error) error {
 	defer t.locks.Unlock()
 
@@ -457,11 +439,6 @@ func RecoverAll(ctx context.Context) ([]Journal, error) {
 	return out, errors.Join(errs...)
 }
 
-// atomicWrite writes data to a unique temp file in dest's own directory
-// (never a shared predictable name — R33) with mode already applied,
-// fsyncs it, then renames over dest. Rename within the same directory is
-// atomic on every filesystem relay supports, so a reader never observes a
-// partially-written destination file.
 func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
 	dir := filepath.Dir(dest)
 	tmp, err := os.CreateTemp(dir, ".relay-tmp-*")
@@ -497,10 +474,6 @@ func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
 	return nil
 }
 
-// writeFileDurable writes data to path and fsyncs before returning —
-// backup/staged bytes must survive a crash immediately after Stage
-// returns, since Persist (and therefore crash-safety of the whole
-// journal) depends on them already being on disk.
 func writeFileDurable(path string, data []byte, mode fs.FileMode) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {

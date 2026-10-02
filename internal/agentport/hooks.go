@@ -9,15 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file is the named-transform-hook registry (§3 of the
-// config-driven-adapters design): the bounded, reviewed set of Go functions
-// a provider config may reference by name for the ~10% of behavior that
-// isn't a flat frontmatter field map. Exactly 2 hooks exist for the 4
-// shipped platforms — codex-openai (a SidecarCodec) and
-// claude-legacy-commands (a LoadHook) — see §3.1. Adding a hook is a
-// deliberate, reviewed action (§3.2); config `type`/`discovery` enums are
-// always preferred over a new hook.
-
 // HookCtx is the context passed to every hook invocation.
 type HookCtx struct {
 	Cfg      ProviderConfig
@@ -76,16 +67,6 @@ func registeredCodecNames() map[string]bool {
 	return out
 }
 
-// --- claude-legacy-commands: flat `<name>.md` command-file load ---
-//
-// Reproduces adapter_claude.go's isLegacyCommand branch exactly: a bare
-// markdown file (not a SKILL.md-containing directory) is read directly,
-// its frontmatter parsed with the SAME flat field map as the directory
-// form (name/description/allowed-tools/disable-model-invocation/license),
-// its name inferred from the filename (".md" trimmed) when frontmatter
-// omits it, and — unlike the directory form — the inferred/parsed name is
-// NOT required to match anything (there's no directory to compare against).
-// It never has resources.
 func claudeLegacyCommandsLoadHook(ctx HookCtx, raw []byte, s *Skill) (bool, error) {
 	fmBytes, body, err := splitFrontmatter(raw)
 	if err != nil {
@@ -141,12 +122,6 @@ type codexPolicyYAML struct {
 	AllowImplicitInvocation *bool `yaml:"allow_implicit_invocation,omitempty"`
 }
 
-// codexToolDependencyYAML mirrors one `dependencies.tools` entry per the
-// current vendor schema (R20) — an object, not a bare string. All fields
-// are optional strings; a well-formed entry has at least `type` and
-// `value` set, but Load never rejects a partially-populated entry (the
-// sidecar is documentation/config, not something Relay enforces schema
-// completeness on).
 type codexToolDependencyYAML struct {
 	Type        string `yaml:"type,omitempty"`
 	Value       string `yaml:"value,omitempty"`
@@ -222,13 +197,7 @@ func loadCodexSidecar(path string, s *Skill) error {
 	if sc.Dependencies != nil && len(sc.Dependencies.Tools) > 0 {
 		tools := make([]CodexToolDependency, len(sc.Dependencies.Tools))
 		for i, t := range sc.Dependencies.Tools {
-			tools[i] = CodexToolDependency{
-				Type:        t.Type,
-				Value:       t.Value,
-				Description: t.Description,
-				Transport:   t.Transport,
-				URL:         t.URL,
-			}
+			tools[i] = CodexToolDependency(t)
 		}
 		s.CodexTools = &CodexTools{Tools: tools}
 	}
@@ -263,13 +232,7 @@ func (codexOpenAICodec) Project(ctx HookCtx, s *Skill, files map[string][]byte) 
 		haveSidecar = true
 		tools := make([]codexToolDependencyYAML, len(s.CodexTools.Tools))
 		for i, t := range s.CodexTools.Tools {
-			tools[i] = codexToolDependencyYAML{
-				Type:        t.Type,
-				Value:       t.Value,
-				Description: t.Description,
-				Transport:   t.Transport,
-				URL:         t.URL,
-			}
+			tools[i] = codexToolDependencyYAML(t)
 		}
 		sc.Dependencies = &codexDependenciesYAML{Tools: tools}
 	}

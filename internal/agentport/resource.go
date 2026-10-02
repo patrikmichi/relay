@@ -6,12 +6,6 @@ import (
 	"path/filepath"
 )
 
-// execBits are the only mode bits a resource's safe stored mode ever
-// carries beyond ordinary read/write permissions — R11: a source
-// filesystem may report setuid/setgid/sticky bits or non-regular-file
-// semantics, none of which a skill resource ever needs and none of which
-// this package ever passes through, regardless of what the source
-// reports.
 const execBits = 0o111
 
 // safeMode reduces an arbitrary source os.FileMode down to one of exactly
@@ -27,18 +21,11 @@ func safeMode(m fs.FileMode) fs.FileMode {
 	return 0o644
 }
 
-// ResourceFile is the canonical representation of one skill resource file:
-// its content plus safe executable-mode metadata (R11). Skill.Resources
-// maps a relative path to one ResourceFile.
 type ResourceFile struct {
 	Data []byte
 	Mode fs.FileMode // always safeMode's output: 0644 or 0755
 }
 
-// ExcludedResource records one file loadResources found under a skill root
-// but did not load into Resources, together with why — R10/R12: a skipped
-// or excluded file must always be reported, never silently absent from the
-// artifact with no trace.
 type ExcludedResource struct {
 	Path   string
 	Reason string
@@ -68,15 +55,6 @@ var controlMetadataNames = map[string]bool{
 	"Gemfile.lock":      true,
 }
 
-// resolveSkillRoot resolves ONE level of symlink at path — the skill's own
-// root directory or flat file, as explicitly named by a caller (a provider
-// directory listing, or a user-supplied install path) — while leaving any
-// symlink nested INSIDE that root untouched (those remain rejected/skipped
-// by loadResources' per-entry check; R05/R12). filepath.WalkDir/fs.WalkDir
-// never descends into a symlinked root (it Lstats the root and stops if
-// that isn't a real directory), so without this resolution a symlinked
-// skill's resources silently vanish from a load — the exact R12 defect.
-// Returns path unchanged if it isn't a symlink.
 func resolveSkillRoot(path string) (string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
