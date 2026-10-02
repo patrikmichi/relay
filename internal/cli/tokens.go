@@ -39,7 +39,10 @@ func tokensListCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
 			defer cancel()
@@ -50,8 +53,7 @@ func tokensListCmd() *cobra.Command {
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusUnauthorized {
-				fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-				os.Exit(1)
+				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 			}
 
 			if resp.StatusCode != http.StatusOK {
@@ -130,10 +132,12 @@ func tokensRevokeCmd() *cobra.Command {
 
 			// Building the client never dials the network — it only reads
 			// GATEWAY_API_KEY / the OS keychain.
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 			if c.Email() == "" {
-				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke.")
-				os.Exit(1)
+				return errors.New("authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke")
 			}
 
 			if Offline() {
@@ -148,8 +152,7 @@ func tokensRevokeCmd() *cobra.Command {
 			defer cancel()
 			result, err := auth.Logout(ctx, c)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Revoke failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("revoke failed: %w", err)
 			}
 			if !result.RemoteRevoked {
 				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)

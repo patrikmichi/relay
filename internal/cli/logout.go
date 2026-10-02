@@ -53,10 +53,12 @@ func LogoutCmd() *cobra.Command {
 				return errors.New(offlineGuidance)
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 			if c.Email() == "" {
-				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to log out of.")
-				os.Exit(1)
+				return errors.New("authenticated via GATEWAY_API_KEY — there is no local CLI session to log out of")
 			}
 
 			if Offline() {
@@ -71,8 +73,7 @@ func LogoutCmd() *cobra.Command {
 			defer cancel()
 			result, err := auth.Logout(ctx, c)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Logout failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("logout failed: %w", err)
 			}
 			if !result.RemoteRevoked {
 				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)

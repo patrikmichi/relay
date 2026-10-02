@@ -37,7 +37,10 @@ Examples:
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			info, err := fetchIntegrations(c)
 			if err != nil {

@@ -35,7 +35,10 @@ Example:
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 			return callTool(c, args[0], args[1], rawArgs, jsonOut)
 		},
 	}

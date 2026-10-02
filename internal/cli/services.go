@@ -1,8 +1,8 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -36,15 +36,17 @@ func ServicesCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			info, err := fetchIntegrations(c)
 			if err != nil {
 				return fmt.Errorf("services failed: %w", err)
 			}
 			if info == nil {
-				fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-				os.Exit(1)
+				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 			}
 
 			fmt.Printf("Services (%d tools total):\n", info.ToolCount)

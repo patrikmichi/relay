@@ -3,7 +3,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -43,8 +42,7 @@ is not available.`,
 			if deviceFlow {
 				result, err := auth.DeviceLogin(ctx, resolvedURL)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Login failed:", err)
-					os.Exit(1)
+					return fmt.Errorf("login failed: %w", err)
 				}
 				fmt.Printf("Logged in as %s\n", result.Email)
 				return nil
@@ -52,8 +50,7 @@ is not available.`,
 
 			result, err := auth.Login(ctx, resolvedURL)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Login failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("login failed: %w", err)
 			}
 
 			fmt.Printf("Logged in as %s\n", result.Email)

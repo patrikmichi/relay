@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,14 +25,16 @@ func WhoamiCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), defaultOpTimeout)
 			defer cancel()
 			info, err := auth.Whoami(ctx, c, full)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "whoami failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("whoami failed: %w", err)
 			}
 
 			fmt.Printf("Email:    %s\n", info.Email)

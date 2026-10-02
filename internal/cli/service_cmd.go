@@ -4,9 +4,9 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -264,8 +264,7 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-		os.Exit(1)
+		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 	}
 
 	if jsonOut {
@@ -348,7 +347,10 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			if err != nil {
 				return err
 			}
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 			return callTool(c, serviceName, toolName, rawArgs, jsonOut)
 		},
 	}
