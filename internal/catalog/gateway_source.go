@@ -1,17 +1,3 @@
-// Package catalog implements relay's Phase-2 "GatewaySource" — the
-// gateway-backed counterpart to agentport.LoadGenericSkill's local-path
-// source. It downloads a governed skill bundle from the gateway catalog's
-// download endpoint, verifies it end to end (content hash + scan verdict),
-// path-safe extracts it, and loads it through the SAME
-// agentport.LoadGenericSkill code path a local `relay skill install <path>`
-// uses — so everything downstream (Migrate/Write/manifest) is unmodified,
-// shipped Phase-1 code.
-//
-// Deliberately NOT part of internal/agentport: that package is intentionally
-// gateway-agnostic (stdlib + gopkg.in/yaml.v3 only, see its package doc) so
-// it can later be extracted verbatim into a standalone OSS module. This
-// package is the only place relay-proprietary gateway/auth code meets the
-// skill-manager engine — see FetchSkill's Doer parameter.
 package catalog
 
 import (
@@ -54,8 +40,6 @@ type Doer interface {
 // to exercise the bounded-timeout path without a slow test.
 var downloadTimeout = 120 * time.Second
 
-// Response header names the download endpoint is contracted to set. See
-// vault/plans/claude-infra/relay-gateway-source-install-2026-07-05.md §4.6.
 const (
 	headerContentSha256 = "X-Skill-Content-Sha256"
 	headerVersion       = "X-Skill-Version"
@@ -70,19 +54,11 @@ const (
 	downloadPathSuffix = "/download"
 )
 
-// Size/entry caps mirrored from the gateway's own BUNDLE_ENTRY_LIMIT /
-// BUNDLE_TOTAL_LIMIT (design spec §6.2 step 5) — enforced client-side too so
-// a compromised, buggy, or MITM'd gateway response can't gzip/entry-bomb the
-// local extraction. MaxBundleBytes bounds BOTH the on-wire (still-gzipped)
-// response body and the total decompressed bytes written to disk.
 const (
 	MaxBundleEntries = 500
 	MaxBundleBytes   = 50 << 20 // 50 MiB
 )
 
-// Sentinel errors — distinguished by the CLI for its exit messaging (design
-// spec §6.6 degradation table). Wrapped with additional context via %w, so
-// errors.Is still matches these after wrapping.
 var (
 	ErrUnauthorized      = errors.New("unauthorized (401)")
 	ErrNoAccess          = errors.New("access denied (403)")
@@ -93,29 +69,6 @@ var (
 	ErrScanVerdictFailed = errors.New("scan verdict is missing, unscanned, or failed — refusing to install")
 )
 
-// FetchSkill downloads catalog id (a res_… resource id or a slug) at version
-// (optional exact semver — "" resolves to the latest on channel) / channel
-// (optional — "" is the gateway's default channel, normally "stable") from
-// the gateway's governed download endpoint, verifies the response end to
-// end, path-safe extracts the canonical bundle into a temp dir, loads it via
-// agentport.LoadGenericSkill (deleting the temp dir before returning — the
-// Skill IR holds the resource bytes in memory, so the temp dir is scratch
-// space only), and stamps gateway provenance onto the result.
-//
-// Fail-closed, in this order:
-//  1. HTTP status: 401/403/404/409/429 map to the sentinel errors above;
-//     any other non-200 is a generic error. No body is trusted until 200.
-//  2. sha256(body) must equal the X-Skill-Content-Sha256 header. Mismatch
-//     aborts before any extraction — nothing is written to the temp dir.
-//  3. X-Skill-Scan-Verdict must indicate every applicable gate passed (or
-//     na/skip) — see verifyScanVerdict for the two accepted header shapes.
-//     Missing, unparseable, or any failed gate aborts before extraction.
-//  4. Tar entries must be path-safe (no absolute paths, no ".." escapes, no
-//     symlinks/hardlinks/device files) and within MaxBundleEntries /
-//     MaxBundleBytes — see extractTarGz.
-//
-// The returned Skill's Provenance is
-// {SourceProvider: "gateway", CatalogID: id, Version: <resolved version>}.
 func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error) {
 	if doer == nil {
 		return nil, fmt.Errorf("catalog: no gateway client configured")

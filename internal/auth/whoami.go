@@ -18,11 +18,6 @@ type WhoamiResponse struct {
 	Groups    []string `json:"groups,omitempty"`
 }
 
-// Whoami calls /api/cli/whoami and returns the user info. If full is true,
-// requests groups via ?groups=true. Dispatched through c.GetContext (bounded
-// by ctx) so an expired/near-expiry OAuth session transparently refreshes
-// (see internal/client's Do) instead of failing outright, without letting a
-// stalled request hang past the caller's deadline (R23).
 func Whoami(ctx context.Context, c *client.Client, full bool) (*WhoamiResponse, error) {
 	path := "/api/cli/whoami"
 	if full {

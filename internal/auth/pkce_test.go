@@ -159,8 +159,8 @@ func TestExchangeCode_NonOKWithErrorDescription(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "code already used") {
-		t.Errorf("error should surface status + description, got: %v", err)
+	if !strings.Contains(err.Error(), "400") || strings.Contains(err.Error(), "code already used") {
+		t.Errorf("error should surface status without the upstream body, got: %v", err)
 	}
 }
 
@@ -286,7 +286,7 @@ func TestLogin_OAuthErrorFromCallback(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "access_denied") {
+	if !strings.Contains(err.Error(), "denied by the identity provider") {
 		t.Errorf("expected oauth error to surface, got: %v", err)
 	}
 }
@@ -297,11 +297,13 @@ func TestLogin_StateMismatchFromCallback(t *testing.T) {
 	restore := driveCallback(t, map[string]string{"code": "fake-code", "state": "tampered-state"})
 	defer restore()
 
-	_, err := Login(context.Background(), "https://gw.example.com")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := Login(ctx, "https://gw.example.com")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "state mismatch") {
+	if !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("expected state mismatch error, got: %v", err)
 	}
 }

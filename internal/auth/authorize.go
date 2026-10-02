@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -13,9 +14,6 @@ import (
 	"github.com/patrikmichi/relay/internal/config"
 )
 
-// maxAuthResponseBytes bounds every gateway response decoded in this file —
-// a misbehaving or compromised gateway must not be able to wedge a login by
-// streaming an unbounded body (R23).
 const maxAuthResponseBytes = 1 << 20 // 1 MiB
 
 // defaultDeviceFlowTimeout bounds the entire device-code flow (request +
@@ -24,9 +22,6 @@ const maxAuthResponseBytes = 1 << 20 // 1 MiB
 // this is a conservative fallback, not the expected case.
 const defaultDeviceFlowTimeout = 15 * time.Minute
 
-// slowDownIncrementSecs is added to the poll interval on a slow_down
-// response, per RFC 8628 §3.5's recommendation. A var (not const) so tests
-// can shrink it instead of sleeping the production 5s per iteration.
 var slowDownIncrementSecs = 5
 
 // DeviceCodeResponse is the JSON returned by /api/cli/device/code.
@@ -45,13 +40,6 @@ func (dc DeviceCodeResponse) validate() error {
 	return nil
 }
 
-// deviceTokenResponse is the typed JSON shape returned by
-// /api/cli/device/token for BOTH a terminal success (200) and every
-// RFC 8628 §3.5 error/pending case (authorization_pending, slow_down,
-// expired_token, access_denied, ...). A single typed struct — never
-// map[string]interface{} — means a missing or wrong-typed field decodes to
-// its zero value deterministically instead of an unchecked type assertion
-// silently producing "" (R26).
 type deviceTokenResponse struct {
 	AccessToken      string `json:"access_token"`
 	RefreshToken     string `json:"refresh_token"`
@@ -83,13 +71,11 @@ func decodeJSONCapped(body io.Reader, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-// DeviceLogin performs the device-code grant flow (RFC 8628) for headless
-// environments. Used by `relay login --device`. ctx is a caller-supplied
-// deadline (e.g. from cmd.Context()) that this narrows further to the
-// device code's own advertised lifetime, so a gateway that answers
-// "pending" forever cannot keep polling past when the device code it
-// issued actually expires (R23).
-func DeviceLogin(ctx context.Context, gatewayURL string) (*LoginResult, error) {
+func DeviceLogin(ctx context.Context, gatewayURL string, writers ...io.Writer) (*LoginResult, error) {
+	var out io.Writer = os.Stdout
+	if len(writers) > 0 && writers[0] != nil {
+		out = writers[0]
+	}
 	origin, err := config.NormalizeGatewayURL(gatewayURL)
 	if err != nil {
 		return nil, err
@@ -123,9 +109,9 @@ func DeviceLogin(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	}
 
 	// 2. Prompt user
-	fmt.Printf("\nOpen this URL in your browser:\n  %s\n\n", dc.VerificationURI)
-	fmt.Printf("Enter this code when prompted: %s\n\n", dc.UserCode)
-	fmt.Println("Waiting for authorization...")
+	fmt.Fprintf(out, "\nOpen this URL in your browser:\n  %s\n\n", dc.VerificationURI)
+	fmt.Fprintf(out, "Enter this code when prompted: %s\n\n", dc.UserCode)
+	fmt.Fprintln(out, "Waiting for authorization...")
 
 	deviceExpiry := time.Duration(dc.ExpiresIn) * time.Second
 	if deviceExpiry <= 0 {
@@ -178,7 +164,7 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 
 		var dtr deviceTokenResponse
 		decodeErr := decodeJSONCapped(resp.Body, &dtr)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
@@ -204,9 +190,6 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 				ExpiresIn:    expiresIn,
 			}, nil
 
-		// authorization_pending — RFC 8628 §3.5 specifies HTTP 400 with this
-		// error code; this gateway's deployed contract additionally uses
-		// 408/428 as alternate pending signals, kept here for compatibility.
 		case dtr.Error == "authorization_pending",
 			resp.StatusCode == http.StatusRequestTimeout,
 			resp.StatusCode == http.StatusPreconditionRequired:
@@ -215,9 +198,6 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 			}
 			continue
 
-		// slow_down — RFC 8628 §3.5: the client is polling too fast. The
-		// spec requires increasing the poll interval, not retrying at the
-		// same cadence.
 		case dtr.Error == "slow_down":
 			intervalSecs += slowDownIncrementSecs
 			if !waitOrDone(ctx, intervalSecs) {

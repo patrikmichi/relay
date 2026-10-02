@@ -1,14 +1,3 @@
-// Package sessionlock provides a cross-process advisory file lock scoped to
-// one (gateway, account) pair — used by internal/client to serialize OAuth
-// refresh-token rotation across independently invoked `relay` processes
-// (R24).
-//
-// Liveness comes from the kernel's flock(2) semantics, never from
-// inspecting a lock file's age or contents: an advisory lock is released
-// the instant its holding file descriptor closes — on a clean Unlock, on
-// the holding process exiting, or on the holding process crashing — so a
-// held lock always means a live holder. There is no staleness heuristic
-// and nothing here ever "steals" a lock based on how old it looks.
 package sessionlock
 
 import (

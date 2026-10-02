@@ -12,17 +12,7 @@ import (
 	"path/filepath"
 )
 
-// DefaultGatewayURL is the compiled-in fallback gateway URL, used when no
-// GATEWAY_URL env var and no config file value are set. It is a var (not a
-// const) so an intentional private/owner build can inject one via
-// -ldflags "-X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL=...".
-// Empty by default for BOTH source builds and public releases — a
-// source/`go install` build must not silently select an owner-specific
-// gateway that a public release build deliberately omits. Every consumer of
-// GatewayURL() (and, downstream, every catalog verb) must treat an empty
-// result as "no gateway configured" and fail closed rather than silently
-// dialing an empty/relative URL. See resolveGatewayURLOrFailClosed in
-// internal/cli/gateway.go.
+// DefaultGatewayURL is the compiled-in fallback gateway URL, used when no GATEWAY_URL env var and no config file value are set.
 var DefaultGatewayURL = ""
 
 // Config holds all persisted CLI settings.
@@ -113,20 +103,7 @@ func Save(cfg Config) error {
 	return nil
 }
 
-// GatewayURL returns the normalized, policy-checked gateway URL, or "" if
-// none is set. Resolution order: env var → config file → compiled default.
-//
-// When DefaultGatewayURL is empty (the default — see its doc comment) and
-// neither the env var nor the config file supply one, this returns "" with a
-// nil error — it never fabricates a URL. Callers that dial the gateway must
-// treat an empty result as "no gateway configured" and fail closed (see
-// internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
-//
-// A corrupt/unreadable config file is propagated as an error — it never
-// falls back to selecting a different host (env/default) than the one the
-// user believes is configured. Whichever candidate is selected is passed
-// through NormalizeGatewayURL, so an invalid or insecure-transport value
-// from any source is rejected here rather than at the point of use.
+// GatewayURL returns the normalized, policy-checked gateway URL, or "" if none is set.
 func GatewayURL() (string, error) {
 	// Env var takes precedence over the config file.
 	if v := os.Getenv("GATEWAY_URL"); v != "" {
@@ -213,17 +190,7 @@ func SetEmail(email string) error {
 	return Save(cfg)
 }
 
-// ResolveEmail resolves the current CLI identity used to look up the
-// keychain OAuth session.
-//
-// Resolution order:
-//  1. RELAY_EMAIL env var — explicit override (e.g. switching accounts
-//     without re-running `relay login`, or scripting against a specific
-//     identity). Always wins when set.
-//  2. The email persisted by the most recent successful `relay login` /
-//     `relay login --device` (see SetEmail).
-//
-// Returns an error (mentioning `relay login`) when neither is available.
+// ResolveEmail resolves the current CLI identity used to look up the keychain OAuth session.
 func ResolveEmail() (string, error) {
 	if v := os.Getenv("RELAY_EMAIL"); v != "" {
 		return v, nil

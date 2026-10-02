@@ -10,9 +10,6 @@ import (
 	"strings"
 )
 
-// maxRefreshResponseBytes bounds the refresh endpoint's response body — a
-// compromised or misbehaving gateway must not be able to wedge a refresh
-// (and everything waiting on it) by streaming an unbounded body (R23).
 const maxRefreshResponseBytes = 1 << 20 // 1 MiB
 
 // refreshResult is the token pair returned by POST /api/cli/refresh
@@ -38,12 +35,6 @@ func readCapped(r io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// refreshOAuthToken exchanges a refresh token for a rotated access+refresh
-// pair. The gateway enforces reuse detection (a refresh token is single-use;
-// presenting an already-spent one revokes the whole token family) — so the
-// caller MUST persist the rotated pair before it can be used again. ctx
-// bounds the whole request, including the case where the caller's own
-// deadline is what should stop a stalled refresh (R23).
 func refreshOAuthToken(ctx context.Context, gatewayURL, refreshToken string) (*refreshResult, error) {
 	endpoint := strings.TrimRight(gatewayURL, "/") + "/api/cli/refresh"
 

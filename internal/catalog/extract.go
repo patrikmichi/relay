@@ -11,29 +11,6 @@ import (
 	"strings"
 )
 
-// extractTarGz decompresses and untars data into destDir, enforcing the
-// same path-safety posture as agentport's frontmatter.go loadResources (skip
-// symlinks/non-regular files rather than materializing them) plus tarball-
-// specific hardening a directory walk doesn't need:
-//
-//   - absolute-path entries are refused outright;
-//   - entries containing ".." (or that Clean to something outside destDir)
-//     are refused — a "zip-slip"-style escape;
-//   - symlink and hardlink entries are SKIPPED, never materialized — the
-//     same reasoning as loadResources: a malicious bundle could symlink a
-//     resource path to an arbitrary local file and have Project()/Write()
-//     copy that target's content into every provider's directory;
-//   - device files, FIFOs, and any other non-regular/non-directory entry
-//     are SKIPPED;
-//   - the tarball is capped at MaxBundleEntries entries and MaxBundleBytes
-//     of total decompressed content (a gzip-bomb / entry-flood guard) — the
-//     compressed wire size is already capped by readLimited before this
-//     function ever runs.
-//
-// destDir must already exist. On any rejected entry, extraction stops
-// immediately with an error; the caller (FetchSkill) always extracts into a
-// throwaway temp dir it removes on every return path, so a partial
-// extraction is never left behind for a caller to accidentally consume.
 func extractTarGz(data []byte, destDir string) error {
 	absDest, err := filepath.Abs(destDir)
 	if err != nil {
@@ -115,15 +92,7 @@ func extractTarGz(data []byte, destDir string) error {
 	return nil
 }
 
-// writeRegularFile copies exactly size bytes from r into a newly created
-// file at destPath.
-//
-// io.CopyN returns io.EOF when r runs dry BEFORE delivering size bytes — the
-// signature of a truncated/malformed tar entry (the header declared more
-// data than the archive actually contains). A well-formed archive never
-// hits this: r has exactly size bytes of this entry's data available before
-// the next header/EOF. So ANY error from io.CopyN, io.EOF included, is
-// treated as fatal here — never silently accepted as "close enough".
+// writeRegularFile copies exactly size bytes from r into a newly created file at destPath.
 func writeRegularFile(destPath string, r io.Reader, size int64) error {
 	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {

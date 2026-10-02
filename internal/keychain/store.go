@@ -69,7 +69,7 @@ func WriteToken(gatewayOrigin, email string, data TokenData) error {
 	if err := keyring.Set(serviceName, accountKey(gatewayOrigin, email), string(raw)); err != nil {
 		return fmt.Errorf(
 			"could not store token in system keychain for %s@%s: %w\n"+
-				"On Linux, ensure a D-Bus session and gnome-keyring or kwallet is running.",
+				"On Linux, ensure a D-Bus session and gnome-keyring or kwallet is running",
 			email, gatewayOrigin, err,
 		)
 	}

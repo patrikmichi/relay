@@ -6,8 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,7 +56,11 @@ type tokenResponse struct {
 //  4. Wait for callback (max 120s)
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
-func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
+func Login(ctx context.Context, gatewayURL string, writers ...io.Writer) (*LoginResult, error) {
+	var diagnostic io.Writer = os.Stderr
+	if len(writers) > 0 && writers[0] != nil {
+		diagnostic = writers[0]
+	}
 	// The keychain entry this login produces is bound to this normalized
 	// origin — reject an invalid/insecure gateway value before opening a
 	// browser or starting the loopback server.
@@ -68,7 +72,6 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 
-	// Step 1: PKCE
 	verifier, challenge, err := generatePKCE()
 	if err != nil {
 		return nil, fmt.Errorf("generate PKCE: %w", err)
@@ -79,7 +82,6 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 		return nil, fmt.Errorf("generate state: %w", err)
 	}
 
-	// Step 2: Start loopback server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("start callback server: %w", err)
@@ -91,23 +93,12 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	errCh := make(chan error, 1)
 
 	server := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			q := r.URL.Query()
-			if errParam := q.Get("error"); errParam != "" {
-				errCh <- fmt.Errorf("oauth error: %s — %s", errParam, q.Get("error_description"))
-				fmt.Fprintln(w, "Authentication failed. You can close this tab.")
-				return
-			}
-			code := q.Get("code")
-			returnedState := q.Get("state")
-			if returnedState != state {
-				errCh <- fmt.Errorf("state mismatch: expected %s got %s", state, returnedState)
-				http.Error(w, "State mismatch", http.StatusBadRequest)
-				return
-			}
-			codeCh <- code
-			fmt.Fprintln(w, "Authentication complete. You can close this tab.")
-		}),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       10 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		Handler:           oauthCallbackHandler(state, codeCh, errCh),
 	}
 
 	go func() {
@@ -116,18 +107,15 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 		}
 	}()
 
-	// Cleanup: close codeCh so parent select unblocks on any exit path
 	defer func() {
 		_ = server.Close()
 	}()
 
-	// Step 3: Open browser
 	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge)
 	if err := openBrowser(authorizeURL); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
+		fmt.Fprintf(diagnostic, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
 	}
 
-	// Step 4: Wait for callback
 	var authCode string
 	select {
 	case code := <-codeCh:
@@ -138,14 +126,11 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 		return nil, fmt.Errorf("login timed out after %s", loginTimeout)
 	}
 
-	// Step 5: Exchange code for tokens
-	resp, err := exchangeCode(origin, authCode, verifier, redirectURI)
+	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 
-	// Step 6: Store in keychain, bound to this normalized gateway origin —
-	// never to email alone.
 	if err := keychain.WriteToken(origin, resp.Email, keychain.TokenData{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
@@ -161,7 +146,7 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	// keychain write above already succeeded); RELAY_EMAIL remains an
 	// explicit fallback for the user.
 	if err := config.SetEmail(resp.Email); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not persist login email to config: %v\n", err)
+		fmt.Fprintf(diagnostic, "Warning: could not persist login email to config: %v\n", err)
 	}
 
 	return &LoginResult{
@@ -209,6 +194,10 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge strin
 
 // exchangeCode exchanges an authorization code for a token pair.
 func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
+	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI)
+}
+
+func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/cli/token", strings.TrimRight(gatewayURL, "/"))
 
 	data := url.Values{
@@ -222,7 +211,7 @@ func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenRespons
 	// the minted token pair to another origin. http.PostForm uses
 	// http.DefaultClient, which follows redirects, so build the request
 	// explicitly instead.
-	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("create token exchange request: %w", err)
 	}
@@ -235,18 +224,55 @@ func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenRespons
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var errBody map[string]string
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		desc := errBody["error_description"]
-		if desc == "" {
-			desc = errBody["error"]
-		}
-		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, desc)
+		return nil, fmt.Errorf("token exchange failed (HTTP %d)", resp.StatusCode)
 	}
 
 	var tr tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	if err := decodeJSONCapped(resp.Body, &tr); err != nil {
 		return nil, fmt.Errorf("decode token response: %w", err)
 	}
+	if tr.AccessToken == "" || tr.RefreshToken == "" || tr.Email == "" || tr.ExpiresIn <= 0 || tr.ExpiresIn > 86400*365 {
+		return nil, fmt.Errorf("invalid token response: required session fields missing or expiry invalid")
+	}
 	return &tr, nil
+}
+
+func oauthCallbackHandler(state string, codeCh chan<- string, errCh chan<- error) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/callback" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		q := r.URL.Query()
+		if q.Get("state") != state {
+			http.Error(w, "Invalid authorization response", http.StatusBadRequest)
+			return
+		}
+		if q.Get("error") != "" {
+			select {
+			case errCh <- fmt.Errorf("authorization was denied by the identity provider"):
+			default:
+			}
+			http.Error(w, "Authentication failed. You can close this tab.", http.StatusBadRequest)
+			return
+		}
+		code := q.Get("code")
+		if code == "" || len(code) > 4096 {
+			http.Error(w, "Invalid authorization response", http.StatusBadRequest)
+			return
+		}
+		select {
+		case codeCh <- code:
+		default:
+			http.Error(w, "Authorization response already received", http.StatusConflict)
+			return
+		}
+		_, _ = fmt.Fprintln(w, "Authentication complete. You can close this tab.")
+	})
 }

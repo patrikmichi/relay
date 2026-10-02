@@ -40,13 +40,11 @@ func Logout(ctx context.Context, c *client.Client) (LogoutResult, error) {
 	case err != nil:
 		result.RemoteWarning = fmt.Sprintf("could not reach gateway to revoke session: %v", err)
 	case resp.StatusCode == http.StatusOK:
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		result.RemoteRevoked = true
 	default:
-		var errBody map[string]string
-		_ = decodeJSONCapped(resp.Body, &errBody)
-		resp.Body.Close()
-		result.RemoteWarning = fmt.Sprintf("server returned %d during logout: %s", resp.StatusCode, errBody["error"])
+		_ = resp.Body.Close()
+		result.RemoteWarning = fmt.Sprintf("server returned HTTP %d during logout", resp.StatusCode)
 	}
 
 	// Always delete the keychain entry — offline logout removes exactly the

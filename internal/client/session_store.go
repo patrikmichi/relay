@@ -45,10 +45,6 @@ func (flockSessionLocker) Lock(ctx context.Context, gatewayOrigin, email string)
 	return sessionlock.Acquire(ctx, gatewayOrigin, email)
 }
 
-// ClientOption customizes a Client built by Resolve. Production code never
-// needs one — it exists so tests can inject a fake SessionStore/
-// SessionLocker for deterministic, real-lock-file concurrency coverage
-// (R24) without touching the OS keychain.
 type ClientOption func(*Client)
 
 // WithSessionStore overrides the default OS-keychain-backed SessionStore.
