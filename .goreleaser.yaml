@@ -1,21 +1,15 @@
-# .goreleaser.yaml — release config for the `relay` CLI (goreleaser v2 schema).
-#
-# This file lives at cli/.goreleaser.yaml inside the monorepo today, but is
-# authored to work unmodified once cli/ is extracted into its own public
-# repo (github.com/patrikmichi/relay).
-# Until the split, run goreleaser from inside cli/ (`cd cli && goreleaser ...`)
-# so relative paths (README.md, dist/) resolve correctly.
+# Release config for the relay CLI (goreleaser v2). Builds only from the tagged
+# source with no gateway hostname: users point relay at a gateway at runtime
+# via `relay config set-gateway` or GATEWAY_URL.
 version: 2
 
 project_name: relay
 
-# Explicit owner/repo so `goreleaser release` always targets the eventual
-# public split repo, regardless of what `git remote` currently resolves to
-# (this file is developed inside the private monorepo before extraction).
 release:
   github:
     owner: patrikmichi
     name: relay
+  prerelease: auto
 
 builds:
   - id: relay
@@ -26,25 +20,19 @@ builds:
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
-    # Public-build gateway default: release artifacts must NOT bake in an
-    # owner's gateway host. internal/config.DefaultGatewayURL's
-    # source default is already empty, so this -X override is redundant for
-    # an unset RELAY_DEFAULT_GATEWAY_URL — it exists so an owner build can
-    # opt into a baked-in default (see below) without editing this file. We
-    # use the `index` template func (not `.Env.KEY` dot access) because
-    # goreleaser's template engine runs with missingkey=error for `.Env` —
-    # `.Env.KEY` on an unset key hard-fails the build ("map has no entry for
-    # key"), while `index .Env "KEY"` returns the zero value ("") for a
-    # missing key with no error. So by default this bakes in an EMPTY
-    # DefaultGatewayURL (offline-first: users run `relay config set-gateway`
-    # or export GATEWAY_URL). An owner build that wants a baked-in default
-    # can opt in without editing this file:
-    #   RELAY_DEFAULT_GATEWAY_URL=https://gw.example.dev goreleaser release --clean
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
-      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }} -X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL={{ index .Env "RELAY_DEFAULT_GATEWAY_URL" }}
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .CommitDate }}
+    hooks:
+      post:
+        - cmd: bash .github/scripts/scan-denylist.sh "{{ .Path }}"
+          output: true
 
 archives:
   - id: relay
@@ -52,13 +40,32 @@ archives:
       - relay
     formats:
       - tar.gz
-    name_template: "relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # Same asset names as v0.1.0 so the Scoop autoupdate URLs keep resolving.
+    name_template: "relay-{{ .Os }}-{{ .Arch }}"
     files:
       - README.md
       - LICENSE
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: "SHA256SUMS.txt"
+  algorithm: sha256
+
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+
+sboms:
+  - artifacts: archive
 
 changelog:
   sort: asc
@@ -82,7 +89,7 @@ changelog:
       order: 999
 
 snapshot:
-  version_template: "{{ .Version }}-next+{{ .ShortCommit }}"
+  version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
 
 brews:
   - name: relay
@@ -91,20 +98,35 @@ brews:
     repository:
       owner: patrikmichi
       name: homebrew-tap
-      # Push auth: CI exports HOMEBREW_TAP_GITHUB_TOKEN (a PAT with `repo`
-      # scope on the tap repo) as GITHUB_TOKEN-alike for this specific
-      # goreleaser pipe — see .github/workflows/release.yml.
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      token: '{{ index .Env "PACKAGING_GITHUB_TOKEN" }}'
+    directory: Formula
     commit_author:
       name: patrikmichi
       email: yay@patrikmichalicka.com
+    commit_msg_template: "relay {{ .Tag }}"
     homepage: "https://github.com/patrikmichi/relay"
-    description: "relay — unified CLI client for the Atlas gateway (multi-service integration hub)."
+    description: "Manage AI agent skills and agents across providers"
+    license: "Apache-2.0"
     install: |
       bin.install "relay"
     test: |
       system "#{bin}/relay", "--version"
-    # Never let a --snapshot build push to the tap; only real, tagged
-    # releases (goreleaser sets this automatically for snapshots too, but
-    # `auto` makes the intent explicit and covers prerelease/dirty states).
+    skip_upload: auto
+
+scoops:
+  - name: relay
+    ids:
+      - relay
+    repository:
+      owner: patrikmichi
+      name: scoop-bucket
+      token: '{{ index .Env "PACKAGING_GITHUB_TOKEN" }}'
+    directory: bucket
+    commit_author:
+      name: patrikmichi
+      email: yay@patrikmichalicka.com
+    commit_msg_template: "relay {{ .Tag }}"
+    homepage: "https://github.com/patrikmichi/relay"
+    description: "Manage AI agent skills and agents across providers"
+    license: "Apache-2.0"
     skip_upload: auto
