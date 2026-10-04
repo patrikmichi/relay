@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,23 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
+
+func readBuildInfo() *debug.BuildInfo {
+	info, _ := debug.ReadBuildInfo()
+	return info
+}
+
+// moduleVersion falls back to the module version recorded by
+// `go install …@vX` when no version was injected via -ldflags.
+func moduleVersion(injected string, info *debug.BuildInfo) string {
+	if injected != "dev" || info == nil {
+		return injected
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	return injected
+}
 
 // buildVersionString formats the version/commit/date triple for the cobra
 // root command's --version output. Extracted as a pure function so it can be
@@ -111,7 +129,7 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "relay",
 		Short:   "Gateway CLI — unified access to integrated services",
-		Version: buildVersionString(version, commit, date),
+		Version: buildVersionString(moduleVersion(version, readBuildInfo()), commit, date),
 		// Don't print usage on error (cleaner output for auth errors), and
 		// don't let cobra print the error itself — main() below prints it
 		// exactly once (after rewriteOfflineUnknownCommandErr has a chance
