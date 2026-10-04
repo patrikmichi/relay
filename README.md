@@ -13,10 +13,21 @@ new providers are added.
 
 ## Install
 
+> **v0.1.0 is withdrawn.** Its binaries had a private gateway hostname
+> compiled in and its tag had no source. Upgrade to v0.2.0 or later; see the
+> [v0.2.0 release notes](docs/releases/v0.2.0.md).
+
 **Homebrew (macOS/Linux):**
 
 ```bash
 brew install patrikmichi/tap/relay
+```
+
+**Scoop (Windows):**
+
+```powershell
+scoop bucket add patrikmichi https://github.com/patrikmichi/scoop-bucket
+scoop install patrikmichi/relay
 ```
 
 **Go install:**
@@ -25,7 +36,15 @@ brew install patrikmichi/tap/relay
 go install github.com/patrikmichi/relay/cmd/relay@latest
 ```
 
-Both install a single static `relay` binary — no runtime dependencies.
+**Direct download:** archives for macOS, Linux and Windows (amd64, arm64) are
+on the [releases page](https://github.com/patrikmichi/relay/releases).
+`SHA256SUMS.txt` is signed with Sigstore cosign, and every archive has an
+SBOM and a GitHub build provenance attestation
+(`gh attestation verify <archive> --repo patrikmichi/relay`).
+
+Every install is a single static `relay` binary with no runtime
+dependencies and no built-in gateway: point it at one with
+`relay config set-gateway <url>` or `GATEWAY_URL`.
 
 ## Quickstart
 
@@ -223,7 +242,7 @@ with environment variables — env always wins over the config file:
 
 | Variable | Purpose |
 |---|---|
-| `GATEWAY_URL` | Gateway base URL (overrides config file and any compiled-in default) |
+| `GATEWAY_URL` | Gateway base URL (overrides the config file) |
 | `GATEWAY_API_KEY` | Non-interactive bearer auth — use in scripts/CI instead of `relay login` |
 | `RELAY_EMAIL` | Selects which keychain-stored session to use (overrides the last `relay login`'d identity) |
 
