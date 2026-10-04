@@ -59,44 +59,36 @@ func TestSave_CreatesDir(t *testing.T) {
 	}
 }
 
-// withDefaultGatewayURL temporarily overrides config.DefaultGatewayURL for
-// the duration of the test, restoring the original value on cleanup. Used
-// instead of asserting against the baked-in host directly, since that value
-// is an injectable var (set via -ldflags in public builds) rather than a
-// fixed constant.
-func withDefaultGatewayURL(t *testing.T, v string) {
-	t.Helper()
-	orig := config.DefaultGatewayURL
-	config.DefaultGatewayURL = v
-	t.Cleanup(func() { config.DefaultGatewayURL = orig })
-}
-
-func TestGatewayURL_Default(t *testing.T) {
+func TestGatewayURL_EmptyWithoutEnvOrConfig(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("GATEWAY_URL", "")
-	withDefaultGatewayURL(t, "https://compiled-default.example.com")
-
-	url, err := config.GatewayURL()
-	if err != nil {
-		t.Fatalf("GatewayURL: %v", err)
-	}
-	const defaultURL = "https://compiled-default.example.com"
-	if url != defaultURL {
-		t.Errorf("default gateway URL: got %q, want %q", url, defaultURL)
-	}
-}
-
-func TestGatewayURL_FailClosedWhenDefaultEmpty(t *testing.T) {
-	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "")
-	withDefaultGatewayURL(t, "")
 
 	url, err := config.GatewayURL()
 	if err != nil {
 		t.Fatalf("GatewayURL: %v", err)
 	}
 	if url != "" {
-		t.Errorf("expected empty gateway URL when no env/config/default is set, got %q", url)
+		t.Errorf("expected empty gateway URL when no env/config is set, got %q", url)
+	}
+}
+
+func TestGatewayURL_EmptyWhenConfigUnreadable(t *testing.T) {
+	home := withTempHome(t)
+	t.Setenv("GATEWAY_URL", "")
+	dir := filepath.Join(home, ".config", "relay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	url, err := config.GatewayURL()
+	if err != nil {
+		t.Fatalf("GatewayURL: %v", err)
+	}
+	if url != "" {
+		t.Errorf("expected empty gateway URL for an unreadable config, got %q", url)
 	}
 }
 

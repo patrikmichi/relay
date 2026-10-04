@@ -51,27 +51,19 @@ func Offline() bool { return offlineFlag }
 
 // resolveGatewayURLOrFailClosed resolves the gateway URL a catalog-touching
 // command should dial: the explicit override (typically a --gateway-url
-// flag value) if non-empty, otherwise config.GatewayURL()'s resolution
-// order (env var -> config file -> config.DefaultGatewayURL). If --offline
-// was passed at the root, or the resolved value is still empty — which
-// (absent --offline) only happens when config.DefaultGatewayURL itself has
-// been compiled empty (a public build with no baked-in gateway) and no
-// override/env/config value fills it in — this returns an error wrapping
-// offlineGuidance instead of silently dialing an empty/relative URL, or a
-// gateway the caller explicitly asked to skip. Every catalog verb must
-// route its gateway URL resolution through this helper so the fail-closed
-// behavior — and its exact user-facing message — is identical everywhere.
+// flag value) if non-empty, otherwise config.GatewayURL() (env var, then
+// config file). If --offline was passed at the root, or nothing resolves,
+// it returns an error wrapping offlineGuidance instead of silently dialing
+// an empty/relative URL or a gateway the caller explicitly asked to skip.
+// Every catalog verb routes through this helper so the fail-closed behavior
+// and its user-facing message are identical everywhere.
 func resolveGatewayURLOrFailClosed(override string) (string, error) {
 	if Offline() {
 		return "", errors.New(offlineGuidance)
 	}
 	gURL := override
 	if gURL == "" {
-		var err error
-		gURL, err = config.GatewayURL()
-		if err != nil {
-			gURL = config.DefaultGatewayURL
-		}
+		gURL, _ = config.GatewayURL()
 	}
 	if gURL == "" {
 		return "", errors.New(offlineGuidance)

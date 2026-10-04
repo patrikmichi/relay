@@ -10,21 +10,6 @@ import (
 	"path/filepath"
 )
 
-// DefaultGatewayURL is the compiled-in fallback gateway URL, used when no
-// GATEWAY_URL env var and no config file value are set. It is a var (not a
-// const) so it can be overridden per-build via
-// -ldflags "-X github.com/patrikmichi/relay/internal/config.DefaultGatewayURL=...".
-// The public source default is "" (no owner-infrastructure hostname
-// baked into a public build) — every consumer of GatewayURL() (and,
-// downstream, every catalog verb) must treat an empty result as "no gateway
-// configured" and fail closed rather than silently dialing an empty/relative
-// URL. See resolveGatewayURLOrFailClosed in internal/cli/gateway.go. An
-// owner build that wants a baked-in default sets
-// RELAY_DEFAULT_GATEWAY_URL when running `make build` (Makefile) or
-// `goreleaser release` (.goreleaser.yaml) — both inject it via the same
-// -ldflags -X mechanism.
-var DefaultGatewayURL = ""
-
 // Config holds all persisted CLI settings.
 type Config struct {
 	GatewayURL string `json:"gatewayUrl,omitempty"`
@@ -113,27 +98,19 @@ func Save(cfg Config) error {
 	return nil
 }
 
-// GatewayURL returns the configured gateway URL, or the compiled-in default
-// if not set. Resolution order: env var → config file → compiled default.
-//
-// When DefaultGatewayURL is empty (a public build with no baked-in gateway)
-// and neither the env var nor the config file supply one, this returns ""
-// with a nil error — it never fabricates a URL. Callers that dial the
-// gateway must treat an empty result as "no gateway configured" and fail
-// closed (see internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
+// GatewayURL returns the gateway URL from the GATEWAY_URL env var, else the
+// config file. No gateway URL is compiled into the binary: with neither set
+// it returns "" and callers must fail closed (see
+// internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
 func GatewayURL() (string, error) {
-	// Env var takes precedence over the config file.
 	if v := os.Getenv("GATEWAY_URL"); v != "" {
 		return v, nil
 	}
 	cfg, err := Load()
 	if err != nil {
-		return DefaultGatewayURL, nil // degrade gracefully
+		return "", nil // degrade gracefully: an unreadable config means no gateway
 	}
-	if cfg.GatewayURL != "" {
-		return cfg.GatewayURL, nil
-	}
-	return DefaultGatewayURL, nil
+	return cfg.GatewayURL, nil
 }
 
 // SetEmail persists the given email as the current logged-in identity,
