@@ -47,11 +47,21 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Vet (Windows build tags)
+        run: GOOS=windows go vet ./...
+
       - name: Lint
         run: go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run ./...
 
       - name: Test
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      # Floors: 85% of statements in total, 80% in every package. main.go
+      # and generated files are excluded; scripts/check-coverage.sh says why.
+      - name: Coverage
+        run: |
+          bash scripts/check-coverage.test.sh
+          bash scripts/check-coverage.sh coverage.out
 
       - name: Vulnerability scan
         run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
