@@ -105,7 +105,7 @@ func tokensRevokeCmd() *cobra.Command {
 		Short: "Revoke the current session token",
 		RunE: func(cmd *cobra.Command, _args []string) (err error) {
 			if legacy {
-				return logoutLegacySession()
+				return logoutLegacySession(cmd.OutOrStdout())
 			}
 
 			// The keychain lookup below is scoped to (gateway, email), so

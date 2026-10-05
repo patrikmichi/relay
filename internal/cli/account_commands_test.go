@@ -487,7 +487,7 @@ func TestLegacySessionRemoval(t *testing.T) {
 			if err != nil {
 				t.Fatalf("--legacy: %v", err)
 			}
-			if name == "logout" && !strings.Contains(out, "Removed legacy session for "+email) {
+			if !strings.Contains(out, "Removed legacy session for "+email) {
 				t.Errorf("unexpected output %q", out)
 			}
 			if keychain.HasLegacyToken(email) {
@@ -499,7 +499,7 @@ func TestLegacySessionRemoval(t *testing.T) {
 			if err != nil {
 				t.Fatalf("second --legacy: %v", err)
 			}
-			if name == "logout" && !strings.Contains(out, "No legacy session found") {
+			if !strings.Contains(out, "No legacy session found") {
 				t.Errorf("second run should report nothing to remove, got %q", out)
 			}
 		})
