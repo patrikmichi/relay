@@ -40,7 +40,7 @@ func TestLoadResources_SkipsSymlinks(t *testing.T) {
 		t.Skipf("symlink not supported on this platform/filesystem: %v", err)
 	}
 
-	resources, skipped, err := loadResources(skillDir, map[string]bool{"SKILL.md": true}, nil)
+	resources, excluded, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
 	if err != nil {
 		t.Fatalf("loadResources: %v", err)
 	}
@@ -48,8 +48,8 @@ func TestLoadResources_SkipsSymlinks(t *testing.T) {
 	if _, ok := resources[filepath.ToSlash(symlinkRel)]; ok {
 		t.Fatalf("symlinked resource must NEVER be read into Resources: %#v", resources)
 	}
-	for _, data := range resources {
-		if string(data) == string(secretContent) {
+	for _, rf := range resources {
+		if string(rf.Data) == string(secretContent) {
 			t.Fatalf("secret content leaked into Resources: %#v", resources)
 		}
 	}
@@ -59,13 +59,13 @@ func TestLoadResources_SkipsSymlinks(t *testing.T) {
 	}
 
 	found := false
-	for _, s := range skipped {
-		if s == filepath.ToSlash(symlinkRel) {
+	for _, ex := range excluded {
+		if ex.Path == filepath.ToSlash(symlinkRel) {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("skipped should report the symlinked resource path, got %#v", skipped)
+		t.Fatalf("excluded should report the symlinked resource path, got %#v", excluded)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestLoadResources_SkipsSymlinkedDirectory(t *testing.T) {
 		t.Skipf("symlink not supported on this platform/filesystem: %v", err)
 	}
 
-	resources, skipped, err := loadResources(skillDir, map[string]bool{"SKILL.md": true}, nil)
+	resources, excluded, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
 	if err != nil {
 		t.Fatalf("loadResources: %v", err)
 	}
@@ -96,17 +96,16 @@ func TestLoadResources_SkipsSymlinkedDirectory(t *testing.T) {
 			t.Fatalf("must not have descended into a symlinked directory: %#v", resources)
 		}
 	}
-	if len(skipped) != 1 || skipped[0] != "linked-dir" {
-		t.Fatalf("expected the symlinked directory itself reported as skipped, got %#v", skipped)
+	if len(excluded) != 1 || excluded[0].Path != "linked-dir" {
+		t.Fatalf("expected the symlinked directory itself reported as excluded, got %#v", excluded)
 	}
 }
 
-// TestLoadResources_ScopesToDeclaredResourceDirs is the regression test for
-// ProviderConfig.ResourceDirs actually being consulted (previously a
-// no-op). A stray top-level file, and an entire top-level directory not in
-// resourceDirs, must both be excluded — while a nested file inside a
-// declared resource dir still loads.
-func TestLoadResources_ScopesToDeclaredResourceDirs(t *testing.T) {
+// TestLoadResources_PreservesFilesOutsideRecommendedDirs: a stray top-level
+// helper file and an entirely custom subdirectory (neither of which is
+// scripts/references/assets) must still load — the recommended
+// resource-directory names are documentation, not an exhaustive schema.
+func TestLoadResources_PreservesFilesOutsideRecommendedDirs(t *testing.T) {
 	skillDir := t.TempDir()
 
 	write := func(rel, content string) {
@@ -122,33 +121,28 @@ func TestLoadResources_ScopesToDeclaredResourceDirs(t *testing.T) {
 	write("SKILL.md", "skill md")
 	write("scripts/run.sh", "#!/bin/sh\necho hi\n")
 	write("references/notes.md", "notes")
-	write("stray-top-level.txt", "should be excluded — not in resource_dirs")
-	write("undeclared-dir/file.txt", "should be excluded — whole dir not in resource_dirs")
+	write("helper.py", "print('hi')")
+	write("custom-dir/file.txt", "a custom resource directory")
 
-	resources, _, err := loadResources(skillDir, map[string]bool{"SKILL.md": true}, []string{"scripts", "references"})
+	resources, excluded, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
 	if err != nil {
 		t.Fatalf("loadResources: %v", err)
 	}
-
-	for _, want := range []string{"scripts/run.sh", "references/notes.md"} {
+	for _, want := range []string{"scripts/run.sh", "references/notes.md", "helper.py", "custom-dir/file.txt"} {
 		if _, ok := resources[want]; !ok {
-			t.Errorf("expected %s to load (declared resource dir), got resources: %#v", want, resources)
+			t.Errorf("expected %s to be preserved regardless of directory convention, got resources: %#v", want, resources)
 		}
 	}
-	for _, notWant := range []string{"stray-top-level.txt", "undeclared-dir/file.txt"} {
-		if _, ok := resources[notWant]; ok {
-			t.Errorf("expected %s to be excluded (outside declared resource_dirs), got resources: %#v", notWant, resources)
-		}
+	if len(excluded) != 0 {
+		t.Errorf("expected nothing excluded for ordinary regular files, got %#v", excluded)
 	}
 }
 
-// TestLoadResources_EmptyResourceDirsWalksEverything confirms the
-// backward-compatible default: a nil/empty resourceDirs (e.g.
-// LoadGenericSkill's call, which has no ProviderConfig) still walks the
-// whole skillDir, unscoped.
-func TestLoadResources_EmptyResourceDirsWalksEverything(t *testing.T) {
+// TestLoadResources_ExcludesControlMetadata confirms generated/VCS state is
+// still excluded (only the recommended-directory allowlist is gone, not
+// all exclusion) and that every exclusion is reported.
+func TestLoadResources_ExcludesControlMetadata(t *testing.T) {
 	skillDir := t.TempDir()
-
 	write := func(rel, content string) {
 		full := filepath.Join(skillDir, rel)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -158,23 +152,84 @@ func TestLoadResources_EmptyResourceDirsWalksEverything(t *testing.T) {
 			t.Fatalf("write %s: %v", rel, err)
 		}
 	}
-
 	write("SKILL.md", "skill md")
-	write("stray-top-level.txt", "included when resourceDirs is unset")
-	write("any-dir/file.txt", "included when resourceDirs is unset")
+	write(".git/HEAD", "ref: refs/heads/main")
+	write("node_modules/pkg/index.js", "module.exports = {}")
+	write("package-lock.json", "{}")
 
-	resources, _, err := loadResources(skillDir, map[string]bool{"SKILL.md": true}, nil)
+	resources, excluded, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
 	if err != nil {
 		t.Fatalf("loadResources: %v", err)
 	}
-	for _, want := range []string{"stray-top-level.txt", "any-dir/file.txt"} {
-		if _, ok := resources[want]; !ok {
-			t.Errorf("expected %s to load with unscoped (nil) resourceDirs, got resources: %#v", want, resources)
+	for _, notWant := range []string{".git/HEAD", "node_modules/pkg/index.js", "package-lock.json"} {
+		if _, ok := resources[notWant]; ok {
+			t.Errorf("expected %s excluded as control metadata, got resources: %#v", notWant, resources)
 		}
+	}
+	if len(excluded) != 3 {
+		t.Errorf("expected 3 reported exclusions (.git, node_modules, package-lock.json), got %#v", excluded)
 	}
 }
 
-func TestWarnSkippedResources_NoOpWhenEmpty(t *testing.T) {
-	// Just a smoke test that this doesn't panic with no skipped entries.
-	warnSkippedResources("/some/dir", nil)
+// TestLoadResources_PreservesExecutableMode: a resource file's executable bit
+// must survive the load, not collapse to 0644.
+func TestLoadResources_PreservesExecutableMode(t *testing.T) {
+	skillDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill md"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
+		t.Fatalf("mkdir scripts: %v", err)
+	}
+	scriptPath := filepath.Join(skillDir, "scripts", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatalf("write scripts/run.sh: %v", err)
+	}
+
+	resources, _, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
+	if err != nil {
+		t.Fatalf("loadResources: %v", err)
+	}
+	rf, ok := resources["scripts/run.sh"]
+	if !ok {
+		t.Fatalf("scripts/run.sh missing from resources: %#v", resources)
+	}
+	if rf.Mode != 0o755 {
+		t.Errorf("mode = %v, want 0755 (executable bit lost)", rf.Mode)
+	}
+}
+
+// TestLoadResources_StripsSetuidBit confirms special/dangerous mode bits are
+// never passed through, even though the executable bit is preserved: a setuid
+// script must be written back as an ordinary 0755, never with the setuid bit
+// intact.
+func TestLoadResources_StripsSetuidBit(t *testing.T) {
+	skillDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill md"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	scriptPath := filepath.Join(skillDir, "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+		t.Fatalf("write run.sh: %v", err)
+	}
+	if err := os.Chmod(scriptPath, 0o4755); err != nil {
+		t.Skipf("chmod setuid not supported on this platform/filesystem: %v", err)
+	}
+
+	resources, _, err := loadResources(skillDir, map[string]bool{"SKILL.md": true})
+	if err != nil {
+		t.Fatalf("loadResources: %v", err)
+	}
+	rf, ok := resources["run.sh"]
+	if !ok {
+		t.Fatalf("run.sh missing from resources: %#v", resources)
+	}
+	if rf.Mode != 0o755 {
+		t.Errorf("mode = %v, want exactly 0755 — setuid bit must never survive", rf.Mode)
+	}
+}
+
+func TestWarnExcludedResources_NoOpWhenEmpty(t *testing.T) {
+	// Just a smoke test that this doesn't panic with no excluded entries.
+	warnExcludedResources("/some/dir", nil)
 }

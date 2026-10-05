@@ -1,24 +1,23 @@
-# opencode agent provider config — Agent IR, not Skill IR. Verified against
-# opencode.ai/docs/agents/: an opencode agent is a flat `<name>.md` —
+# opencode agent provider config — Agent IR, not Skill IR. Per opencode's
+# own documentation (https://opencode.ai/docs/agents/, "Markdown" config
+# section), a markdown-defined opencode agent is a flat `<name>.md` —
 # frontmatter + markdown body — at ~/.config/opencode/agents/<name>.md
-# (user, PLURAL "agents") / .opencode/agents/<name>.md (project, PLURAL).
-# dirs[0] was corrected from the singular "agent"/"agent" form an earlier
-# pass shipped (an installed July binary used the singular form; the
-# vendor page fetched 2026-09-05 uses plural consistently for both scopes)
-# — the singular dirs are kept as a same-provider "own" READ fallback
-# (role: own, not compat — this is still opencode's own historical
-# directory, just no longer the write target) so an agent installed under
-# the old path is still found.
-#
-# verified: 2026-09-05 against https://opencode.ai/docs/agents/
+# (user, PLURAL "agents") or .opencode/agents/<name>.md (project). An
+# earlier config used the singular "agent" directory for both scopes, which
+# does not match the documented root, so Relay could not discover or
+# install into a real opencode agent directory. The singular root is kept
+# below as an explicit READ-only compat fallback (role: compat) for any
+# pre-existing install under the old path — it is never a write or
+# rollback target (see ownDirCount/DirRoleCompat in config.go).
 #
 # Fields: description, mode (primary|subagent|all), model
-# ("provider/model" string), temperature, tools. NOT mapped here:
+# ("provider/model" string), temperature, tools. NOT mapped here
+# (deliberately deferred):
 #   - `name` — opencode agent files have no name field on disk; the
 #     first-class layout: flat Load path (config_adapter.go) already infers
 #     it from the filename when frontmatter omits it, exactly as needed.
 #   - `permission` — no Agent IR field; opencode-only, partially
-#     representable, out of scope for this pass.
+#     representable, not yet supported.
 #
 # `tools` is declared here with the canonical Agent IR type
 # (string-or-list, matching agent_ir_fields.go's fixed descriptor — the
@@ -35,11 +34,11 @@ discovery: direct
 
 dirs:
   user:
-    - { path: "~/.config/opencode/agents", role: own } # dirs[0] = writable_primary (plural, verified 2026-09-05)
-    - { path: "~/.config/opencode/agent", role: own } # legacy singular form — read fallback, still opencode's own
+    - { path: "~/.config/opencode/agents", role: own } # dirs[0] = writable_primary
+    - { path: "~/.config/opencode/agent", role: compat } # pre-1.0 singular root, read-only
   project:
-    - { path: ".opencode/agents", role: own } # dirs[0] = writable_primary (plural, verified 2026-09-05)
-    - { path: ".opencode/agent", role: own } # legacy singular form — read fallback, still opencode's own
+    - { path: ".opencode/agents", role: own }
+    - { path: ".opencode/agent", role: compat } # pre-1.0 singular root, read-only
 
 frontmatter:
   - { ir: description, key: description, type: string, presence: required }

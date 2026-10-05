@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/patrikmichi/relay/internal/cli"
 )
 
@@ -122,8 +124,8 @@ func TestRootCmd_Offline_SkipsDynamicRegistration_NoNetworkCall(t *testing.T) {
 	}
 }
 
-// TestNewRootCmd_SilenceErrors_NoAutoPrint is the direct regression test
-// for A4 (the double-error-print fix): the root command must set
+// TestNewRootCmd_SilenceErrors_NoAutoPrint guards against printing an
+// error twice: the root command must set
 // SilenceErrors so cobra's own Execute() never writes the error to
 // out/err itself — main() is the single place that prints it (after
 // rewriteOfflineUnknownCommandErr gets a chance to rewrite it). Before
@@ -147,4 +149,31 @@ func TestNewRootCmd_SilenceErrors_NoAutoPrint(t *testing.T) {
 	if !root.SilenceErrors {
 		t.Errorf("root command SilenceErrors = false, want true")
 	}
+}
+
+func TestRootTimeoutFlagIsValidated(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := newRootCmd()
+	root.SetArgs([]string{"--timeout", "-1s", "config", "show"})
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--timeout") {
+		t.Fatalf("err = %v, want a --timeout validation error", err)
+	}
+}
+
+func TestCommandTreeHasNoDuplicateSubcommands(t *testing.T) {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		seen := map[string]bool{}
+		for _, sub := range cmd.Commands() {
+			if seen[sub.Name()] {
+				t.Errorf("%q registers %q more than once", cmd.CommandPath(), sub.Name())
+			}
+			seen[sub.Name()] = true
+			walk(sub)
+		}
+	}
+	walk(newRootCmd())
 }

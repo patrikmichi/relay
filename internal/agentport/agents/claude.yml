@@ -4,7 +4,7 @@
 # prompt) — with NO containing directory and NO resources, at
 # ~/.claude/agents/<name>.md (user) or .claude/agents/<name>.md (project).
 #
-# Fields (verified 2026-09-05 against https://code.claude.com/docs/en/sub-agents):
+# Fields (verified against shipped claude-infra/shared-claude/agents/*.md):
 # name, description (often multiline with <example> blocks — still a plain
 # string IR-side), tools (CSV string), model (sonnet|haiku|opus), memory
 # (project|global), skills (YAML list of bundled skill ids). Real agent

@@ -26,11 +26,12 @@ var isInteractiveTerminalFn = isInteractiveTerminal
 // with Kind: agent.
 func AgentMigrateCmd() *cobra.Command {
 	var (
-		fromFlag  string
-		toFlags   []string
-		scopeFlag string
-		dryRun    bool
-		strict    bool
+		fromFlag   string
+		toFlags    []string
+		scopeFlag  string
+		dryRun     bool
+		strict     bool
+		acceptLoss bool
 	)
 
 	cmd := &cobra.Command{
@@ -52,11 +53,12 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentMigrate(cmd, args[0], agentMigrateOpts{
-				from:   fromFlag,
-				to:     toFlags,
-				scope:  scopeFlag,
-				dryRun: dryRun,
-				strict: strict,
+				from:       fromFlag,
+				to:         toFlags,
+				scope:      scopeFlag,
+				dryRun:     dryRun,
+				strict:     strict,
+				acceptLoss: acceptLoss,
 			})
 		},
 	}
@@ -66,16 +68,18 @@ Examples:
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search/write: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write the file")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Abort if any field would be dropped")
+	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Proceed despite non-security fidelity loss without an interactive prompt")
 
 	return cmd
 }
 
 type agentMigrateOpts struct {
-	from   string
-	to     []string
-	scope  string
-	dryRun bool
-	strict bool
+	from       string
+	to         []string
+	scope      string
+	dryRun     bool
+	strict     bool
+	acceptLoss bool
 }
 
 func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) error {
@@ -106,14 +110,12 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 		return err
 	}
 
-	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict)
+	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
-// applyAgentMigrationToTargets projects src into each target (via
-// agentport.MigrateAgent), printing a fidelity-loss report for each, and
-// (unless dryRun) writes the projected file and records a manifest entry —
-// the Agent-IR analogue of applyMigrationToTargets.
-func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict bool) error {
+func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
+	var toWrite []*agentport.AgentPlan
+
 	for _, target := range targets {
 		plan, err := agentport.MigrateAgent(src, target, scope)
 		if err != nil {
@@ -124,6 +126,10 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 		fmt.Fprintf(out, "target: %s\n", plan.TargetPaths)
 		printLossReport(out, plan.Loss)
 
+		if agentport.HasSecurityLoss(plan.Loss) {
+			return fmt.Errorf("refusing %s -> %s: a permission/restriction field would be lost or degraded and cannot be represented on the target (see [security] items above) — this is not overridable by --strict, --dry-run, or an interactive prompt; migrate to a provider that fully supports it or wait for provider-fidelity mapping", fromLabel, target.ID())
+		}
+
 		if strict && plan.HasDropped() {
 			return fmt.Errorf("aborting (--strict): %s -> %s would drop one or more fields", fromLabel, target.ID())
 		}
@@ -133,15 +139,27 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 			continue
 		}
 
-		if plan.HasDropped() && isInteractiveTerminalFn(os.Stdin) {
+		if plan.HasDropped() && !acceptLoss {
+			if !isInteractiveTerminalFn(os.Stdin) {
+				return fmt.Errorf("refusing %s -> %s: fidelity loss above requires --accept-loss (or an interactive terminal) to proceed noninteractively — the absence of a terminal is never treated as consent", fromLabel, target.ID())
+			}
 			if !confirmPrompt(out, fmt.Sprintf("Proceed with %s -> %s despite the fidelity loss above?", fromLabel, target.ID())) {
 				fmt.Fprintln(out, "skipped")
 				continue
 			}
 		}
 
+		toWrite = append(toWrite, plan)
+	}
+
+	for _, plan := range toWrite {
+		if err := agentport.PreflightWriteAgent(plan); err != nil {
+			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)
+		}
+	}
+	for _, plan := range toWrite {
 		if err := agentport.WriteAgent(plan); err != nil {
-			return fmt.Errorf("write %s -> %s: %w", fromLabel, target.ID(), err)
+			return fmt.Errorf("write %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
 		fmt.Fprintf(out, "written: %s\n", plan.TargetPaths)
 	}

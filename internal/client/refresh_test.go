@@ -28,9 +28,9 @@ func withTempHome(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 }
 
-func seedSession(t *testing.T, email string, tok keychain.TokenData) {
+func seedSession(t *testing.T, gatewayOrigin, email string, tok keychain.TokenData) {
 	t.Helper()
-	if err := keychain.WriteToken(email, tok); err != nil {
+	if err := keychain.WriteToken(gatewayOrigin, email, tok); err != nil {
 		t.Fatalf("seed keychain token: %v", err)
 	}
 	if err := config.SetEmail(email); err != nil {
@@ -73,10 +73,9 @@ func TestResolve_UsesPersistedLoginEmail(t *testing.T) {
 	t.Setenv("GATEWAY_API_KEY", "")
 	t.Setenv("RELAY_EMAIL", "")
 
-	seedSession(t, "persisted@example.com", keychain.TokenData{
+	seedSession(t, "https://gw.example.com", "persisted@example.com", keychain.TokenData{
 		AccessToken:  "access-1",
 		RefreshToken: "refresh-1",
-		Email:        "persisted@example.com",
 		ExpiresIn:    3600,
 		ExpiresAt:    time.Now().Add(time.Hour).Unix(),
 	})
@@ -97,11 +96,11 @@ func TestResolve_RelayEmailOverridesPersistedEmail(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("GATEWAY_API_KEY", "")
 
-	seedSession(t, "persisted@example.com", keychain.TokenData{
-		AccessToken: "persisted-access", RefreshToken: "persisted-refresh", Email: "persisted@example.com",
+	seedSession(t, "https://gw.example.com", "persisted@example.com", keychain.TokenData{
+		AccessToken: "persisted-access", RefreshToken: "persisted-refresh",
 	})
-	if err := keychain.WriteToken("override@example.com", keychain.TokenData{
-		AccessToken: "override-access", RefreshToken: "override-refresh", Email: "override@example.com",
+	if err := keychain.WriteToken("https://gw.example.com", "override@example.com", keychain.TokenData{
+		AccessToken: "override-access", RefreshToken: "override-refresh",
 	}); err != nil {
 		t.Fatalf("seed override token: %v", err)
 	}
@@ -153,7 +152,7 @@ func TestDo_RefreshesAndRetriesOnceOn401(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{
 		AccessToken:  "stale-access",
 		RefreshToken: "refresh-1",
 		Email:        "user@example.com",
@@ -213,7 +212,7 @@ func TestDo_ReturnsOriginalStyle401WhenRefreshFails(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{
 		AccessToken: "stale-access", RefreshToken: "dead-refresh", Email: "user@example.com",
 	})
 
@@ -287,7 +286,7 @@ func TestDo_ProactivelyRefreshesNearExpiry(t *testing.T) {
 	// Expiry is already in the past — must trigger a PROACTIVE refresh
 	// before the request is even sent (so the server should never see the
 	// stale token at all).
-	seedSession(t, "user@example.com", keychain.TokenData{
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{
 		AccessToken:  "about-to-expire",
 		RefreshToken: "refresh-1",
 		Email:        "user@example.com",
@@ -329,7 +328,7 @@ func TestDo_DoesNotRefreshWhenFarFromExpiry(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{
 		AccessToken:  "still-valid",
 		RefreshToken: "refresh-1",
 		Email:        "user@example.com",
@@ -382,7 +381,7 @@ func TestDo_PostRetriesWithBodyIntactAfter401(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	seedSession(t, "user@example.com", keychain.TokenData{
+	seedSession(t, srv.URL, "user@example.com", keychain.TokenData{
 		AccessToken: "stale", RefreshToken: "refresh-1", Email: "user@example.com",
 		ExpiresIn: 3600, ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	})

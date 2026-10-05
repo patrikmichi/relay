@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,16 +19,17 @@ type WhoamiResponse struct {
 }
 
 // Whoami calls /api/cli/whoami and returns the user info. If full is true,
-// requests groups via ?groups=true. Dispatched through c.Get so an
-// expired/near-expiry OAuth session transparently refreshes (see
-// internal/client's Do) instead of failing outright.
-func Whoami(c *client.Client, full bool) (*WhoamiResponse, error) {
+// requests groups via ?groups=true. Dispatched through c.GetContext (bounded
+// by ctx) so an expired/near-expiry OAuth session transparently refreshes
+// (see internal/client's Do) instead of failing outright, without letting a
+// stalled request hang past the caller's deadline.
+func Whoami(ctx context.Context, c *client.Client, full bool) (*WhoamiResponse, error) {
 	path := "/api/cli/whoami"
 	if full {
 		path += "?groups=true"
 	}
 
-	resp, err := c.Get(path)
+	resp, err := c.GetContext(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", path, err)
 	}

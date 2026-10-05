@@ -9,8 +9,7 @@ import (
 
 // TestProviderIDsCSV_MatchesLiveAdapterRegistry proves providerIDsCSV is
 // derived from agentport.AllAdapters() at call time, not a hardcoded
-// literal — the direct regression test for A1/A2 (stale provider-list
-// strings across internal/cli).
+// literal, so provider-list strings across internal/cli can't go stale.
 func TestProviderIDsCSV_MatchesLiveAdapterRegistry(t *testing.T) {
 	want := make([]string, 0)
 	for _, a := range agentport.AllAdapters() {
@@ -67,9 +66,9 @@ func TestProviderIDsOxfordOr(t *testing.T) {
 	}
 }
 
-// TestProvidersCmd_ListsSkillsAndAgentsColumns is the direct regression
-// test for A9: `relay providers` must report both skill and agent support
-// per provider, derived from the two adapter registries.
+// TestProvidersCmd_ListsSkillsAndAgentsColumns: `relay providers` must report
+// both skill and agent support per provider, derived from the two adapter
+// registries.
 func TestProvidersCmd_ListsSkillsAndAgentsColumns(t *testing.T) {
 	cmd := ProvidersCmd()
 	var out strings.Builder

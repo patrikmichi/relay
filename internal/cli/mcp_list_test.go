@@ -157,8 +157,8 @@ func TestMcpList_NonOKStatus_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an error for a 500 response")
 	}
-	if !strings.Contains(err.Error(), "boom") {
-		t.Errorf("expected error to include the response body snippet, got: %v", err)
+	if strings.Contains(err.Error(), "boom") || !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected sanitized error with HTTP status, got: %v", err)
 	}
 }
 

@@ -15,11 +15,6 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-// mcpCatalogPath is the plain REST catalog-listing endpoint (gateway
-// app/api/catalog/route.ts) — NOT the aggregate MCP endpoint: management.
-// search_skills (skill_search.go) is hardcoded to type:'skill' and has no
-// type filter, so relay-cli-completion plan D6 falls back to this route's
-// documented ?type= query param instead (GET /api/catalog?search=&type=&tag=).
 const mcpCatalogPath = "/api/catalog?type=mcp_server"
 
 // mcpListTimeout bounds a single catalog-list request end to end, mirroring
@@ -38,9 +33,9 @@ type mcpListDoer interface {
 	GetContext(ctx context.Context, path string) (*http.Response, error)
 }
 
-// mcpCatalogResource mirrors the fields of gateway/lib/db/schema/marketplace
-// .ts's Resource this command prints — only the subset it needs, everything
-// else is ignored by json.Unmarshal.
+// mcpCatalogResource is the subset of a GET /api/catalog entry's
+// `resource` object this command prints; everything else is ignored by
+// json.Unmarshal.
 type mcpCatalogResource struct {
 	ID    string  `json:"id"`
 	Slug  string  `json:"slug"`
@@ -49,10 +44,9 @@ type mcpCatalogResource struct {
 	OrgID *string `json:"orgId"`
 }
 
-// mcpCatalogVersion mirrors the subset of ResourceVersion this command
-// prints: the semver, and manifestJson.source (mcp_server's registration
-// source discriminator — builtin/url/repo; see gateway
-// lib/db/schema/marketplace-resources.ts's ManifestJson doc comment).
+// mcpCatalogVersion is the subset of an entry's `currentVersion` object
+// this command prints: the semver, and manifestJson.source (an
+// mcp_server's registration source — builtin, url, or repo).
 type mcpCatalogVersion struct {
 	Semver       string `json:"semver"`
 	ManifestJSON struct {
@@ -60,8 +54,7 @@ type mcpCatalogVersion struct {
 	} `json:"manifestJson"`
 }
 
-// mcpCatalogEntry mirrors one element of gateway CatalogEntry
-// (lib/marketplace/catalog.ts) as returned by GET /api/catalog.
+// mcpCatalogEntry is one element of GET /api/catalog's `resources` array.
 type mcpCatalogEntry struct {
 	Resource       mcpCatalogResource `json:"resource"`
 	CurrentVersion *mcpCatalogVersion `json:"currentVersion"`
@@ -72,12 +65,6 @@ type mcpCatalogListResponse struct {
 	Resources []mcpCatalogEntry `json:"resources"`
 }
 
-// McpListCmd returns the `relay mcp list` cobra command — a read-only
-// listing of catalog MCP-server resources (id, slug, name, source,
-// version). Per relay-cli-completion plan D6, `mcp install`/`mcp remove`
-// are deliberately descoped (see README) — writing an MCP-server
-// registration into a per-provider client config is a fourth artifact kind
-// with its own IR and codecs, a separate design from this listing command.
 func McpListCmd() *cobra.Command {
 	var (
 		gatewayURL string
@@ -107,7 +94,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print raw JSON results")
 
 	return cmd
@@ -127,7 +114,7 @@ func runMcpList(cmd *cobra.Command, gatewayURL string, jsonOut bool) error {
 		return err
 	}
 
-	entries, err := listMcpServers(c)
+	entries, err := listMcpServers(cmd.Context(), c)
 	if err != nil {
 		return err
 	}
@@ -148,8 +135,8 @@ func runMcpList(cmd *cobra.Command, gatewayURL string, jsonOut bool) error {
 
 // listMcpServers calls GET /api/catalog?type=mcp_server and decodes the
 // response into the resource entries this command prints.
-func listMcpServers(doer mcpListDoer) ([]mcpCatalogEntry, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), mcpListTimeout)
+func listMcpServers(parent context.Context, doer mcpListDoer) ([]mcpCatalogEntry, error) {
+	ctx, cancel := context.WithTimeout(parent, mcpListTimeout)
 	defer cancel()
 
 	resp, err := doer.GetContext(ctx, mcpCatalogPath)
@@ -170,23 +157,22 @@ func listMcpServers(doer mcpListDoer) ([]mcpCatalogEntry, error) {
 		return nil, fmt.Errorf("%s", offlineGuidance)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("mcp list failed (%d): %s", resp.StatusCode, truncateForError(body))
+		return nil, fmt.Errorf("mcp list failed (%d)", resp.StatusCode)
 	}
 
 	var parsed mcpCatalogListResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("decode catalog response: %w", err)
 	}
-	return parsed.Resources, nil
-}
-
-// truncateForError trims a raw response body to a short diagnostic snippet.
-func truncateForError(body []byte) string {
-	s := string(body)
-	if len(s) > 200 {
-		s = s[:200] + "..."
+	if parsed.Resources == nil {
+		return nil, fmt.Errorf("invalid catalog response: resources array missing")
 	}
-	return s
+	for _, entry := range parsed.Resources {
+		if entry.Resource.Type != "mcp_server" {
+			return nil, fmt.Errorf("invalid catalog response: unexpected resource type")
+		}
+	}
+	return parsed.Resources, nil
 }
 
 // printMcpListResults prints a tab-aligned table of results, or a "no

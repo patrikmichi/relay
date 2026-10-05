@@ -2,9 +2,7 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -36,30 +34,31 @@ is not available.`,
 				return err
 			}
 
-			ctx := context.Background()
+			// cmd.Context() carries the root command's signal-aware
+			// cancellation (see cmd/relay/main.go) — Login/DeviceLogin each
+			// narrow it further with their own operation-specific deadline.
+			ctx := cmd.Context()
 
 			if deviceFlow {
-				result, err := auth.DeviceLogin(ctx, resolvedURL)
+				result, err := auth.DeviceLogin(ctx, resolvedURL, cmd.OutOrStdout())
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Login failed:", err)
-					os.Exit(1)
+					return fmt.Errorf("login failed: %w", err)
 				}
-				fmt.Printf("Logged in as %s\n", result.Email)
+				fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s\n", result.Email)
 				return nil
 			}
 
-			result, err := auth.Login(ctx, resolvedURL)
+			result, err := auth.Login(ctx, resolvedURL, cmd.ErrOrStderr())
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Login failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("login failed: %w", err)
 			}
 
-			fmt.Printf("Logged in as %s\n", result.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s\n", result.Email)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	cmd.Flags().BoolVar(&deviceFlow, "device", false, "Use device-code flow for headless environments")
 
 	return cmd

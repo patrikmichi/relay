@@ -11,6 +11,10 @@ release:
     name: relay
   prerelease: auto
 
+before:
+  hooks:
+    - bash scripts/generate-completions.sh
+
 builds:
   - id: relay
     main: ./cmd/relay
@@ -49,6 +53,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - completions/*
 
 checksum:
   name_template: "SHA256SUMS.txt"
@@ -109,6 +114,7 @@ brews:
     license: "Apache-2.0"
     install: |
       bin.install "relay"
+      generate_completions_from_executable(bin/"relay", "completion")
     test: |
       system "#{bin}/relay", "--version"
     skip_upload: auto

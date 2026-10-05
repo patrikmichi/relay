@@ -1,11 +1,11 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package cli
 
 import "os"
 
 // isInteractiveTerminal always reports false on platforms without a
-// dedicated termios probe (Windows, other BSDs) — the safe default is to
+// dedicated termios probe (other BSDs) — the safe default is to
 // never prompt and behave as non-interactive (matching --strict/dry-run
 // semantics rather than risking a hang waiting on stdin).
 func isInteractiveTerminal(f *os.File) bool {

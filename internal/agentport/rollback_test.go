@@ -198,6 +198,62 @@ func TestRollback_RoutesByKind_AgentEntryDoesNotTouchSkillFiles(t *testing.T) {
 	}
 }
 
+// TestRollback_CorruptedTransactionIDFallsBackToRemoval proves a
+// manifest entry whose TransactionID has been corrupted into a
+// path-traversal shape (a crafted/tampered manifest.json, or any value
+// that isn't a real journal id) can never make Rollback traverse outside
+// the transactions directory. It must be treated exactly like a legacy
+// entry with no linked transaction — fall back to plain removal — rather
+// than erroring the whole rollback or, worse, loading/writing through the
+// traversed path.
+func TestRollback_CorruptedTransactionIDFallsBackToRemoval(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	src, err := NewClaudeAdapter().Load(filepath.Join("testdata", "claude", "git-helper"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	plan, err := Migrate(src, NewCodexAdapter(), ScopeUser)
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	m, err := LoadManifest()
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	entry, ok := LastEntry(m)
+	if !ok {
+		t.Fatalf("expected a manifest entry after Write")
+	}
+	if entry.TransactionID == "" {
+		t.Fatalf("expected Write to record a TransactionID")
+	}
+
+	// Simulate a tampered/corrupted manifest.json entry.
+	entry.TransactionID = "../../../../etc/passwd"
+
+	if err := Rollback(entry, false); err != nil {
+		t.Fatalf("Rollback with a corrupted TransactionID should fall back to plain removal, got error: %v", err)
+	}
+
+	if _, err := os.Stat(plan.TargetPaths); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be removed after rollback, stat err = %v", plan.TargetPaths, err)
+	}
+
+	m, err = LoadManifest()
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if len(m.Entries) != 0 {
+		t.Fatalf("Entries = %#v, want none after rollback", m.Entries)
+	}
+}
+
 func TestRollback_MissingFilesAreTreatedAsAlreadyGone(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

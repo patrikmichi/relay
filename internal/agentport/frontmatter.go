@@ -2,12 +2,15 @@ package agentport
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/patrikmichi/relay/internal/nofollow"
 )
 
 // splitFrontmatter splits a SKILL.md's raw content into the YAML frontmatter
@@ -96,49 +99,29 @@ func splitFlexList(s string) []string {
 	return out
 }
 
-// loadResources walks skillDir and reads every regular file except those in
-// exclude (paths relative to skillDir, forward-slash separated) into a
-// relative-path -> bytes map. Returns an empty (non-nil) map if skillDir has
-// no resource files.
-//
-// When resourceDirs is non-empty, the walk is scoped to only those top-level
-// subdirectories (e.g. ["scripts", "references", "assets"], from
-// ProviderConfig.ResourceDirs) — any other top-level directory is skipped
-// entirely (filepath.SkipDir), and any loose file directly in skillDir's
-// root (other than the excluded skill file/sidecar, which are matched via
-// exclude before this check) is excluded too. An empty/nil resourceDirs
-// preserves the original unscoped behavior (walk everything) — used by
-// LoadGenericSkill, which has no ProviderConfig to scope by.
-//
-// Symlinks are NEVER followed: a malicious `relay skill install <path>`
-// source package could contain e.g. a resource file that's actually a
-// symlink to ~/.ssh/id_rsa, and Project()/Write() would then happily copy
-// that target's content into every provider's directory. Each walked entry
-// is Lstat'd before being read; a symlink (or any other non-regular-file
-// entry — device files, sockets, etc.) is skipped rather than read, and its
-// relative path is collected in the returned skipped slice so the caller can
-// surface a warning instead of the file silently vanishing without a trace.
-func loadResources(skillDir string, exclude map[string]bool, resourceDirs []string) (resources map[string][]byte, skipped []string, err error) {
-	resources = map[string][]byte{}
-	allowedDirs := make(map[string]bool, len(resourceDirs))
-	for _, d := range resourceDirs {
-		allowedDirs[d] = true
+func loadResources(skillDir string, exclude map[string]bool) (resources map[string]ResourceFile, excluded []ExcludedResource, err error) {
+	root, resolveErr := resolveSkillRoot(skillDir)
+	if resolveErr != nil {
+		return nil, nil, resolveErr
 	}
-	walkErr := filepath.WalkDir(skillDir, func(path string, d fs.DirEntry, walkErr error) error {
+
+	scoped, openErr := os.OpenRoot(root)
+	if openErr != nil {
+		return nil, nil, openErr
+	}
+	defer scoped.Close()
+	resources = map[string]ResourceFile{}
+	walkErr := fs.WalkDir(scoped.FS(), ".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		rel, relErr := filepath.Rel(skillDir, path)
-		if relErr != nil {
-			return relErr
+		rel := filepath.ToSlash(path)
+		if rel == "." {
+			return nil
 		}
-		rel = filepath.ToSlash(rel)
 
-		topLevel := rel
-		if idx := strings.Index(rel, "/"); idx >= 0 {
-			topLevel = rel[:idx]
-		}
-		if len(allowedDirs) > 0 && rel != "." && !allowedDirs[topLevel] {
+		if controlMetadataNames[d.Name()] {
+			excluded = append(excluded, ExcludedResource{Path: rel, Reason: "generated/control metadata (" + d.Name() + ")"})
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -152,35 +135,56 @@ func loadResources(skillDir string, exclude map[string]bool, resourceDirs []stri
 			return nil
 		}
 
-		info, lstatErr := os.Lstat(path)
+		info, lstatErr := scoped.Lstat(path)
 		if lstatErr != nil {
 			return lstatErr
 		}
 		if info.Mode()&fs.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			skipped = append(skipped, rel)
+			excluded = append(excluded, ExcludedResource{Path: rel, Reason: "symlinked or non-regular file, refused (untrusted resource link)"})
 			return nil
 		}
 
-		data, readErr := os.ReadFile(path)
+		file, readErr := scoped.OpenFile(path, nofollow.ReadFlags, 0)
 		if readErr != nil {
 			return readErr
 		}
-		resources[rel] = data
+		opened, statErr := file.Stat()
+		if statErr != nil || !opened.Mode().IsRegular() {
+			_ = file.Close()
+			return fmt.Errorf("resource is not a regular file: %s", rel)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, (25<<20)+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(data) > 25<<20 {
+			return fmt.Errorf("resource exceeds 25 MiB: %s", rel)
+		}
+		resources[rel] = ResourceFile{Data: data, Mode: safeMode(info.Mode())}
 		return nil
 	})
 	if walkErr != nil {
 		return nil, nil, walkErr
 	}
-	return resources, skipped, nil
+	return resources, excluded, nil
 }
 
-// warnSkippedResources prints a warning to stderr listing resource files
-// loadResources skipped (symlinks or other non-regular files) so a
-// suspicious or malformed skill package doesn't silently lose files without
-// the user noticing.
-func warnSkippedResources(skillDir string, skipped []string) {
-	if len(skipped) == 0 {
+// warnExcludedResources prints a warning to stderr listing resource files
+// loadResources excluded (symlinks, non-regular files, or recognized
+// control/generated metadata) so a suspicious or unusual skill package
+// doesn't silently lose files without the user noticing at load time — the
+// same information is also available structurally via
+// Skill.ExcludedResources / a Project() loss report.
+func warnExcludedResources(skillDir string, excluded []ExcludedResource) {
+	if len(excluded) == 0 {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "agentport: skipped %d symlinked/non-regular resource(s) in %s: %v\n", len(skipped), skillDir, skipped)
+	fmt.Fprintf(os.Stderr, "agentport: excluded %d resource(s) in %s:\n", len(excluded), skillDir)
+	for _, e := range excluded {
+		fmt.Fprintf(os.Stderr, "  %s: %s\n", e.Path, e.Reason)
+	}
 }

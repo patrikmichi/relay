@@ -73,8 +73,8 @@ func (a *configAdapter) Detect() bool {
 func (a *configAdapter) Capabilities() CapSet { return a.caps }
 
 // OwnUserDirCount/OwnProjectDirCount are the leading-contiguous-"own"-count
-// derivation: 2 for Claude (skills/ + legacy commands/, both own), 1 for
-// everyone else.
+// derivation: 2 for Claude (skills/ + legacy commands/, both own), 1
+// for everyone else.
 func (a *configAdapter) OwnUserDirCount() int    { return ownDirCount(a.cfg.Dirs.User) }
 func (a *configAdapter) OwnProjectDirCount() int { return ownDirCount(a.cfg.Dirs.Project) }
 
@@ -187,7 +187,9 @@ func (a *configAdapter) Load(skillDir string) (*Skill, error) {
 	}
 
 	s := &Skill{}
+	configured := make(map[string]bool, len(a.cfg.Frontmatter))
 	for _, f := range a.cfg.Frontmatter {
+		configured[strings.ToLower(f.Key)] = true
 		node := mappingLookup(&root, f.Key)
 		if node == nil {
 			continue
@@ -196,6 +198,7 @@ func (a *configAdapter) Load(skillDir string) (*Skill, error) {
 			return nil, fmt.Errorf("%s: field %q: %w", skillDir, f.Key, err)
 		}
 	}
+	s.UnmappedFields = collectUnmappedFields(&root, configured, nil, a.ID())
 
 	// A skill with no explicit "name" in frontmatter infers it from the
 	// directory name — a fixed IR-level rule, identical across every
@@ -214,14 +217,15 @@ func (a *configAdapter) Load(skillDir string) (*Skill, error) {
 	if a.cfg.Sidecar != nil {
 		excludes[a.cfg.Sidecar.Path] = true
 	}
-	resources, skipped, err := loadResources(skillDir, excludes, a.cfg.ResourceDirs)
+	resources, excluded, err := loadResources(skillDir, excludes)
 	if err != nil {
 		return nil, fmt.Errorf("load resources for %s: %w", skillDir, err)
 	}
-	warnSkippedResources(skillDir, skipped)
+	warnExcludedResources(skillDir, excluded)
 
 	s.Body = body
 	s.Resources = resources
+	s.ExcludedResources = excluded
 
 	if a.sidecarCodec != nil {
 		if err := a.sidecarCodec.Load(ctx, s); err != nil {
@@ -304,6 +308,7 @@ func (a *configAdapter) Project(s *Skill) (map[string][]byte, []LossItem, error)
 		}
 		mapping.Content = append(mapping.Content, keyNode, valNode)
 	}
+	unmappedLoss := projectUnmappedFields(mapping, s.UnmappedFields, s.Provenance.SourceProvider, a.ID())
 
 	fmBytes, err := yaml.Marshal(mapping)
 	if err != nil {
@@ -312,8 +317,8 @@ func (a *configAdapter) Project(s *Skill) (map[string][]byte, []LossItem, error)
 	content := joinFrontmatter(fmBytes, s.Body)
 
 	files := map[string][]byte{a.cfg.SkillFile: content}
-	for rel, data := range s.Resources {
-		files[rel] = data
+	for rel, rf := range s.Resources {
+		files[rel] = rf.Data
 	}
 
 	if a.sidecarCodec != nil {
@@ -324,5 +329,6 @@ func (a *configAdapter) Project(s *Skill) (map[string][]byte, []LossItem, error)
 	}
 
 	loss := computeLoss(s, a.caps)
+	loss = append(loss, unmappedLoss...)
 	return files, loss, nil
 }

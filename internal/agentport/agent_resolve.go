@@ -13,7 +13,7 @@ import (
 // looks for "<dir>/<name><a.FileExt()>" (".md" for every markdown-format
 // provider, ".toml" for codex).
 func ResolveAgentPath(a AgentAdapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
 	if scope == ScopeProject {
@@ -33,7 +33,7 @@ func ResolveAgentPath(a AgentAdapter, scope Scope, name string) (string, error) 
 // uninstall must never remove a file from a directory the provider doesn't
 // own).
 func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
 
@@ -58,9 +58,9 @@ func ResolveOwnAgentPath(a AgentAdapter, scope Scope, name string) (string, erro
 // "<dir>/<name><ext>", returning the first match — the Agent-IR analogue of
 // findSkillInDirs, minus the SKILL.md-directory branch (agents have no
 // resource-bearing directory shape).
-func findAgentInDirs(dirs []string, name, ext string) (string, bool) {
+func findAgentInDirs(dirs []string, name string, extensions ...string) (string, bool) {
 	for _, d := range dirs {
-		flatFile := filepath.Join(d, name+ext)
+		flatFile := filepath.Join(d, name+extensionOrMarkdown(extensions))
 		if fi, err := os.Stat(flatFile); err == nil && !fi.IsDir() {
 			return flatFile, true
 		}
@@ -69,9 +69,9 @@ func findAgentInDirs(dirs []string, name, ext string) (string, bool) {
 }
 
 // resolveProjectAgentPath searches relDirs (relative to the current working
-// directory, walking up to the filesystem root) for name+ext — the
+// directory, walking up to the filesystem root) for name+extensionOrMarkdown(extensions) — the
 // Agent-IR analogue of resolveProjectSkillPath.
-func resolveProjectAgentPath(relDirs []string, name, ext string) (string, error) {
+func resolveProjectAgentPath(relDirs []string, name string, extensions ...string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("get working directory: %w", err)
@@ -82,7 +82,7 @@ func resolveProjectAgentPath(relDirs []string, name, ext string) (string, error)
 		for i, rel := range relDirs {
 			bases[i] = filepath.Join(dir, rel)
 		}
-		if path, ok := findAgentInDirs(bases, name, ext); ok {
+		if path, ok := findAgentInDirs(bases, name, extensions...); ok {
 			return path, nil
 		}
 		parent := filepath.Dir(dir)
@@ -92,4 +92,11 @@ func resolveProjectAgentPath(relDirs []string, name, ext string) (string, error)
 		dir = parent
 	}
 	return "", fmt.Errorf("agent %q not found in project dirs (searched from %s upward)", name, cwd)
+}
+
+func extensionOrMarkdown(extensions []string) string {
+	if len(extensions) > 0 {
+		return extensions[0]
+	}
+	return ".md"
 }

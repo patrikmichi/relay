@@ -8,8 +8,8 @@
 // The package implements the Agent Skills open standard
 // (https://agentskills.io): a skill is a directory `<name>/SKILL.md` (YAML
 // frontmatter + markdown body) with optional `scripts/`, `references/`, and
-// `assets/` resource directories. Four providers are supported in Wave 1:
-// Claude Code, Codex, opencode, and Cursor — see adapter_*.go.
+// `assets/` resource directories. Providers include Claude Code, Codex,
+// opencode, and Cursor — see adapter_*.go.
 package agentport
 
 import (
@@ -41,14 +41,13 @@ const (
 )
 
 // Provenance records where a Skill's IR came from. CatalogID and Version are
-// unused in Wave 1 (no marketplace/catalog integration for agentport yet)
-// but are present so Wave 2 (catalog-sourced installs) doesn't need an IR
-// shape change.
+// set only for catalog-sourced installs (see internal/catalog) and empty for
+// local migrations.
 type Provenance struct {
 	SourceProvider ProviderID
 	SourcePath     string
-	CatalogID      string // Wave 2: catalog resource id
-	Version        string // Wave 2: catalog semver
+	CatalogID      string // catalog resource id
+	Version        string // catalog semver
 }
 
 // CodexInterface mirrors the `interface` block of a Codex `agents/openai.yaml`
@@ -62,10 +61,23 @@ type CodexInterface struct {
 	DefaultPrompt    string
 }
 
+// CodexToolDependency mirrors one entry of a Codex `agents/openai.yaml`
+// `dependencies.tools` list — a structured tool/MCP-server dependency
+// declaration. Per the current vendor documentation
+// (https://learn.chatgpt.com/docs/build-skills), every field is an
+// optional string; there is no documented bare-string-list form.
+type CodexToolDependency struct {
+	Type        string
+	Value       string
+	Description string
+	Transport   string
+	URL         string
+}
+
 // CodexTools mirrors the `dependencies.tools` block of a Codex
-// `agents/openai.yaml` sidecar file — declared MCP server dependencies.
+// `agents/openai.yaml` sidecar file — declared tool/MCP dependencies.
 type CodexTools struct {
-	MCPServers []string
+	Tools []CodexToolDependency
 }
 
 // Skill is the canonical, provider-agnostic in-memory representation of an
@@ -82,7 +94,20 @@ type Skill struct {
 	Body        string // markdown body after the frontmatter block
 	License     string
 	Metadata    map[string]string
-	Resources   map[string][]byte // relative path (scripts/, references/, assets/, ...) -> file bytes
+	Resources   map[string]ResourceFile // relative path (scripts/, references/, assets/, ...) -> file content + mode
+
+	// ExcludedResources records every file found under the skill root that
+	// was NOT loaded into Resources (a symlink/non-regular entry, or
+	// recognized control/generated metadata) together with why.
+	// computeLoss turns each into a LossDropped LossItem so a skipped file
+	// can never look like a clean "no loss" migration.
+	ExcludedResources []ExcludedResource
+
+	// UnmappedFields retains frontmatter keys this provider's configured
+	// field set has no binding for. Same-provider
+	// Project() re-emits them; a different target reports their loss
+	// instead of guessing a foreign-schema equivalent.
+	UnmappedFields []UnmappedField
 
 	// --- typed-optional platform extensions (nil/zero = not set) ---
 	AllowedTools            []string // Claude Code: allowed-tools

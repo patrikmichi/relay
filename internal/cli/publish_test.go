@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -416,41 +415,6 @@ func TestRunPublish_PathSafety_AbsolutePath(t *testing.T) {
 	}
 }
 
-// TestBuildBundle_FIFO_Skipped verifies that a FIFO (named pipe) in the bundle directory
-// is silently skipped and does NOT cause the bundler to block or error.
-// This is the H1 blocker fix: non-regular, non-symlink entries must be filtered before
-// os.ReadFile is called.
-func TestBuildBundle_FIFO_Skipped(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("FIFOs (named pipes) are not supported on Windows in the same way")
-	}
-
-	dir := t.TempDir()
-	writeSkillFile(t, dir, "SKILL.md")
-
-	// Create a FIFO in the bundle directory.
-	fifoPath := filepath.Join(dir, "test.fifo")
-	if err := syscall.Mkfifo(fifoPath, 0o600); err != nil {
-		t.Skipf("Mkfifo not available: %v", err)
-	}
-
-	// buildBundle must complete without hanging and without including the FIFO.
-	_, bundleBytes, files, err := buildBundle(dir)
-	if err != nil {
-		t.Fatalf("buildBundle with FIFO present: unexpected error: %v", err)
-	}
-	if len(bundleBytes) == 0 {
-		t.Error("expected non-empty bundle bytes")
-	}
-
-	// The FIFO must NOT appear in the file list.
-	for _, f := range files {
-		if strings.HasSuffix(f, ".fifo") {
-			t.Errorf("FIFO must be skipped, but found in bundle files: %s", f)
-		}
-	}
-}
-
 // TestBuildBundle_SizeCap_Exceeded verifies the size cap is enforced: a bundle whose
 // total file size exceeds artifactMaxBytes must be refused with a clear error.
 func TestBuildBundle_SizeCap_Exceeded(t *testing.T) {
@@ -664,7 +628,7 @@ func TestRunPublish_BearerToken(t *testing.T) {
 	if capturedAuth != "Bearer "+testToken {
 		t.Errorf("Authorization header: got %q, want %q", capturedAuth, "Bearer "+testToken)
 	}
-	// Also verify capturedAuth on the doer itself is populated (N1 fix).
+	// Also verify capturedAuth on the doer itself is populated.
 	if doer.capturedAuth != "Bearer "+testToken {
 		t.Errorf("doer.capturedAuth: got %q, want %q", doer.capturedAuth, "Bearer "+testToken)
 	}

@@ -1,6 +1,6 @@
 package cli
 
-// Shared test helpers for the Wave 2 agentport manager CLI commands
+// Shared test helpers for the agentport manager CLI commands
 // (install, list, diff, scan, score, uninstall, rollback).
 
 import (

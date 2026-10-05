@@ -47,7 +47,7 @@ func buildCanonicalAgentBundle(t *testing.T, name string) []byte {
 // generalized resources download endpoint
 // (GET /api/catalog/resources/<id>/download) with the real
 // X-Resource-Content-Sha256 (plus legacy X-Skill-Content-Sha256 alias)
-// headers the D2 gateway route is contracted to set. Requires a bearer
+// headers the gateway route is contracted to set. Requires a bearer
 // Authorization header (any non-empty value — GATEWAY_API_KEY bearer auth).
 func newMockAgentCatalogGateway(t *testing.T, wantID string, bundle []byte, version string) *httptest.Server {
 	t.Helper()
@@ -61,6 +61,7 @@ func newMockAgentCatalogGateway(t *testing.T, wantID string, bundle []byte, vers
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		w.Header().Set("X-Resource-Type", "agent")
 		w.Header().Set("X-Resource-Content-Sha256", sha256HexOfBundle(bundle))
 		w.Header().Set("X-Skill-Content-Sha256", sha256HexOfBundle(bundle))
 		w.Header().Set("X-Skill-Version", version)
@@ -109,8 +110,8 @@ func TestAgentInstall_CatalogID_RoundTripToClaude(t *testing.T) {
 	if entry.Provenance.Version != "1.2.0" {
 		t.Errorf("expected manifest Provenance.Version 1.2.0, got %q", entry.Provenance.Version)
 	}
-	if string(entry.Provenance.SourceProvider) != "gateway" {
-		t.Errorf("expected manifest Provenance.SourceProvider gateway, got %q", entry.Provenance.SourceProvider)
+	if string(entry.Provenance.SourceProvider) != "claude" {
+		t.Errorf("expected manifest Provenance.SourceProvider claude, got %q", entry.Provenance.SourceProvider)
 	}
 }
 
@@ -180,7 +181,7 @@ func TestAgentInstall_CatalogID_ChecksumMismatch_NonZeroExitNoWrite(t *testing.T
 }
 
 // TestAgentInstall_NoGatewayConfigured_FailsClosed exercises the offline
-// fail-closed exit criterion required by the task: an empty-HOME build with
+// fail-closed behavior: an empty-HOME build with
 // no gateway configured must print offlineGuidance and write nothing.
 func TestAgentInstall_NoGatewayConfigured_FailsClosed(t *testing.T) {
 	home := t.TempDir()
@@ -261,5 +262,38 @@ func TestAgentInstall_ToOmitted_NoProvidersDetectedErrors(t *testing.T) {
 	cmd.SetArgs([]string{"res_agent_no_targets", "--gateway-url", srv.URL})
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected an error when --to is omitted and no agent providers are detected")
+	}
+}
+
+func TestAgentInstall_LocalOfflineAndRollback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GATEWAY_URL", "")
+	source := filepath.Join(t.TempDir(), "reviewer.md")
+	if err := os.WriteFile(source, []byte("---\nname: reviewer\ndescription: reviews code\n---\nReview carefully.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := AgentInstallCmd()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{source, "--to", "claude"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := agentport.LoadManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := agentport.LastEntryFor(manifest, "reviewer", agentport.ProviderClaude, agentport.ScopeUser, agentport.KindAgent)
+	if !ok || entry.TransactionID == "" {
+		t.Fatal("agent install did not record recoverable history")
+	}
+	rollback := AgentRollbackCmd()
+	rollback.SetOut(&bytes.Buffer{})
+	rollback.SetArgs([]string{entry.ID})
+	if err := rollback.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "agents", "reviewer.md")); !os.IsNotExist(err) {
+		t.Fatalf("rollback did not remove installed agent: %v", err)
 	}
 }

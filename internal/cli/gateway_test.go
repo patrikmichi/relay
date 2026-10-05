@@ -6,30 +6,35 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zalando/go-keyring"
+
 	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
 // withLoggedInSession sets RELAY_EMAIL and writes a matching token into the
-// (mocked, see call_test.go's keyring.MockInit init()) OS keychain, so
-// resolveClient succeeds without ever dialing the network — needed to reach
-// the Offline()/resolveGatewayURLOrFailClosed branch in commands (logout,
-// tokens revoke) that build the client BEFORE checking offline state, since
-// resolveClient calls os.Exit(1) on ErrNotLoggedIn and would otherwise kill
-// the test binary.
-func withLoggedInSession(t *testing.T) (email string) {
+// (mocked, see call_test.go's keyring.MockInit init()) OS keychain, keyed to
+// gatewayURL, so resolveClient succeeds without ever dialing the network —
+// needed to reach the Offline()/resolveGatewayURLOrFailClosed branch in
+// commands (logout, tokens revoke) that build the client BEFORE checking
+// offline state, since resolveClient calls os.Exit(1) on ErrNotLoggedIn and
+// would otherwise kill the test binary.
+func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string) {
 	t.Helper()
 	email = "offline-test@example.com"
 	t.Setenv("RELAY_EMAIL", email)
-	if err := keychain.WriteToken(email, keychain.TokenData{
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		t.Fatalf("normalize gateway URL: %v", err)
+	}
+	if err := keychain.WriteToken(origin, email, keychain.TokenData{
 		AccessToken:  "test-access-token",
 		RefreshToken: "test-refresh-token",
-		Email:        email,
 	}); err != nil {
 		t.Fatalf("keychain.WriteToken: %v", err)
 	}
-	t.Cleanup(func() { _ = keychain.DeleteToken(email) })
-	return email
+	t.Cleanup(func() { _ = keychain.DeleteToken(origin, email) })
+	return email, origin
 }
 
 // withNoGateway unsets $GATEWAY_URL and points $HOME at a fresh temp dir so
@@ -256,32 +261,6 @@ func TestWhoami_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
 	}
 }
 
-func TestAuthorize_FailsClosedWhenNoGateway(t *testing.T) {
-	withNoGateway(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
-func TestAuthorize_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
-	withOffline(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
 func TestHelpTools_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
@@ -340,27 +319,28 @@ func TestTokensList_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.
 // --offline; only the server-side revoke is fail-closed ----
 
 func TestLogout_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t *testing.T) {
-	email := withLoggedInSession(t)
 	withOffline(t)
+	email, origin := withLoggedInSession(t, "https://configured.example.com")
 
 	cmd := LogoutCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		if err := cmd.RunE(cmd, nil); err != nil {
 			t.Fatalf("LogoutCmd offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}
-	if _, err := keychain.ReadToken(email); err == nil {
+	if _, err := keychain.ReadToken(origin, email); err == nil {
 		t.Errorf("expected the keychain entry for %s to be deleted", email)
 	}
 }
 
 func TestLogout_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
-	email := withLoggedInSession(t)
+	email, origin := withLoggedInSession(t, "https://arbitrary.example.com")
 	withNoGateway(t)
 
 	cmd := LogoutCmd()
@@ -373,34 +353,64 @@ func TestLogout_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
 	// The local keychain entry must survive: this is the "no gateway
 	// configured, not --offline" case, which is a plain resolution failure,
 	// not the caller explicitly asking to skip the server-side revoke.
-	if _, err := keychain.ReadToken(email); err != nil {
+	if _, err := keychain.ReadToken(origin, email); err != nil {
 		t.Errorf("expected the keychain entry for %s to survive a resolution failure, got: %v", email, err)
 	}
 }
 
 func TestTokensRevoke_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t *testing.T) {
-	email := withLoggedInSession(t)
 	withOffline(t)
+	email, origin := withLoggedInSession(t, "https://configured.example.com")
 
 	cmd := TokensCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		cmd.SetArgs([]string{"revoke"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("tokens revoke offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}
-	if _, err := keychain.ReadToken(email); err == nil {
+	if _, err := keychain.ReadToken(origin, email); err == nil {
 		t.Errorf("expected the keychain entry for %s to be deleted", email)
 	}
 }
 
+// TestLogout_Legacy_RemovesUnboundSessionWithoutPrintingSecret covers the
+// unbound-session removal path: `relay logout --legacy` deletes a
+// pre-gateway-identity session by email alone (no gateway needed) and never
+// echoes the token.
+func TestLogout_Legacy_RemovesUnboundSessionWithoutPrintingSecret(t *testing.T) {
+	withNoGateway(t)
+	const email = "legacy-user@example.com"
+	t.Setenv("RELAY_EMAIL", email)
+	if err := keyring.Set("relay-cli", "oauth-refresh-token:"+email, `{"access_token":"top-secret-value"}`); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := LogoutCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--legacy"})
+	stdout := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("logout --legacy: %v", err)
+		}
+	})
+	if strings.Contains(stdout, "top-secret-value") {
+		t.Fatalf("logout --legacy must never print the stored token, got: %q", stdout)
+	}
+	if keychain.HasLegacyToken(email) {
+		t.Error("expected the legacy session to be removed")
+	}
+}
+
 func TestTokensRevoke_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
-	email := withLoggedInSession(t)
+	email, origin := withLoggedInSession(t, "https://arbitrary.example.com")
 	withNoGateway(t)
 
 	cmd := TokensCmd()
@@ -411,7 +421,7 @@ func TestTokensRevoke_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Fatalf("expected offlineGuidance error, got: %v", err)
 	}
-	if _, err := keychain.ReadToken(email); err != nil {
+	if _, err := keychain.ReadToken(origin, email); err != nil {
 		t.Errorf("expected the keychain entry for %s to survive a resolution failure, got: %v", email, err)
 	}
 }

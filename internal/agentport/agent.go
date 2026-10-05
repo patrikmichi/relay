@@ -1,18 +1,18 @@
 package agentport
 
 // Agent is the canonical, provider-agnostic in-memory representation of an
-// agent definition — the Agent-IR analogue of Skill. Common fields (Name,
-// Description, Body, Metadata) are understood by more than one provider;
-// the typed-optional extension fields below belong to a single provider's
-// format and are preserved on the IR only so a later migrate back to that
-// same provider (or an explicit provider that also understands the field)
-// doesn't lose them — see the agent CapSet / computeAgentLoss
-// (agent_caps.go) for how Project() reports fields a target can't
-// represent.
+// agent definition — the Agent-IR analogue of
+// Skill. Common fields (Name, Description, Body, Metadata) are understood
+// by more than one provider; the typed-optional extension fields below
+// belong to a single provider's format and are preserved on the IR only so
+// a later migrate back to that same provider (or an explicit provider that
+// also understands the field) doesn't lose them — see the agent CapSet /
+// computeAgentLoss (agent_caps.go) for how Project() reports fields a
+// target can't represent.
 //
-// Unlike Skill, Agent carries no Resources: every supported agent format is
-// a single flat `<name>.md` file with no containing resource directory —
-// a structural simplification over skills.
+// Unlike Skill, Agent carries no Resources: every supported agent format
+// (Claude, opencode) is a single flat `<name>.md` file with no containing
+// resource directory — a structural simplification over skills.
 type Agent struct {
 	Name        string
 	Description string
@@ -46,5 +46,30 @@ type Agent struct {
 	Memory      string   // Claude: project|global
 	Skills      []string // Claude: bundled skill ids
 
+	// UnmappedSecurityFields captures source frontmatter keys that carry
+	// permission/restriction semantics (Claude disallowedTools/
+	// permissionMode/hooks, opencode permission) but have no binding
+	// in agent_ir_fields.go's fixed field set, so Load cannot interpret or
+	// round-trip them. The raw value is retained only so computeAgentLoss
+	// (agent_caps.go) can report it and Project() can refuse the migration
+	// by default — not to preserve or re-map the setting itself.
+	UnmappedSecurityFields []UnmappedSecurityField
+
+	// UnmappedFields retains frontmatter keys this provider's configured
+	// field set has no binding for and which are NOT security-relevant
+	// (those go into UnmappedSecurityFields instead). Same-provider
+	// Project() re-emits them; a different target
+	// reports their loss instead of guessing a foreign-schema equivalent.
+	UnmappedFields []UnmappedField
+
 	Provenance Provenance
+}
+
+// UnmappedSecurityField is one frontmatter key agentSecurityFrontmatterKeys
+// recognized as security-relevant that decodeAgentIRField has no case for.
+// Raw is a best-effort, length-capped YAML rendering of the field's value —
+// diagnostic text for a loss-report Note, not a re-parseable representation.
+type UnmappedSecurityField struct {
+	Key string
+	Raw string
 }

@@ -1,30 +1,3 @@
-// FetchAgent is the Agent-IR analogue of FetchSkill (gateway_source.go) —
-// relay-cli-completion plan D4. It downloads a governed AGENT bundle from
-// the gateway catalog's generalized download endpoint
-// (GET /api/catalog/resources/<id>/download, added gateway-side by D1/D2),
-// verifies it end to end (content hash + scan verdict), path-safe extracts
-// it, and loads the single agent file it contains through the SAME
-// provider-adapter Load code path `relay agent migrate`/`relay agent
-// install` use — so everything downstream (MigrateAgent/WriteAgent/manifest)
-// is unmodified, shipped Phase-C code.
-//
-// Bundle-shape assumption (see plan D4): the catalog stores every published
-// agent resource as a single flat `<name>.md` frontmatter+body file at the
-// tarball root — the SAME canonical shape `relay agent publish <path>`
-// already uploads (publish.go's buildBundle picks the root-level .md as the
-// manifest) and the shape Claude Code's own agent files use. This package
-// deliberately loads that file through agentport's CLAUDE agent adapter
-// (agentport.AgentAdapterByID("claude")), not a generic/provider-neutral
-// parser: the canonical catalog bundle format for an agent IS Claude's
-// frontmatter+body shape (name/description/model/tools/... keys — see
-// agents/claude.yml), exactly as LoadGenericSkill treats the Agent-Skills
-// SKILL.md shape as the canonical skill format regardless of which skill
-// provider originally authored it. A subsequent MigrateAgent to any other
-// target adapter then only drops what that target's format genuinely can't
-// represent — the same fidelity-loss reporting every other agent
-// migrate/install path already gives the user. A bundle containing zero or
-// more than one root-level .md file is rejected outright (ambiguous — this
-// package refuses to guess which file is the agent).
 package catalog
 
 import (
@@ -38,7 +11,7 @@ import (
 )
 
 // resourceDownloadPathPrefix is the generalized (skill+agent) download
-// endpoint's path prefix — the D2 gateway route, distinct from
+// endpoint's path prefix, distinct from
 // downloadPathPrefix (the legacy skill-only route FetchSkill still targets).
 const resourceDownloadPathPrefix = "/api/catalog/resources/"
 
@@ -65,31 +38,28 @@ const agentClaudeAdapterID = agentport.ProviderID("claude")
 
 // FetchAgent downloads catalog id (a res_… resource id or a slug) at version
 // (optional exact semver — "" resolves to the latest on channel) / channel
-// (optional — "" is the gateway's default channel, normally "stable") from
-// the gateway's governed generalized download endpoint, verifies the
-// response end to end, path-safe extracts the canonical bundle into a temp
-// dir, loads the single root-level `<name>.md` file it contains via the
-// Claude agent adapter's Load (deleting the temp dir before returning — the
-// Agent IR holds its body in memory, so the temp dir is scratch space only),
-// and stamps gateway provenance onto the result.
+// (optional — "" is the gateway's default channel) from the gateway's
+// governed generalized download endpoint, verifies the response end to end,
+// path-safe extracts the canonical bundle into a temp dir, loads the single
+// root-level `<name>.md` file it contains via the Claude agent adapter's
+// Load, and stamps gateway provenance onto the result.
 //
 // Fail-closed, in this order — identical posture to FetchSkill:
 //  1. HTTP status: 401/403/404/409/429 map to the sentinel errors FetchSkill
-//     already exports; any other non-200 is a generic error. No body is
-//     trusted until 200.
+//     already exports; any other non-200 is a generic error.
 //  2. sha256(body) must equal X-Resource-Content-Sha256 (preferred) or
-//     X-Skill-Content-Sha256 (legacy alias, same value). Mismatch aborts
-//     before any extraction.
+//     X-Skill-Content-Sha256 (legacy alias).
 //  3. X-Skill-Scan-Verdict must indicate every applicable gate passed (or
-//     na/skip) — see verifyScanVerdict. Missing, unparseable, or any failed
-//     gate aborts before extraction.
-//  4. Tar entries must be path-safe (extractTarGz) and within
+//     na/skip) — see verifyScanVerdict.
+//  4. The response must declare resource type "agent" and its catalog
+//     identity/version must match the request.
+//  5. Tar entries must be path-safe (extractTarGz) and within
 //     MaxBundleEntries/MaxBundleBytes.
-//  5. The extracted bundle must contain EXACTLY one root-level `*.md` file —
-//     zero or more than one is refused rather than guessed at.
+//  6. The extracted bundle must contain EXACTLY one root-level `*.md` file
+//     and nothing else — zero, several, or extra resources are refused.
 //
-// The returned Agent's Provenance is
-// {SourceProvider: "gateway", CatalogID: id, Version: <resolved version>}.
+// The returned Agent's Provenance is {SourceProvider: "claude" (the format
+// the bundle was loaded as), CatalogID, Version: <resolved version>}.
 func FetchAgent(doer Doer, id, version, channel string) (*agentport.Agent, error) {
 	if doer == nil {
 		return nil, fmt.Errorf("catalog: no gateway client configured")
@@ -126,6 +96,16 @@ func FetchAgent(doer Doer, id, version, channel string) (*agentport.Agent, error
 	}
 	if err := verifyScanVerdict(resp.Header.Get(headerScanVerdict)); err != nil {
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
+	}
+
+	if resp.Header.Get("X-Resource-Type") != "agent" {
+		return nil, fmt.Errorf("catalog: agent resource type missing or mismatched; upgrade the gateway")
+	}
+	if resp.Header.Get(headerCatalogID) == "" || (strings.HasPrefix(id, "res_") && resp.Header.Get(headerCatalogID) != id) {
+		return nil, fmt.Errorf("catalog: agent identity missing or mismatched")
+	}
+	if resp.Header.Get(headerVersion) == "" || (version != "" && resp.Header.Get(headerVersion) != version) {
+		return nil, fmt.Errorf("catalog: agent version missing or mismatched")
 	}
 
 	tmpDir, err := os.MkdirTemp("", "relay-catalog-agent-*")
@@ -166,7 +146,7 @@ func FetchAgent(doer Doer, id, version, channel string) (*agentport.Agent, error
 		catalogID = id
 	}
 	agent.Provenance = agentport.Provenance{
-		SourceProvider: agentport.ProviderID("gateway"),
+		SourceProvider: agentClaudeAdapterID,
 		CatalogID:      catalogID,
 		Version:        resolvedVersion,
 	}
@@ -185,10 +165,12 @@ func findAgentBundleFile(dir string) (string, error) {
 	var candidates []string
 	for _, e := range entries {
 		if e.IsDir() {
-			continue
+			return "", fmt.Errorf("agent bundle contains unsupported resource directory %q", e.Name())
 		}
 		if strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
 			candidates = append(candidates, e.Name())
+		} else {
+			return "", fmt.Errorf("agent bundle contains unsupported file %q", e.Name())
 		}
 	}
 	switch len(candidates) {

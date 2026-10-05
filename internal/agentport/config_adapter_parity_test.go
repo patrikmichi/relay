@@ -6,15 +6,16 @@ import (
 	"testing"
 )
 
-// This file is the byte-exact PARITY HARNESS: golden output captured from
-// the ORIGINAL hard-coded adapter_{claude,codex,cursor,opencode}.go
-// implementations — before they were deleted — for the git-helper fixture
-// each provider's *_test.go already exercises. Every assertion below runs
-// against NewClaudeAdapter()/NewCodexAdapter()/NewCursorAdapter()/
-// NewOpencodeAdapter(), which now return *configAdapter (built from
-// providers/<id>.yml); byte-for-byte equality with these golden constants
-// is the proof the generic serializer reproduces the deleted structs'
-// Marshal output exactly (key order + universal `,omitempty` semantics).
+// This file is the byte-exact PARITY HARNESS: golden
+// output captured from the ORIGINAL hard-coded adapter_{claude,codex,
+// cursor,opencode}.go implementations — before they were deleted — for the
+// git-helper fixture each provider's *_test.go already exercises. Every
+// assertion below runs against NewClaudeAdapter()/NewCodexAdapter()/
+// NewCursorAdapter()/NewOpencodeAdapter(), which now return *configAdapter
+// (built from providers/<id>.yml); byte-for-byte equality with these
+// golden constants is the proof the generic serializer reproduces the
+// deleted structs' Marshal output exactly (key order + universal
+// `,omitempty` semantics).
 //
 // Golden bytes were captured by running the pre-refactor
 // claudeAdapter/codexAdapter/cursorAdapter/opencodeAdapter's own
@@ -46,7 +47,14 @@ const goldenClaudeSkillMD = `LS0tCm5hbWU6IGdpdC1oZWxwZXIKZGVzY3JpcHRpb246IFN1bW1
 
 const goldenCodexSkillMD = `LS0tCm5hbWU6IGdpdC1oZWxwZXIKZGVzY3JpcHRpb246IFN1bW1hcml6ZXMgdW5jb21taXR0ZWQgZ2l0IGNoYW5nZXMgYW5kIGZsYWdzIHJpc2t5IGRpZmZzLiBVc2Ugd2hlbiBhc2tlZCB3aGF0IGNoYW5nZWQgb3IgZm9yIGEgY29tbWl0IG1lc3NhZ2UuCi0tLQoKIyMgSW5zdHJ1Y3Rpb25zCgpTdW1tYXJpemUgdGhlIGN1cnJlbnQgZ2l0IGRpZmYgaW4gdHdvIG9yIHRocmVlIGJ1bGxldCBwb2ludHMsIHRoZW4gbGlzdCBhbnkKcmlza3MgeW91IG5vdGljZSAobWlzc2luZyBlcnJvciBoYW5kbGluZywgaGFyZGNvZGVkIHZhbHVlcywgdGVzdHMgbmVlZGluZwp1cGRhdGVzKS4KClNlZSByZWZlcmVuY2VzL25vdGVzLm1kIGZvciBleHRyYSBjb250ZXh0Lgo=`
 
-const goldenCodexSidecar = `aW50ZXJmYWNlOgogICAgZGlzcGxheV9uYW1lOiBHaXQgSGVscGVyCiAgICBzaG9ydF9kZXNjcmlwdGlvbjogU3VtbWFyaXplIGdpdCBkaWZmcwogICAgaWNvbl9zbWFsbDogZ2l0LXNtYWxsLnBuZwogICAgaWNvbl9sYXJnZTogZ2l0LWxhcmdlLnBuZwogICAgYnJhbmRfY29sb3I6ICcjZjM0ZjI5JwogICAgZGVmYXVsdF9wcm9tcHQ6IFdoYXQgY2hhbmdlZCBpbiBteSB3b3JraW5nIHRyZWU/CnBvbGljeToKICAgIGFsbG93X2ltcGxpY2l0X2ludm9jYXRpb246IHRydWUKZGVwZW5kZW5jaWVzOgogICAgdG9vbHM6CiAgICAgICAgLSBnaXQtbWNwCg==`
+// goldenCodexSidecar was regenerated for object-shaped dependencies: the
+// pre-refactor bare-string `tools: [git-mcp]` shape it used to capture is not
+// the documented Codex schema (dependencies.tools entries are objects —
+// type/value/description/ transport/url) and could not decode a real vendor
+// fixture. This constant now reflects the corrected object-shaped output;
+// parity with the deleted pre-refactor adapter no longer applies to this one
+// field.
+const goldenCodexSidecar = `aW50ZXJmYWNlOgogICAgZGlzcGxheV9uYW1lOiBHaXQgSGVscGVyCiAgICBzaG9ydF9kZXNjcmlwdGlvbjogU3VtbWFyaXplIGdpdCBkaWZmcwogICAgaWNvbl9zbWFsbDogZ2l0LXNtYWxsLnBuZwogICAgaWNvbl9sYXJnZTogZ2l0LWxhcmdlLnBuZwogICAgYnJhbmRfY29sb3I6ICcjZjM0ZjI5JwogICAgZGVmYXVsdF9wcm9tcHQ6IFdoYXQgY2hhbmdlZCBpbiBteSB3b3JraW5nIHRyZWU/CnBvbGljeToKICAgIGFsbG93X2ltcGxpY2l0X2ludm9jYXRpb246IHRydWUKZGVwZW5kZW5jaWVzOgogICAgdG9vbHM6CiAgICAgICAgLSB0eXBlOiBtY3AKICAgICAgICAgIHZhbHVlOiBnaXQtbWNwCiAgICAgICAgICBkZXNjcmlwdGlvbjogR2l0IE1DUCBzZXJ2ZXIKICAgICAgICAgIHRyYW5zcG9ydDogc3RyZWFtYWJsZV9odHRwCiAgICAgICAgICB1cmw6IGh0dHBzOi8vZXhhbXBsZS5pbnZhbGlkL2dpdC1tY3AK`
 
 const goldenCursorSkillMD = `LS0tCm5hbWU6IGdpdC1oZWxwZXIKZGVzY3JpcHRpb246IFN1bW1hcml6ZXMgdW5jb21taXR0ZWQgZ2l0IGNoYW5nZXMgYW5kIGZsYWdzIHJpc2t5IGRpZmZzLiBVc2Ugd2hlbiBhc2tlZCB3aGF0IGNoYW5nZWQgb3IgZm9yIGEgY29tbWl0IG1lc3NhZ2UuCnBhdGhzOgogICAgLSAnKiovKi5nbycKICAgIC0gJyoqLyoudHMnCmRpc2FibGUtbW9kZWwtaW52b2NhdGlvbjogdHJ1ZQptZXRhZGF0YToKICAgIGF1dGhvcjogYWNtZQotLS0KCiMjIEluc3RydWN0aW9ucwoKU3VtbWFyaXplIHRoZSBjdXJyZW50IGdpdCBkaWZmIGluIHR3byBvciB0aHJlZSBidWxsZXQgcG9pbnRzLCB0aGVuIGxpc3QgYW55CnJpc2tzIHlvdSBub3RpY2UgKG1pc3NpbmcgZXJyb3IgaGFuZGxpbmcsIGhhcmRjb2RlZCB2YWx1ZXMsIHRlc3RzIG5lZWRpbmcKdXBkYXRlcykuCg==`
 
@@ -192,7 +200,7 @@ func stringSlicesEqual(a, b []string) bool {
 	return true
 }
 
-// TestParity_LossFieldsUnchanged is the loss-report parity check (R2):
+// TestParity_LossFieldsUnchanged is the loss-report parity check:
 // cross-provider migrations must report the exact same dropped fields as
 // before the refactor — already exercised end-to-end by migrate_test.go's
 // TestMigrate_* cases (which now run against configAdapter, since

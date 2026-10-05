@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,10 +20,12 @@ func SkillScanCmd() *cobra.Command {
 		Use:   "scan <name>",
 		Short: "Scan a skill for dangerous shell patterns and hardcoded secrets",
 		Long: `Load <name> from --from's directory (in the given --scope) and run a
-deterministic, local, no-network scan of its body and resource files for
-dangerous shell patterns (curl|bash, rm -rf, ...) and obvious hardcoded
-credentials. Prints findings and a quality score; exits non-zero if any
-finding has "high" severity.`,
+deterministic, local, no-network scan of its frontmatter, body, resource
+files, and provider sidecars for dangerous shell patterns (curl|bash,
+rm -rf, ...) and obvious hardcoded credentials. Prints findings, exactly
+what was scanned, anything skipped and why (binary resources, excluded
+files), and a heuristic quality score — not an execution-safety
+certification. Exits non-zero if any finding has "high" severity.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillScan(cmd, args[0], fromFlag, scopeFlag)
@@ -45,8 +48,10 @@ func SkillScoreCmd() *cobra.Command {
 		Use:   "score <name>",
 		Short: "Print a skill's quality score",
 		Long: `Load <name> from --from's directory (in the given --scope) and print its
-deterministic 0-100 quality score (description/body completeness, minus a
-penalty per scan finding). Thin wrapper over the same scan engine as
+deterministic 0-100 heuristic quality score (description/body completeness,
+minus a penalty per scan finding). This is a lint score, not an
+execution-safety or trust certification — see 'relay skill scan' for full
+coverage accounting. Thin wrapper over the same scan engine as
 'relay skill scan'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -89,14 +94,23 @@ func runSkillScan(cmd *cobra.Command, name, from, scopeStr string) error {
 	out := cmd.OutOrStdout()
 
 	if len(result.Findings) == 0 {
-		fmt.Fprintln(out, "no findings")
+		fmt.Fprintln(out, "no findings (no configured heuristic pattern matched — not a safety or trust certification)")
 	} else {
 		fmt.Fprintln(out, "findings:")
 		for _, f := range result.Findings {
 			fmt.Fprintf(out, "  [%s] %s in %s: %s\n", f.Severity, f.Pattern, f.File, f.Excerpt)
 		}
 	}
-	fmt.Fprintf(out, "score: %d/100\n", result.Score)
+	fmt.Fprintf(out, "scanned (%d): %s\n", len(result.Scanned), strings.Join(result.Scanned, ", "))
+	if len(result.Skipped) == 0 {
+		fmt.Fprintln(out, "skipped: none")
+	} else {
+		fmt.Fprintln(out, "skipped:")
+		for _, sk := range result.Skipped {
+			fmt.Fprintf(out, "  %s: %s\n", sk.File, sk.Reason)
+		}
+	}
+	fmt.Fprintf(out, "score: %d/100 (%s)\n", result.Score, agentport.ScoreDisclaimer)
 
 	for _, f := range result.Findings {
 		if f.Severity == "high" {
@@ -113,5 +127,6 @@ func runSkillScore(cmd *cobra.Command, name, from, scopeStr string) error {
 	}
 	result := agentport.Scan(s)
 	fmt.Fprintf(cmd.OutOrStdout(), "%d\n", result.Score)
+	fmt.Fprintln(cmd.ErrOrStderr(), agentport.ScoreDisclaimer)
 	return nil
 }

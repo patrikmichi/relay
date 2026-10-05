@@ -29,8 +29,15 @@ func TestCodexAdapter_RoundTrip(t *testing.T) {
 	if src.AllowImplicitInvocation == nil || *src.AllowImplicitInvocation != true {
 		t.Fatalf("AllowImplicitInvocation = %v, want pointer to true", src.AllowImplicitInvocation)
 	}
-	if src.CodexTools == nil || !reflect.DeepEqual(src.CodexTools.MCPServers, []string{"git-mcp"}) {
-		t.Fatalf("CodexTools = %#v, want MCPServers=[git-mcp]", src.CodexTools)
+	wantDep := []CodexToolDependency{{
+		Type:        "mcp",
+		Value:       "git-mcp",
+		Description: "Git MCP server",
+		Transport:   "streamable_http",
+		URL:         "https://example.invalid/git-mcp",
+	}}
+	if src.CodexTools == nil || !reflect.DeepEqual(src.CodexTools.Tools, wantDep) {
+		t.Fatalf("CodexTools = %#v, want Tools=%#v", src.CodexTools, wantDep)
 	}
 	if len(src.Resources) != 1 {
 		t.Fatalf("Resources = %#v, want 1 entry (references/notes.md, sidecar excluded)", src.Resources)
@@ -110,11 +117,11 @@ func TestCodexAdapter_Capabilities(t *testing.T) {
 	}
 }
 
-// TestCodexAdapter_UserDirsIncludesAdminScope closes the Wave-1 deferral:
-// Codex also reads the admin (org-wide) scope /etc/codex/skills. It must
-// appear in UserDirs() (so Detect()/ResolveSkillPath/List can read it) but
-// NOT as dirs[0] (Migrate/Write/TargetDir always target dirs[0] — this
-// scope is read-only, relay must never write there).
+// TestCodexAdapter_UserDirsIncludesAdminScope: Codex also reads the admin
+// (org-wide) scope /etc/codex/skills. It must appear in UserDirs() (so
+// Detect()/ResolveSkillPath/List can read it) but NOT as dirs[0]
+// (Migrate/Write/TargetDir always target dirs[0] — this scope is read-only,
+// relay must never write there).
 func TestCodexAdapter_UserDirsIncludesAdminScope(t *testing.T) {
 	dirs := NewCodexAdapter().UserDirs()
 

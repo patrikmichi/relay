@@ -141,8 +141,13 @@ func TestAgentTOML_ClaudeToCodexDropsUnsupportedFields(t *testing.T) {
 			t.Errorf("%s loss = %v, want %v (got loss=%#v)", f, gotFields[f], LossDropped, loss)
 		}
 	}
-	if gotFields["Model"] != LossDegraded {
-		t.Errorf("Model loss = %v, want %v (no claude<->codex alias table)", gotFields["Model"], LossDegraded)
+	// No claude<->codex alias table: the foreign model id is omitted (never
+	// written verbatim into the target) and reported as dropped.
+	if gotFields["Model"] != LossDropped {
+		t.Errorf("Model loss = %v, want %v (no claude<->codex alias table)", gotFields["Model"], LossDropped)
+	}
+	if body := string(files["reviewer.toml"]); strings.Contains(body, "model =") {
+		t.Errorf("foreign model leaked into codex TOML: %q", body)
 	}
 }
 
@@ -311,7 +316,7 @@ var tomlMultilineAdversarialCases = []struct {
 	name string
 	body string
 }{
-	{"quote_run_5_mid_string", `abc""""" def`}, // the exact case from the code review
+	{"quote_run_5_mid_string", `abc""""" def`}, // five quotes mid-string
 	{"quote_run_4_only", `""""`},
 	{"quote_run_3_only", `"""`},
 	{"quote_runs_separated", `a"""b"""c`},

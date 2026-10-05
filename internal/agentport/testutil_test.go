@@ -46,9 +46,9 @@ func sameCommon(t *testing.T, got, want *Skill) {
 // normalizeResources treats nil and empty maps as equal (Load returns "{}"
 // for a skill with no resource files; a hand-built fixture Skill{} literal
 // leaves Resources nil).
-func normalizeResources(m map[string][]byte) map[string][]byte {
+func normalizeResources(m map[string]ResourceFile) map[string]ResourceFile {
 	if len(m) == 0 {
-		return map[string][]byte{}
+		return map[string]ResourceFile{}
 	}
 	return m
 }

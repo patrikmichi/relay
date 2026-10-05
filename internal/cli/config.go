@@ -37,7 +37,10 @@ Example:
   relay config set-gateway https://gateway.example.com`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			url := args[0]
+			url, err := config.NormalizeGatewayURL(args[0])
+			if err != nil {
+				return err
+			}
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -46,7 +49,7 @@ Example:
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
-			fmt.Printf("Gateway URL set to: %s\n", url)
+			fmt.Fprintf(cmd.OutOrStdout(), "Gateway URL set to: %s\n", url)
 			return nil
 		},
 	}
@@ -62,7 +65,7 @@ func configGetGatewayCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve gateway URL: %w", err)
 			}
-			fmt.Println(url)
+			fmt.Fprintln(cmd.OutOrStdout(), url)
 			return nil
 		},
 	}
@@ -106,7 +109,7 @@ func configShowCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("marshal output: %w", err)
 			}
-			fmt.Println(string(raw))
+			fmt.Fprintln(cmd.OutOrStdout(), string(raw))
 			return nil
 		},
 	}

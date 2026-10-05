@@ -54,6 +54,23 @@ func canonicalIRFieldType(ir string) (FieldType, bool) {
 	return "", false
 }
 
+// canonicalIRFieldTypeForKind is canonicalIRFieldType scoped to ONE IR
+// kind. config.go's validate() uses this — not the union above — so a
+// skill provider config declaring an agent-only field (or vice versa) is
+// rejected at validate() time with a clear error, instead of being
+// accepted here and only failing later, confusingly, when decodeIRField/
+// decodeAgentIRField's kind-specific switch has no case for it. kind
+// values other than KindAgent are treated as KindSkill (the package's
+// original, only-ever-had-one-kind default).
+func canonicalIRFieldTypeForKind(ir string, kind ArtifactKind) (FieldType, bool) {
+	if kind == KindAgent {
+		t, ok := agentIrFieldDescriptors[ir]
+		return t, ok
+	}
+	t, ok := irFieldDescriptors[ir]
+	return t, ok
+}
+
 // irFieldValue returns the current value of ir on s, and whether it is the
 // Go zero value for that field — the latter drives the universal
 // omitempty-style Project() omission every shipped provider's per-field

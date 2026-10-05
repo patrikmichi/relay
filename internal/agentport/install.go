@@ -43,8 +43,8 @@ type genericFrontmatter struct {
 // there's no round-trip invariant to enforce there.
 //
 // A gateway-sourced install (catalog resource id / semver — see
-// Provenance.CatalogID/Version) is out of scope here; this function only
-// ever reads from the local filesystem.
+// Provenance.CatalogID/Version) lives in internal/catalog, not
+// here; this function only ever reads from the local filesystem.
 func LoadGenericSkill(path string) (*Skill, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -75,6 +75,11 @@ func LoadGenericSkill(path string) (*Skill, error) {
 		return nil, fmt.Errorf("parse frontmatter in %s: %w", mdPath, err)
 	}
 
+	var root yaml.Node
+	if err := yaml.Unmarshal(fmBytes, &root); err != nil {
+		return nil, fmt.Errorf("parse frontmatter in %s: %w", mdPath, err)
+	}
+
 	name := strings.TrimSpace(fm.Name)
 	if name == "" {
 		name = filepath.Base(skillDir)
@@ -83,23 +88,28 @@ func LoadGenericSkill(path string) (*Skill, error) {
 		return nil, err
 	}
 
-	// No ProviderConfig here — LoadGenericSkill reads an arbitrary local
-	// source with no declared resource_dirs, so nil preserves the original
-	// unscoped walk (see loadResources' doc comment).
-	resources, skipped, err := loadResources(skillDir, map[string]bool{"SKILL.md": true, codexSidecarRelPath: true}, nil)
+	resources, excluded, err := loadResources(skillDir, map[string]bool{"SKILL.md": true, codexSidecarRelPath: true})
 	if err != nil {
 		return nil, fmt.Errorf("load resources for %s: %w", skillDir, err)
 	}
-	warnSkippedResources(skillDir, skipped)
+	warnExcludedResources(skillDir, excluded)
+
+	genericConfiguredFields := map[string]bool{
+		"name": true, "description": true, "license": true,
+		"allowed-tools": true, "paths": true, "disable-model-invocation": true,
+		"compatibility": true, "metadata": true,
+	}
 
 	s := &Skill{
-		Name:          name,
-		Description:   fm.Description,
-		Body:          body,
-		License:       fm.License,
-		Compatibility: fm.Compatibility,
-		Metadata:      fm.Metadata,
-		Resources:     resources,
+		Name:              name,
+		Description:       fm.Description,
+		Body:              body,
+		License:           fm.License,
+		Compatibility:     fm.Compatibility,
+		Metadata:          fm.Metadata,
+		Resources:         resources,
+		ExcludedResources: excluded,
+		UnmappedFields:    collectUnmappedFields(&root, genericConfiguredFields, nil, ""),
 		// SourceProvider is deliberately left empty: this is an arbitrary
 		// local source, not one of the 4 canonical providers.
 		Provenance: Provenance{SourcePath: skillDir},
