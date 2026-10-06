@@ -32,16 +32,10 @@ func withLoggedInSession(t *testing.T) (email string) {
 	return email
 }
 
-// withNoGateway simulates a public build with no baked-in gateway and no
-// env/config override: config.DefaultGatewayURL is emptied for the
-// duration of the test (restored on cleanup), $GATEWAY_URL is unset, and
-// $HOME points at a fresh temp dir so no ~/.config/relay/config.json is
-// picked up.
+// withNoGateway unsets $GATEWAY_URL and points $HOME at a fresh temp dir so
+// no ~/.config/relay/config.json is picked up.
 func withNoGateway(t *testing.T) {
 	t.Helper()
-	orig := config.DefaultGatewayURL
-	config.DefaultGatewayURL = ""
-	t.Cleanup(func() { config.DefaultGatewayURL = orig })
 	t.Setenv("GATEWAY_URL", "")
 	t.Setenv("HOME", t.TempDir())
 }
@@ -70,16 +64,18 @@ func TestResolveGatewayURLOrFailClosed_OverrideWins(t *testing.T) {
 	}
 }
 
-func TestResolveGatewayURLOrFailClosed_FallsBackToDefaultWhenSet(t *testing.T) {
+func TestResolveGatewayURLOrFailClosed_UsesConfigFile(t *testing.T) {
 	withNoGateway(t)
-	config.DefaultGatewayURL = "https://compiled-default.example.com"
+	if err := config.Save(config.Config{GatewayURL: "https://configured.example.com"}); err != nil {
+		t.Fatalf("config.Save: %v", err)
+	}
 
 	got, err := resolveGatewayURLOrFailClosed("")
 	if err != nil {
 		t.Fatalf("resolveGatewayURLOrFailClosed: %v", err)
 	}
-	if got != "https://compiled-default.example.com" {
-		t.Errorf("got %q, want compiled default", got)
+	if got != "https://configured.example.com" {
+		t.Errorf("got %q, want config file value", got)
 	}
 }
 

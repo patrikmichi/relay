@@ -1,12 +1,3 @@
-# .github/workflows/ci.yml — relay CLI build/vet/test + public-source hygiene guard.
-#
-# Lives at cli/.github/workflows/ci.yml inside the monorepo today so it
-# travels untouched to the repo root once cli/ is split out into its own
-# public repo (github.com/patrikmichi/relay) — see release.yml's header
-# comment for the same rationale. Has NO effect inside the monorepo: GitHub
-# Actions only reads workflows from the repository root's
-# .github/workflows/, not nested ones — inert until the split.
-
 name: CI
 
 on:
@@ -16,6 +7,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  GO_VERSION: "1.26.x"
+  GOVULNCHECK_VERSION: "v1.8.0"
+  GORELEASER_VERSION: "v2.18.2"
 
 jobs:
   build-test:
@@ -28,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.22"
+          go-version: ${{ env.GO_VERSION }}
           cache: true
           cache-dependency-path: go.sum
 
@@ -39,19 +35,38 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
-  no-owner-host:
-    name: guard against a baked-in owner hostname
+      - name: Vulnerability scan
+        run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
+
+  hostname-denylist:
+    name: no denylisted hostname in source or binaries
     runs-on: ubuntu-latest
+    env:
+      HOSTNAME_DENYLIST: ${{ secrets.HOSTNAME_DENYLIST }}
+      # Fork PRs get no secrets; everywhere else an empty denylist is an error.
+      REQUIRE_HOSTNAME_DENYLIST: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '0' || '1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
 
-      - name: Grep for atlashub in tracked Go/YAML source
-        run: |
-          if grep -rn "atlashub" --include='*.go' --include='*.yml' --include='*.yaml' --exclude-dir=.github . ; then
-            echo "::error::found an 'atlashub' reference in tracked source — the public repo must not bake in an owner-infrastructure hostname (see internal/config.DefaultGatewayURL)"
-            exit 1
-          fi
-          echo "no owner-host literal found"
+      - name: Scan tracked files
+        run: git ls-files -z | xargs -0 bash .github/scripts/scan-denylist.sh
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      # Every built binary is scanned by the post-build hook in .goreleaser.yaml.
+      - name: Build release binaries (snapshot)
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: build --snapshot --clean
