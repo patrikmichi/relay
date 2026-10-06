@@ -98,7 +98,7 @@ brews:
     repository:
       owner: patrikmichi
       name: homebrew-tap
-      token: '{{ index .Env "PACKAGING_GITHUB_TOKEN" }}'
+      token: "{{ .Env.PACKAGING_GITHUB_TOKEN }}"
     directory: Formula
     commit_author:
       name: patrikmichi
@@ -120,7 +120,7 @@ scoops:
     repository:
       owner: patrikmichi
       name: scoop-bucket
-      token: '{{ index .Env "PACKAGING_GITHUB_TOKEN" }}'
+      token: "{{ .Env.PACKAGING_GITHUB_TOKEN }}"
     directory: bucket
     commit_author:
       name: patrikmichi
