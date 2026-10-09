@@ -150,3 +150,6 @@ func ResolveEmail() (string, error) {
 	}
 	return cfg.Email, nil
 }
+
+// Dir returns the relay config directory (~/.config/relay), creating it if necessary.
+func Dir() (string, error) { return configDir() }
