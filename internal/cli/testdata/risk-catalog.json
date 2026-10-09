@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "version": "72ab06c8dfb9a019",
+  "tools": [
+    {
+      "service": "superfaktura",
+      "tool": "delete_invoice",
+      "risk": "destructive",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "superfaktura",
+      "tool": "send_invoice",
+      "risk": "outward",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "superfaktura",
+      "tool": "list_invoices",
+      "risk": "read",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "resend",
+      "tool": "send_email",
+      "risk": "outward",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "resend",
+      "tool": "get_email",
+      "risk": "read",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "clockify",
+      "tool": "delete_project",
+      "risk": "destructive",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "slack",
+      "tool": "post_message",
+      "risk": "outward",
+      "version": "72ab06c8dfb9a019"
+    },
+    {
+      "service": "clockify",
+      "tool": "create_project",
+      "risk": "write",
+      "version": "72ab06c8dfb9a019"
+    }
+  ]
+}
