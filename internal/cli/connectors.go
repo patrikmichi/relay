@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -66,8 +67,45 @@ func fetchServiceLink(ctx context.Context, c *client.Client, svc DiscoveryServic
 	}
 }
 
-// fetchServiceLinks probes every accessible service that takes credentials.
+type statusAnswer int
+
+const (
+	statusAnswered    statusAnswer = iota // the gateway reported a definitive state
+	statusUnavailable                     // 401/403/404: the gateway has no bearer-capable status endpoint
+	statusFailed                          // transport error or unusable reply
+)
+
+// queryConnected asks GET /api/connections?service=<slug> for the caller's
+// connection state. It is the authoritative source for declarative OAuth
+// connectors, whose credentials the authorize probe cannot see.
+func queryConnected(ctx context.Context, c *client.Client, slug string) (connected bool, answer statusAnswer) {
+	resp, err := c.GetContext(ctx, "/api/connections?service="+url.QueryEscape(slug))
+	if err != nil {
+		return false, statusFailed
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+		return false, statusUnavailable
+	default:
+		return false, statusFailed
+	}
+	var doc struct {
+		Connected *bool `json:"connected"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&doc) != nil || doc.Connected == nil {
+		// The unfiltered listing shape: this gateway ignores ?service=.
+		return false, statusUnavailable
+	}
+	return *doc.Connected, statusAnswered
+}
+
+// fetchServiceLinks probes every accessible service that takes credentials,
+// preferring the connection status endpoint and falling back to the
+// authorize probe once the gateway turns out not to offer it.
 func fetchServiceLinks(ctx context.Context, c *client.Client, services []DiscoveryService) map[string]serviceLink {
+	var noStatusEndpoint atomic.Bool
 	ctx, cancel := context.WithTimeout(ctx, linkProbeTimeout)
 	defer cancel()
 	out := map[string]serviceLink{}
@@ -83,7 +121,20 @@ func fetchServiceLinks(ctx context.Context, c *client.Client, services []Discove
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			l := fetchServiceLink(ctx, c, svc)
+			var l serviceLink
+			answered := false
+			if !noStatusEndpoint.Load() {
+				connected, answer := queryConnected(ctx, c, svc.ID)
+				answered = answer == statusAnswered
+				if answered {
+					l = serviceLink{Known: true, AccountLinked: connected}
+				} else if answer == statusUnavailable {
+					noStatusEndpoint.Store(true)
+				}
+			}
+			if !answered {
+				l = fetchServiceLink(ctx, c, svc)
+			}
 			mu.Lock()
 			out[svc.ID] = l
 			mu.Unlock()

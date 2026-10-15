@@ -26,6 +26,7 @@ that fails shows `unknown`.
 | Endpoint | Auth | Used for |
 |---|---|---|
 | `GET /api/integrations` | CLI token | The catalog: id, name, `authType`, category, tags, description, tools, `accessible` |
+| `GET /api/connections?service=<slug>` | CLI token (planned) | `{"connected": boolean}`; the preferred status source because it also covers declarative OAuth connectors. relay falls back to the authorize probe below on 401, 403 or 404, or when the reply has no `connected` field, and stops asking for the rest of the run |
 | `GET /api/cli/services/authorize?service=<id>&scope=<tool>` | CLI token | `accountLinked` and `authorizationPath` for the status column and for waiting on a flow. It needs a tool name, so relay passes the service's first tool |
 | `GET /api/connections` | browser session | Per-connector credential fields and OAuth state |
 | `POST /api/connections/keys` | browser session | Store API-key credentials |
@@ -47,9 +48,12 @@ token. `relay connect` therefore works in two modes and picks one itself:
   up to `--wait` (default 5 minutes). Sign in to the gateway in that browser
   first.
 
-For a declarative OAuth connector the gateway may not report `accountLinked`
-for the OAuth credential, in which case relay times out even though the flow
-succeeded; confirm in the gateway's connection page.
+While waiting, relay asks the status endpoint first, so declarative OAuth
+connectors complete as soon as the gateway reports `connected: true`. Against a
+gateway without that endpoint the authorize probe may never report
+`accountLinked` for an OAuth credential, and relay times out even though the
+flow succeeded; confirm in the gateway's connection page. The same lookup
+drives the `already connected` check and the status columns.
 
 `relay connect` never writes credentials to disk. `--field KEY=VALUE` and
 `RELAY_CONNECT_<KEY>` supply values non-interactively; without a terminal and

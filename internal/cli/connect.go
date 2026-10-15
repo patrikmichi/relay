@@ -160,7 +160,7 @@ func runConnect(cmd *cobra.Command, slug string, f connectFlags) error {
 	}
 
 	if !f.reconnect {
-		if l := fetchServiceLink(ctx, c, *svc); l.AccountLinked {
+		if isConnected(ctx, c, *svc) {
 			fmt.Fprintf(out, "%s is already connected. Use --reconnect to link it again.\n", slug)
 			return nil
 		}
@@ -245,7 +245,17 @@ func pollConnected(ctx context.Context, c *client.Client, svc DiscoveryService, 
 			}
 		}
 	}
-	return fetchServiceLink(ctx, c, svc).AccountLinked, nil
+	return isConnected(ctx, c, svc), nil
+}
+
+// isConnected prefers the gateway's connection status endpoint, which also
+// sees declarative OAuth connectors, and falls back to the authorize probe
+// when the gateway answers 401 or 404.
+func isConnected(ctx context.Context, c *client.Client, svc DiscoveryService) bool {
+	if connected, answer := queryConnected(ctx, c, svc.ID); answer == statusAnswered {
+		return connected
+	}
+	return fetchServiceLink(ctx, c, svc).AccountLinked
 }
 
 // connectWithKey collects the connector's credential fields and stores them

@@ -23,11 +23,18 @@ type connectorGateway struct {
 	saved      []map[string]any
 	probes     int
 	linkAfter  int
+
+	// statusEndpoint makes GET /api/connections?service=<slug> answer
+	// {connected}; statusCode forces that route to fail with the given status.
+	statusEndpoint bool
+	statusLinked   map[string]bool
+	statusCode     int
+	statusCalls    int
 }
 
 func newConnectorGateway(t *testing.T) *connectorGateway {
 	t.Helper()
-	g := &connectorGateway{sessionAPI: true, linked: map[string]bool{}, oauthState: map[string]string{}}
+	g := &connectorGateway{sessionAPI: true, linked: map[string]bool{}, oauthState: map[string]string{}, statusLinked: map[string]bool{}}
 	g.Server = httptest.NewServer(http.HandlerFunc(g.serve))
 	t.Cleanup(g.Close)
 	withAPIKeyGateway(t, g.Server)
@@ -61,6 +68,15 @@ func (g *connectorGateway) serve(w http.ResponseWriter, r *http.Request) {
 		linked := g.linked[svc] || (g.linkAfter > 0 && g.probes >= g.linkAfter && svc == "notion")
 		reply(200, map[string]any{"service": svc, "accountLinked": linked, "authorizationPath": "/settings/connections"})
 	case "/api/connections":
+		if svc := r.URL.Query().Get("service"); svc != "" && g.statusCode != 0 {
+			g.statusCalls++
+			reply(g.statusCode, map[string]string{"error": "no status endpoint"})
+			return
+		} else if svc != "" && g.statusEndpoint {
+			g.statusCalls++
+			reply(200, map[string]bool{"connected": g.statusLinked[svc]})
+			return
+		}
 		if !g.sessionAPI {
 			reply(401, map[string]string{"error": "Unauthorized"})
 			return
@@ -299,6 +315,100 @@ func TestConnectFallsBackToTheConnectionPageForSessionOnlyGateways(t *testing.T)
 	}
 	if !strings.Contains(out, "/api/connectors/oauth/start?service=notion") {
 		t.Errorf("--no-browser should print the OAuth URL:\n%s", out)
+	}
+}
+
+func TestConnectPollsTheConnectionStatusEndpointForDeclarativeOAuth(t *testing.T) {
+	g := newConnectorGateway(t)
+	g.sessionAPI = false
+	g.statusEndpoint = true
+	opened := stubBrowser(t)
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		g.mu.Lock()
+		g.statusLinked["notion"] = true
+		g.mu.Unlock()
+	}()
+
+	out, err := runCommand(t, ConnectCmd(), "notion", "--oauth", "--wait", "5s")
+	if err != nil {
+		t.Fatalf("connect: %v\n%s", err, out)
+	}
+	if len(*opened) != 1 || !strings.HasSuffix((*opened)[0], "/api/connectors/oauth/start?service=notion") {
+		t.Errorf("opened = %v", *opened)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.probes != 0 || g.statusCalls < 2 {
+		t.Errorf("authorize probes = %d, status calls = %d; the status endpoint should have decided", g.probes, g.statusCalls)
+	}
+}
+
+func TestConnectFallsBackToAuthorizeProbeWhenStatusEndpointIsMissing(t *testing.T) {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusNotFound} {
+		g := newConnectorGateway(t)
+		g.sessionAPI = false
+		g.statusCode = code
+		g.linkAfter = 4
+		stubBrowser(t)
+		if out, err := runCommand(t, ConnectCmd(), "notion", "--wait", "5s"); err != nil {
+			t.Fatalf("status %d: %v\n%s", code, err, out)
+		}
+		if g.probes < 4 {
+			t.Errorf("status %d: authorize probes = %d, the fallback never ran", code, g.probes)
+		}
+	}
+}
+
+func TestConnectReportsAlreadyConnectedFromStatusEndpoint(t *testing.T) {
+	g := newConnectorGateway(t)
+	g.statusEndpoint = true
+	g.statusLinked["notion"] = true
+	out, err := runCommand(t, ConnectCmd(), "notion")
+	if err != nil || !strings.Contains(out, "already connected") {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if g.probes != 0 {
+		t.Errorf("authorize probes = %d", g.probes)
+	}
+}
+
+func TestServicesStatusPrefersTheConnectionStatusEndpoint(t *testing.T) {
+	g := newConnectorGateway(t)
+	g.statusEndpoint = true
+	g.statusLinked["notion"] = true
+	out, err := runCommand(t, ServicesCmd())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) == 0 {
+			continue
+		}
+		switch f[0] {
+		case "notion":
+			if !strings.HasSuffix(l, "connected") || strings.HasSuffix(l, "not connected") {
+				t.Errorf("notion = %q", l)
+			}
+		case "clockify":
+			if !strings.HasSuffix(l, "not connected") {
+				t.Errorf("clockify = %q", l)
+			}
+		}
+	}
+	if g.probes != 0 {
+		t.Errorf("authorize probes = %d, want 0", g.probes)
+	}
+
+	// A gateway without the endpoint is probed through authorize instead,
+	// and the failing endpoint is not retried for every service.
+	g2 := newConnectorGateway(t)
+	g2.statusCode = http.StatusNotFound
+	g2.linked["clockify"] = true
+	out, _ = runCommand(t, ServicesCmd())
+	if !strings.Contains(out, "connected") || g2.probes == 0 {
+		t.Errorf("fallback not used:\n%s", out)
 	}
 }
 
