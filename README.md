@@ -6,10 +6,13 @@ support](#skill-provider-support)) and agent definitions (Claude, opencode,
 Codex, Cursor, Gemini CLI — see [Agent provider
 support](#agent-provider-support)) across providers, and, when you're
 connected to a gateway, for pulling skills/agents/MCP servers from a shared
-catalog. Every command works fully offline against your local machine; a
-handful of catalog commands need a gateway to reach. `relay providers` is
-the live, authoritative list of loaded providers — it never goes stale as
-new providers are added.
+catalog. `relay sync` keeps MCP servers, hooks, rules, commands, skills and
+subagents consistent across Claude Code, Codex, Cursor, OpenCode, Gemini CLI,
+Windsurf, Cline and GitHub Copilot (see [Syncing across coding
+agents](#syncing-across-coding-agents)). Every command works fully offline
+against your local machine; a handful of catalog commands need a gateway to
+reach. `relay providers` is the live, authoritative list of loaded providers
+— it never goes stale as new providers are added.
 
 ## Install
 
@@ -68,10 +71,19 @@ relay agent migrate reviewer --from claude --to opencode
 relay agent install res_abc123 --to claude
 ```
 
-> `relay mcp list` reads the catalog's MCP-server resources (read-only).
-> `relay mcp install`/`relay mcp remove` — writing an MCP-server registration
-> into a per-provider client config — are deliberately NOT part of this CLI;
-> see [MCP server support](#mcp-server-support) for why.
+```bash
+# Fully offline: write your rules, commands, hooks and MCP servers into every
+# coding agent installed on this machine. Preview first.
+relay sync --dry-run
+relay sync
+
+# Register an MCP server in all of them.
+relay mcp install docs --url https://docs.example.com/mcp --bearer-env DOCS_TOKEN
+
+# Requires a gateway: browse the connector catalog and link your account.
+relay connectors search invoice
+relay connect fakturoid
+```
 
 ## Skill provider support
 
@@ -128,42 +140,104 @@ not silently identical), `-` = dropped, reported in the fidelity report:
 Skill management (`relay skill ...`) supports 7 providers — see [Skill
 provider support](#skill-provider-support) above.
 
-## MCP server support
+## Syncing across coding agents
 
-`relay mcp list` is read-only: it prints the gateway catalog's `mcp_server`
-resources (id, slug, name, registration source, current published version).
-That's the full extent of MCP-server management this CLI ships.
+`relay sync` writes MCP servers, hooks, rules, commands, skills and subagents
+into the config of every coding agent it supports, at the user scope
+(`~/...`) and the project scope (the current directory). It works offline.
 
-`relay mcp install`/`relay mcp remove` are **deliberately NOT implemented.**
-Unlike a skill or agent (both project onto a single markdown-shaped file per
-provider), registering an MCP server means writing into a fourth, genuinely
-different artifact kind — a per-provider client config file
-(`~/.claude.json`, `~/.codex/config.toml`, `.cursor/mcp.json`, ...) — each
-with its own schema and its own IR, so it's out of scope for this CLI;
-`relay mcp list` gives you the id/slug to register a server manually today.
+| Agent | MCP servers | Hooks | Rules | Commands | Skills | Subagents |
+|---|---|---|---|---|---|---|
+| **Claude Code** | user, project | user, project | user, project | user, project | yes | yes |
+| **Codex** | user, project | user, project | user, project | user (prompts) | yes | yes |
+| **Cursor** | user, project | user, project | project | user, project | yes | yes |
+| **OpenCode** | user, project | user, project (plugin) | user, project | user, project | yes | yes |
+| **Gemini CLI** | user, project | user, project | user, project | user, project | yes | yes |
+| **Windsurf** | user | user, project | user, project | user, project (workflows) | yes | - |
+| **Cline** | user | - | user, project | user, project (workflows) | yes | - |
+| **GitHub Copilot** | project | - | project | project | - | - |
 
-`relay sync` is **also NOT** a portable way to distribute MCP servers,
-skills, or agents to non-Claude-Code providers — see the next paragraph.
+`relay sync --matrix` prints the live matrix with the reason for every gap.
+Anything an agent has no format for is reported as `unsupported` in the sync
+report; nothing is skipped silently. Per-agent paths, keys and caveats are in
+[docs/reference/agent-config-formats.md](docs/reference/agent-config-formats.md).
 
-## `relay sync` is Claude-Code-only — no `--to <provider>`
-
-`relay sync` materializes a Claude-Code-specific plugin **marketplace**
-(`marketplace.json` + plugin bundles + a managed-settings fragment) — a
-distribution format with no analogue in codex/cursor/gemini-cli/opencode.
-`relay sync --to <provider>` is rejected outright rather than silently
-no-op'ing or guessing at an unsupported projection:
-
-```
-$ relay sync --to cursor
-relay sync --to cursor is not supported: sync materializes a
-Claude-Code-specific plugin marketplace with no per-provider equivalent —
-use `relay skill install <catalog-id> --to cursor` and
-`relay agent install <catalog-id> --to cursor` instead
+```bash
+relay sync --dry-run                     # diff of every file that would change
+relay sync                               # all detected agents, user scope
+relay sync --to claude,codex --scope all # named agents, user + current project
+relay sync --kind mcp,rules --to all     # only some kinds, every supported agent
 ```
 
-The portable path to the other providers is per-artifact catalog install:
-`relay skill install <catalog-id> --to <provider>` and
-`relay agent install <catalog-id> --to <provider>`.
+**What gets synced.** MCP servers come from the gateway (when one is
+configured) plus servers added with `relay mcp install`. Hooks, rules and
+commands come from files you keep in one place:
+
+```
+~/.config/relay/sync/            (project scope: <project>/.relay/)
+├── rules/<name>.md              frontmatter: description, globs, always
+├── commands/<name>.md           frontmatter: description, argument-hint; body uses $ARGUMENTS
+├── hooks.json                   {"hooks": [{"event": "pre-tool-use", "matcher": "Bash", "command": "..."}]}
+└── mcp.json                     written by relay mcp install / remove
+```
+
+Skills and subagents are copied from `--from` (default `claude`) to the other
+agents through the same engine as `relay skill migrate` and
+`relay agent migrate`, so its fidelity reports and refusals apply.
+
+**Your entries are never clobbered.** Shared files such as `~/.claude.json`,
+`~/.claude/settings.json`, `~/.codex/config.toml`, `.cursor/mcp.json`,
+`opencode.json` and `~/.gemini/settings.json` are merged, not rewritten: key
+order and formatting are kept, and relay changes only what it wrote.
+Relay-managed entries are recorded (a hash ledger for JSON, comment markers
+for TOML and Markdown, a marker line inside owned files), so a later sync can
+update them and remove the ones you dropped from the source. An entry with
+the same name that you created, or one you edited after relay wrote it, is
+reported as a `conflict` and left alone; `--force` replaces it. A config file
+relay cannot parse (for example JSON with comments) is skipped and reported.
+All files in a run are written in one transaction that restores them if any
+write fails, and `--dry-run` shows the diff without writing.
+
+**Credentials are never written.** Remote MCP entries carry an environment
+reference (`Bearer ${GATEWAY_API_KEY}`, `bearer_token_env_var`, `{env:...}`)
+or no credentials at all, in which case the agent signs in with OAuth.
+`--mcp-auth auto` (default) references `$GATEWAY_API_KEY` when it is set in
+the shell running `relay sync`, and otherwise writes no credentials.
+
+### MCP servers
+
+```bash
+relay mcp install clockify                # gateway catalog service: enables the gateway server in every agent
+relay mcp install docs --url https://docs.example.com/mcp --bearer-env DOCS_TOKEN
+relay mcp install files --command npx --arg -y --arg @acme/files-mcp --env ROOT='${HOME}'
+relay mcp remove docs
+relay mcp list                            # read-only view of the catalog's mcp_server resources
+```
+
+Catalog services are reached through the gateway's own MCP server (`/api/mcp`),
+so installing one by name enables that server and points you at `relay
+connect`. Servers with `--url` or `--command` are registered directly.
+
+### Gateway connectors
+
+```bash
+relay connectors                          # the gateway's service catalog
+relay connectors search invoice           # by name, category, tag, description or tool
+relay connectors --category CRM --status  # filter, and show whether your account is linked
+relay connect fakturoid                   # link your own account
+relay services                            # tools per service, plus connected / not connected
+```
+
+See [docs/reference/connectors.md](docs/reference/connectors.md) for the
+endpoints involved and what a gateway must allow.
+
+### Claude Code plugin marketplace
+
+`relay sync --marketplace` (or `--dir <path>`) additionally pulls your
+gateway's Claude Code plugin marketplace into
+`~/.config/relay/marketplace/<name>/` and prints the managed-settings
+fragment to merge. It needs a gateway and is not run by default. Earlier
+versions rejected `--to`; it now selects the agents to sync.
 
 ## The offline-vs-gateway model
 
@@ -171,9 +245,9 @@ Every `relay` command falls into exactly one of two buckets:
 
 | | LOCAL | GATEWAY |
 |---|---|---|
-| Touches | Only files on this machine (`~/.claude/skills/`, `~/.claude/agents/`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, and relay's own manifest) | A configured gateway over HTTP |
+| Touches | Only files on this machine (`~/.claude/`, `~/.claude.json`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, `~/.codeium/windsurf/`, `~/.cline/`, project config in the current directory, and relay's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `relay login` or `GATEWAY_API_KEY` |
-| Examples | `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay publish`, `relay sync`, `relay services`, `relay call`, `relay help-tools`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -202,16 +276,22 @@ scripts/CI that must never make a network call.
 | `relay config set-gateway <url>` | local | Persist a gateway URL to `~/.config/relay/config.json` |
 | `relay config get-gateway` | local | Print the effective gateway URL |
 | `relay config show` | local | Print all resolved config as JSON |
-| `relay services` | gateway | List services available on the configured gateway |
+| `relay services [--no-status]` | gateway | List services available on the configured gateway, with whether your account is connected |
+| `relay connectors [search <query>] [--category] [--status]` | gateway | Browse the gateway's connector catalog |
+| `relay connect <slug>` | gateway | Link your account: API-key prompt, or the OAuth consent flow in your browser |
 | `relay help-tools [service]` | gateway | List tools for one or all services |
 | `relay call <service> <tool> [--arg k=v]` | gateway | Call a tool on a gateway service |
-| `relay sync [--dir] [--dry-run]` | gateway | Pull your marketplace manifest into a local Claude Code plugin directory (Claude-Code-only — `--to <provider>` errors naming the portable alternative) |
+| `relay sync [--to <agents\|all>] [--scope] [--kind] [--dry-run] [--force]` | local | Write MCP servers, hooks, rules, commands, skills and subagents into the config of every supported coding agent (see [Syncing across coding agents](#syncing-across-coding-agents)) |
+| `relay sync --matrix` | local | Print which agent supports which artifact kind at which scope |
+| `relay sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |
 | `relay publish <path> [--type] [--watch]` | gateway | Publish a skill/agent/MCP server/prompt/plugin to the catalog |
 | `relay publish status <versionId> [--watch]` | gateway | Poll a publish's review status |
 | `relay skill publish <path>` | gateway | Alias for `relay publish` scoped to skills |
 | `relay agent publish <path>` | gateway | Publish an agent definition |
 | `relay mcp publish [--descriptor]` | gateway | Publish an MCP server descriptor |
-| `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only; `install`/`remove` are not implemented) |
+| `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only) |
+| `relay mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
+| `relay mcp remove <name> [--to <agents>]` | local | Remove an MCP server relay registered |
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
 | `relay skill install <catalog-id>` | gateway | Install a skill by catalog id/slug into one or more providers |
 | `relay agent install <path\|catalog-id> [--to <p>...]` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle into one or more agent providers; supports history and rollback |
@@ -229,6 +309,7 @@ scripts/CI that must never make a network call.
 | `relay agent uninstall <name>` | local | Remove an installed agent |
 | `relay agent rollback [manifest-entry-id]` | local | Revert to a prior agent manifest entry |
 | `relay providers` | local | List supported providers and their detection status |
+| `relay doctor [--json]` | local | Check provider directories, installed skills and agents, synced MCP servers/hooks/rules/commands, recovery state and gateway health |
 | `--offline` (root flag) | — | Force every gateway command in this invocation to fail closed |
 | `--version` | — | Print the CLI version, commit, and build date |
 
@@ -275,11 +356,18 @@ in the gateway.
 
 `relay doctor [--json]` checks provider directories, current installed hashes and
 permissions, pending recovery journals, override validation and gateway/session
-health. `--offline` skips network checks. Directory permission checks inspect
-mode bits, not ACLs or an actual write probe.
+health. For every detected coding agent it also checks each synced artifact kind
+(MCP servers, hooks, rules, commands) at the user and project scope as a
+`sync:<scope>:<agent>:<kind>` check: in sync, not synced yet, out of sync,
+edited since relay wrote it, or blocked by a config file relay cannot parse. It
+verifies the sync sources parse and that environment variables referenced by MCP
+entries (`mcp-env:<VAR>`) are set. `--offline` skips network checks. Directory
+permission checks inspect mode bits, not ACLs or an actual write probe.
 
 `relay mcp inspect <catalog-id> [--json]` shows source, transport, authentication
 mode/scope and declared tool count. Commands, endpoint URLs and credential
 reference values are excluded from inspection output.
 
-See [agent formats](docs/agent-formats.md) for supported fields and refusal rules.
+See [agent formats](docs/agent-formats.md) for supported fields and refusal rules,
+and [agent config formats](docs/reference/agent-config-formats.md) for the
+files `relay sync` writes for each coding agent.

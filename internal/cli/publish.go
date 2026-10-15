@@ -337,10 +337,9 @@ Supported agent providers: %s.`, agentProviderIDsCSV()),
 	return agent
 }
 
-// MCPCmd returns the `relay mcp` parent command with `publish` and the
-// read-only `list`/`inspect` sub-commands. `install`/`remove` are
-// deliberately NOT implemented — see McpListCmd's doc comment and the
-// README's MCP section.
+// MCPCmd returns the `relay mcp` parent command: `publish`, the read-only
+// `list`/`inspect` catalog views, and `install`/`remove`, which register
+// servers in the coding agents' own MCP config.
 func MCPCmd() *cobra.Command {
 	mcp := &cobra.Command{
 		Use:   "mcp",
