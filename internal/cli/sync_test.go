@@ -336,25 +336,16 @@ func TestResolveSyncDoer_NoToken(t *testing.T) {
 	}
 }
 
-// TestSync_ToFlag_ErrorsNamingPortableAlternative: `relay sync --to
-// <provider>` must error naming the
-// portable alternative (skill install / agent install --to), and must do
-// so WITHOUT ever resolving a gateway doer — no HOME/GATEWAY_API_KEY is set
-// up for this test, so a doer-resolution attempt would fail with a
-// different (offline-guidance) message instead.
-func TestSync_ToFlag_ErrorsNamingPortableAlternative(t *testing.T) {
+// TestSync_ToFlag_SyncsWithoutResolvingAGateway: `relay sync --to <agent>`
+// is local work, so it must succeed without any gateway or credentials.
+func TestSync_ToFlag_SyncsWithoutResolvingAGateway(t *testing.T) {
+	withNoGateway(t)
 	cmd := syncCmdWithDoer(nil)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--to", "cursor"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatalf("expected an error for --to cursor")
-	}
-	for _, want := range []string{"skill install", "agent install", "--to cursor"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("expected error to mention %q, got: %v", want, err)
-		}
+	cmd.SetArgs([]string{"--to", "cursor", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("sync --to cursor: %v", err)
 	}
 }
 

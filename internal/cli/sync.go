@@ -58,68 +58,105 @@ type syncDoer interface {
 // ---- SyncCmd ----
 
 // SyncCmd returns the `relay sync` cobra command.
-// It pulls the caller's marketplace manifest from the gateway and materialises
-// a local-path Claude Code marketplace directory.
 func SyncCmd() *cobra.Command {
 	return syncCmdWithDoer(nil) // nil → resolved at runtime from env/keychain
 }
 
 // syncCmdWithDoer is the internal constructor; doer==nil means resolve from env.
-// Exposed for testing via a package-level wrapper below.
+// The doer only serves the marketplace pull.
 func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 	var (
-		customDir  string
-		dryRun     bool
-		gatewayURL string
-		toFlag     string
+		o           agentSyncOpts
+		customDir   string
+		gatewayURL  string
+		marketplace bool
+		matrix      bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync the marketplace from the gateway to a local Claude Code directory",
+		Short: "Sync MCP servers, hooks, rules, commands, skills and subagents across coding agents",
 		Args:  cobra.NoArgs,
-		Long: `Pull the caller's marketplace from the gateway and write a local-path
-Claude Code marketplace under ~/.config/relay/marketplace/<name>/.
+		Long: `Write what relay manages into the config of every coding agent: Claude Code,
+Codex, Cursor, OpenCode, Gemini CLI, Windsurf, Cline and GitHub Copilot.
 
-The directory is namespaced by the marketplace name so multiple orgs never collide.
-This materializes a CLAUDE-CODE-SPECIFIC plugin-marketplace distribution
-format (marketplace.json + plugin bundles + managed-settings) — there is no
-per-provider equivalent, so --to <provider> is NOT supported (see below).
+Sources
+  MCP servers   the gateway (when configured) plus servers added with
+                'relay mcp install'
+  hooks, rules, commands
+                ~/.config/relay/sync/{hooks.json,rules/*.md,commands/*.md}
+                for the user scope and <project>/.relay/ for the project scope
+  skills, subagents
+                everything installed for --from (default claude), copied to
+                the other agents through the same engine as 'relay skill
+                migrate' and 'relay agent migrate'
 
-Flags:
-  --dir <path>   Override the default output directory.
-  --dry-run      Fetch and report what WOULD be written/removed — write nothing.`,
+Entries relay writes are marked (a hash ledger for JSON, comment markers for
+TOML, Markdown and owned files) so a later sync can update or remove them.
+Entries you wrote are never replaced unless --force is given. Every write
+is one transaction: a failure restores the files already changed.
+
+Without --to, every agent detected on this machine is synced. Kinds an agent
+has no format for are reported as unsupported, never skipped silently; see
+'relay sync --matrix'.
+
+--marketplace (or --dir) also pulls the gateway's Claude Code plugin
+marketplace into ~/.config/relay/marketplace/<name>/.
+
+Examples:
+  relay sync --dry-run
+  relay sync --to claude,codex --scope all
+  relay sync --kind mcp,rules --to all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if toFlag != "" {
-				return errSyncToUnsupported(toFlag)
+			out := cmd.OutOrStdout()
+			if matrix {
+				return printSyncMatrix(out)
 			}
-			// Resolve doer (real gateway client) when not injected by tests.
+			wantMarketplace := marketplace || customDir != ""
+			o.optionalAgents = wantMarketplace
+			run, err := planAgentSync(o)
+			if err != nil {
+				return err
+			}
+			if len(run.agents) > 0 {
+				if err := printSyncReport(out, run, o.dryRun, o.jsonOut); err != nil {
+					return err
+				}
+				if !o.dryRun {
+					if err := run.apply(cmd.Context()); err != nil {
+						return err
+					}
+				}
+			}
+			if !wantMarketplace {
+				return nil
+			}
 			d := doer
 			if d == nil {
-				var err error
 				d, err = resolveSyncDoer(gatewayURL)
 				if err != nil {
 					return err
 				}
 			}
-			return runSync(commandDoer{d, cmd.Context()}, customDir, dryRun, cmd.OutOrStdout())
+			return runSync(commandDoer{d, cmd.Context()}, customDir, o.dryRun, out)
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
-	cmd.Flags().StringVar(&customDir, "dir", "", "Local marketplace directory (default: ~/.config/relay/marketplace/<name>/)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Fetch and report changes without writing anything")
-	cmd.Flags().StringVar(&toFlag, "to", "", "Not supported: sync only targets Claude Code; use `relay skill install --to` / `relay agent install --to` for other providers")
+	f := cmd.Flags()
+	f.StringSliceVar(&o.to, "to", nil, "Agents to sync: claude, codex, cursor, opencode, gemini-cli, windsurf, cline, copilot, or all (default: detected agents)")
+	f.StringSliceVar(&o.scopes, "scope", nil, "user, project or all (default: user; project uses the current directory)")
+	f.StringSliceVar(&o.kinds, "kind", nil, "Limit to mcp, hooks, rules, commands, skills, subagents (default: all)")
+	f.StringVar(&o.from, "from", "", "Provider whose skills and subagents are copied to the other agents (default: claude)")
+	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto (API key when $GATEWAY_API_KEY is set, else OAuth), oauth or api-key")
+	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")
+	f.BoolVar(&o.force, "force", false, "Replace same-named entries relay does not manage")
+	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
+	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
+	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
+	f.BoolVar(&marketplace, "marketplace", false, "Also pull the gateway's Claude Code plugin marketplace")
+	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $GATEWAY_URL, then the config file)")
+	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/relay/marketplace/<name>/)")
 	return cmd
-}
-
-// errSyncToUnsupported is `relay sync --to <provider>`'s error: sync
-// materializes a Claude-Code-specific
-// plugin-marketplace distribution format with no per-provider analogue.
-// Checked BEFORE any doer/gateway resolution so it never depends on
-// network/auth state — a plain, always-reachable usage error.
-func errSyncToUnsupported(provider string) error {
-	return fmt.Errorf("relay sync --to %s is not supported: sync materializes a Claude-Code-specific plugin marketplace with no per-provider equivalent — use `relay skill install <catalog-id> --to %s` and `relay agent install <catalog-id> --to %s` instead", provider, provider, provider)
 }
 
 // resolveSyncDoer reads the gateway URL and resolves an authenticated
