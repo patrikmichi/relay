@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "/opt/relay/guard.sh",
+        "timeout": 10,
+        "matcher": "Bash"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "/opt/relay/context.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "/opt/relay/notify.sh"
+      }
+    ]
+  }
+}

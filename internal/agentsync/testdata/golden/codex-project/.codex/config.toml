@@ -1,0 +1,12 @@
+# >>> relay-managed:begin mcp >>>
+[mcp_servers.relay]
+url = "https://gateway.example.com/api/mcp"
+bearer_token_env_var = "GATEWAY_API_KEY"
+
+[mcp_servers.docs]
+command = "npx"
+args = ["-y", "@acme/docs-mcp"]
+
+[mcp_servers.docs.env]
+DOCS_REGION = "eu"
+# <<< relay-managed:end mcp <<<

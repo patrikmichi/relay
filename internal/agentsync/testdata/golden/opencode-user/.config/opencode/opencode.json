@@ -1,0 +1,25 @@
+{
+  "theme": "dark",
+  "mcp": {
+    "relay": {
+      "type": "remote",
+      "url": "https://gateway.example.com/api/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:GATEWAY_API_KEY}"
+      }
+    },
+    "docs": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  }
+}

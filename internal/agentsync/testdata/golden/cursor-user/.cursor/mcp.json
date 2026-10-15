@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "mine": {
+      "url": "https://example.com/mcp"
+    },
+    "relay": {
+      "url": "https://gateway.example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:GATEWAY_API_KEY}"
+      }
+    },
+    "docs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "mcpServers": {
+    "relay": {
+      "httpUrl": "https://gateway.example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GATEWAY_API_KEY}"
+      }
+    },
+    "docs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  },
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "name": "relay",
+            "type": "command",
+            "command": "/opt/relay/notify.sh"
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "name": "relay",
+            "type": "command",
+            "command": "/opt/relay/guard.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "name": "relay",
+            "type": "command",
+            "command": "/opt/relay/ping.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "name": "relay",
+            "type": "command",
+            "command": "/opt/relay/context.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

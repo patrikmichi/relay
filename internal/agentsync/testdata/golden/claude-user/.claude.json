@@ -1,0 +1,26 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "mine": {
+      "command": "mine-mcp"
+    },
+    "relay": {
+      "type": "http",
+      "url": "https://gateway.example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GATEWAY_API_KEY}"
+      }
+    },
+    "docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  }
+}
