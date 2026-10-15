@@ -28,11 +28,17 @@ type DiscoveryTool struct {
 
 // DiscoveryService mirrors one service entry returned by GET /api/integrations.
 type DiscoveryService struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	Accessible bool            `json:"accessible"`
-	ToolCount  int             `json:"toolCount"`
-	Tools      []DiscoveryTool `json:"tools"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	AuthType    string          `json:"authType,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Category    string          `json:"category,omitempty"`
+	Summary     string          `json:"summary,omitempty"`
+	DocsURL     string          `json:"docsUrl,omitempty"`
+	Tags        []string        `json:"tags,omitempty"`
+	Accessible  bool            `json:"accessible"`
+	ToolCount   int             `json:"toolCount"`
+	Tools       []DiscoveryTool `json:"tools"`
 }
 
 // IntegrationsResponse is the JSON shape returned by GET /api/integrations.

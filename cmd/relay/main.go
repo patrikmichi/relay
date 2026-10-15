@@ -1,6 +1,7 @@
 // Package main is the entrypoint for the relay CLI (gateway client).
 // Auth subcommands: login, logout, whoami, authorize.
-// Service subcommands: call, services, tokens, config, help-tools.
+// Service subcommands: call, services, connectors, connect, tokens, config, help-tools.
+// Agent subcommands: sync, skill, agent, mcp.
 // Dynamic service sub-commands are built lazily from the gateway catalog.
 package main
 
@@ -60,8 +61,8 @@ var staticCommandNames = map[string]bool{
 	"help-tools": true, "help": true, "completion": true, "sync": true,
 	"publish": true, "skill": true, "agent": true, "mcp": true,
 	"providers": true, "doctor": true, "recover": true, "history": true,
-	"explain": true,
-	"list":    true, "revoke": true, // tokens sub-commands
+	"explain": true, "connectors": true, "connect": true,
+	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
 
@@ -191,6 +192,8 @@ func newRootCmd() *cobra.Command {
 		cli.CallCmd(),
 		cli.ExplainCmd(),
 		cli.ServicesCmd(),
+		cli.ConnectorsCmd(),
+		cli.ConnectCmd(),
 		cli.TokensCmd(),
 		cli.ConfigCmd(),
 		cli.HelpToolsCmd(),

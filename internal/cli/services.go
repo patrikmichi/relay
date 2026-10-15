@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -9,12 +8,20 @@ import (
 
 // ServicesCmd returns the `relay services` cobra command.
 func ServicesCmd() *cobra.Command {
-	var gatewayURL string
+	var (
+		gatewayURL string
+		noStatus   bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "services",
-		Short: "List available gateway services",
-		Long:  "Calls GET /api/integrations and prints the services accessible to the current session.",
+		Short: "List available gateway services and whether your account is connected",
+		Long: `Calls GET /api/integrations and prints the services accessible to the current session.
+
+Each service that takes credentials is followed by its connection status:
+connected, not connected, or not connected (admin) when an administrator
+manages the shared credentials. Link your own account with 'relay connect
+<slug>'; browse everything on offer with 'relay connectors'.`,
 		RunE: func(cmd *cobra.Command, _args []string) error {
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
@@ -31,14 +38,21 @@ func ServicesCmd() *cobra.Command {
 				return fmt.Errorf("services failed: %w", err)
 			}
 			if info == nil {
-				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
+				return errTokenRevoked
 			}
 
+			var links map[string]serviceLink
+			if !noStatus {
+				links = fetchServiceLinks(cmd.Context(), c, info.Services)
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Services (%d tools total):\n", info.ToolCount)
 			for _, svc := range info.Services {
 				marker := ""
-				if !svc.Accessible {
+				switch {
+				case !svc.Accessible:
 					marker = "  (no access)"
+				case !noStatus && takesCredentials(svc):
+					marker = "  " + linkLabel(svc, links)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-20s %3d tools%s\n", svc.ID, svc.ToolCount, marker)
 			}
@@ -47,5 +61,6 @@ func ServicesCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().BoolVar(&noStatus, "no-status", false, "Skip the per-service connection status probes")
 	return cmd
 }
