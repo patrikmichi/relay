@@ -133,10 +133,10 @@ func TestSyncJSONReport(t *testing.T) {
 func TestSyncValidatesFlags(t *testing.T) {
 	syncHome(t)
 	for args, want := range map[string]string{
-		"--to vim":            "unknown agent",
-		"--kind widgets":      "unknown artifact kind",
-		"--scope galaxy":      "invalid --scope",
-		"--mcp-auth magic":    "invalid --mcp-auth",
+		"--to vim":                             "unknown agent",
+		"--kind widgets":                       "unknown artifact kind",
+		"--scope galaxy":                       "invalid --scope",
+		"--mcp-auth magic":                     "invalid --mcp-auth",
 		"--from nope --kind skills --to codex": "unknown --from provider",
 	} {
 		t.Setenv("GATEWAY_URL", "https://gateway.example.com")

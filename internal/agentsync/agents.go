@@ -34,8 +34,10 @@ func Agents() []Agent {
 	return []Agent{
 		{
 			ID: Claude, Name: "Claude Code",
-			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".claude")) || fileExists(filepath.Join(e.Home, ".claude.json")) },
-			MCP:    claudeMCP, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
+			Detect: func(e Env) bool {
+				return dirExists(filepath.Join(e.Home, ".claude")) || fileExists(filepath.Join(e.Home, ".claude.json"))
+			},
+			MCP: claudeMCP, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
 		},
 		{
 			ID: Codex, Name: "Codex",

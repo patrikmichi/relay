@@ -91,15 +91,15 @@ func TestMatrixCoversEveryAgentKindAndScope(t *testing.T) {
 		byKey[string(r.Agent)+"/"+string(r.Kind)+"/"+string(r.Scope)] = r
 	}
 	for key, supported := range map[string]bool{
-		"claude/hooks/user":      true,
-		"cline/hooks/user":       false,
-		"cline/subagents/user":   false,
+		"claude/hooks/user":       true,
+		"cline/hooks/user":        false,
+		"cline/subagents/user":    false,
 		"windsurf/subagents/user": false,
-		"codex/commands/project": false,
-		"cursor/rules/user":      false,
-		"gemini-cli/rules/user":  true,
-		"copilot/mcp/user":       false,
-		"copilot/mcp/project":    true,
+		"codex/commands/project":  false,
+		"cursor/rules/user":       false,
+		"gemini-cli/rules/user":   true,
+		"copilot/mcp/user":        false,
+		"copilot/mcp/project":     true,
 	} {
 		if byKey[key].Supported != supported {
 			t.Errorf("%s: supported=%v, want %v (%s)", key, byKey[key].Supported, supported, byKey[key].Reason)
