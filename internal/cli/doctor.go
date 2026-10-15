@@ -109,6 +109,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		}
 		add("recovery", pending == 0, fmt.Sprintf("%d transactions need recovery", pending))
 	}
+	doctorSyncChecks(add)
 	gateway, err := config.GatewayURL()
 	if err != nil {
 		add("gateway", false, "gateway configuration is invalid")
