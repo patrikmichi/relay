@@ -128,11 +128,17 @@ func windsurfRules(env Env, scope Scope, rules []Rule) ([]Op, string) {
 		}
 		files = append(files, ownedFile{r.Name, ownedMarkdown(fm, mdMarkerLine, r.Body)})
 	}
-	dir := filepath.Join(env.Project, ".windsurf", "rules")
-	if dirExists(filepath.Join(env.Project, ".devin")) && !dirExists(filepath.Join(env.Project, ".windsurf")) {
-		dir = filepath.Join(env.Project, ".devin", "rules")
-	}
+	dir := filepath.Join(windsurfProjectDir(env), "rules")
 	return []Op{&ownedFilesOp{meta: m, dir: dir, ext: ".md", files: files, mode: 0o644}}, ""
+}
+
+// windsurfProjectDir is the workspace config directory: .devin when the
+// project has one (the documented preference), else the legacy .windsurf.
+func windsurfProjectDir(env Env) string {
+	if dirExists(filepath.Join(env.Project, ".devin")) {
+		return filepath.Join(env.Project, ".devin")
+	}
+	return filepath.Join(env.Project, ".windsurf")
 }
 
 func clineRules(env Env, scope Scope, rules []Rule) ([]Op, string) {

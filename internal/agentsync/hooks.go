@@ -230,11 +230,7 @@ func windsurfHooks(env Env, scope Scope, hooks []Hook) ([]Op, string) {
 	m := meta{Windsurf, KindHooks, scope}
 	path := filepath.Join(env.Home, ".codeium", "windsurf", "hooks.json")
 	if scope == ScopeProject {
-		dir := ".windsurf"
-		if dirExists(filepath.Join(env.Project, ".devin")) && !dirExists(filepath.Join(env.Project, ".windsurf")) {
-			dir = ".devin"
-		}
-		path = filepath.Join(env.Project, dir, "hooks.json")
+		path = filepath.Join(windsurfProjectDir(env), "hooks.json")
 	}
 	plan := buildHooks(m, hooks, windsurfEvents, func(h Hook) *jnode {
 		return toNode(obj{{"command", h.Command}, {"show_output", false}})
@@ -243,7 +239,7 @@ func windsurfHooks(env Env, scope Scope, hooks []Hook) ([]Op, string) {
 }
 
 func clineHooks(Env, Scope, []Hook) ([]Op, string) {
-	return nil, "Cline hooks are SDK plugins with no declarative config file"
+	return nil, "Cline hooks are defined in code by SDK plugins, not in a config file"
 }
 
 func copilotHooks(Env, Scope, []Hook) ([]Op, string) {

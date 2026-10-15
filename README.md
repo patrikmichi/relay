@@ -154,7 +154,7 @@ into the config of every coding agent it supports, at the user scope
 | **OpenCode** | user, project | user, project (plugin) | user, project | user, project | yes | yes |
 | **Gemini CLI** | user, project | user, project | user, project | user, project | yes | yes |
 | **Windsurf** | user | user, project | user, project | user, project (workflows) | yes | - |
-| **Cline** | user | - | user, project | user, project (workflows) | yes | - |
+| **Cline** | user | - | user, project | - | yes | - |
 | **GitHub Copilot** | project | - | project | project | - | - |
 
 `relay sync --matrix` prints the live matrix with the reason for every gap.

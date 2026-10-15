@@ -98,6 +98,8 @@ func TestMatrixCoversEveryAgentKindAndScope(t *testing.T) {
 		"codex/commands/project":  false,
 		"cursor/rules/user":       false,
 		"gemini-cli/rules/user":   true,
+		"cline/commands/user":     false,
+		"cline/commands/project":  false,
 		"copilot/mcp/user":        false,
 		"copilot/mcp/project":     true,
 	} {

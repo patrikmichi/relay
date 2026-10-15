@@ -13,7 +13,7 @@ func commandFrontmatter(c Command, keys ...string) []string {
 			fm = append(fm, "description: "+yamlScalar(c.Description))
 		case k == "argument-hint" && c.ArgumentHint != "":
 			fm = append(fm, "argument-hint: "+yamlScalar(c.ArgumentHint))
-		case k == "mode: agent":
+		case k == "agent: agent":
 			fm = append(fm, k)
 		}
 	}
@@ -64,7 +64,7 @@ func opencodeCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
 }
 
 func windsurfCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
-	dir := filepath.Join(env.Project, ".windsurf", "workflows")
+	dir := filepath.Join(windsurfProjectDir(env), "workflows")
 	if scope == ScopeUser {
 		dir = filepath.Join(env.Home, ".codeium", "windsurf", "global_workflows")
 	}
@@ -73,15 +73,8 @@ func windsurfCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
 	}, plainBody), ""
 }
 
-func clineCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
-	dir := filepath.Join(env.Home, "Documents", "Cline", "Workflows")
-	if scope == ScopeProject {
-		dir = filepath.Join(env.Project, ".clinerules", "workflows")
-		if fileExists(filepath.Join(env.Project, ".clinerules")) {
-			return nil, ".clinerules is a single file; convert it to a directory so relay can add workflows"
-		}
-	}
-	return markdownCommands(Cline, scope, dir, ".md", cmds, func(Command) []string { return nil }, plainBody), ""
+func clineCommands(Env, Scope, []Command) ([]Op, string) {
+	return nil, "Cline's current docs do not publish a workflow directory (only `cline config workflows`)"
 }
 
 func copilotCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
@@ -90,7 +83,7 @@ func copilotCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
 	}
 	dir := filepath.Join(env.Project, ".github", "prompts")
 	return markdownCommands(Copilot, scope, dir, ".prompt.md", cmds, func(c Command) []string {
-		return commandFrontmatter(c, "description", "mode: agent")
+		return commandFrontmatter(c, "description", "argument-hint", "agent: agent")
 	}, plainBody), ""
 }
 

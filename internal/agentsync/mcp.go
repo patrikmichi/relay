@@ -105,13 +105,33 @@ func windsurfMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 		return nil, "Windsurf reads MCP servers from the user config only"
 	}
 	m := meta{Windsurf, KindMCP, scope}
-	path := filepath.Join(env.Home, ".codeium", "windsurf", "mcp_config.json")
-	return jsonMCP(m, path, []string{"mcpServers"}, nil, servers, func(s MCPServer) any {
-		if s.remote() {
-			return withHeaders(obj{{"serverUrl", s.URL}}, bearer("${env:", s.BearerEnv, "}"))
-		}
-		return withEnv(obj{{"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
-	}), ""
+	var ops []Op
+	for _, path := range windsurfMCPPaths(env) {
+		ops = append(ops, jsonMCP(m, path, []string{"mcpServers"}, nil, servers, func(s MCPServer) any {
+			if s.remote() {
+				return withHeaders(obj{{"serverUrl", s.URL}}, bearer("${env:", s.BearerEnv, "}"))
+			}
+			return withEnv(obj{{"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
+		})...)
+	}
+	return ops, ""
+}
+
+// windsurfMCPPaths returns the config files to write. The current docs
+// place mcp_config.json under the Devin config directory
+// ($XDG_CONFIG_HOME/devin, default ~/.config/devin); installs that predate
+// the rename keep theirs in ~/.codeium/windsurf, which is also written when
+// that directory exists so either generation of the app sees the servers.
+func windsurfMCPPaths(env Env) []string {
+	xdg := env.getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		xdg = filepath.Join(env.Home, ".config")
+	}
+	paths := []string{filepath.Join(xdg, "devin", "mcp_config.json")}
+	if dirExists(filepath.Join(env.Home, ".codeium", "windsurf")) {
+		paths = append(paths, filepath.Join(env.Home, ".codeium", "windsurf", "mcp_config.json"))
+	}
+	return paths
 }
 
 // clineSettingsPaths returns the MCP settings files for the Cline CLI and,
@@ -156,12 +176,21 @@ func copilotMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	}
 	m := meta{Copilot, KindMCP, scope}
 	path := filepath.Join(env.Project, ".vscode", "mcp.json")
-	return jsonMCP(m, path, []string{"servers"}, nil, servers, func(s MCPServer) any {
+	ops := jsonMCP(m, path, []string{"servers"}, nil, servers, func(s MCPServer) any {
 		if s.remote() {
-			return withHeaders(obj{{"type", "http"}, {"url", s.URL}}, bearer("${env:", s.BearerEnv, "}"))
+			return obj{{"type", "http"}, {"url", s.URL}}
 		}
 		return withEnv(obj{{"type", "stdio"}, {"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
-	}), ""
+	})
+	// VS Code documents ${input:...} variables for secrets, not environment
+	// references, so remote entries carry no header and VS Code asks for
+	// authorization itself.
+	for _, s := range servers {
+		if s.remote() && s.BearerEnv != "" {
+			ops = append(ops, noteOp{m.item(s.Name, "", StatusSkipped, "VS Code cannot read tokens from the environment; no Authorization header written, authorize the server in VS Code")})
+		}
+	}
+	return ops, ""
 }
 
 var tomlBareKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)

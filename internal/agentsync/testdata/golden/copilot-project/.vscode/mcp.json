@@ -2,10 +2,7 @@
   "servers": {
     "relay": {
       "type": "http",
-      "url": "https://gateway.example.com/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${env:GATEWAY_API_KEY}"
-      }
+      "url": "https://gateway.example.com/api/mcp"
     },
     "docs": {
       "type": "stdio",
