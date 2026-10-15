@@ -1,0 +1,9 @@
+version: "2"
+
+linters:
+  default: standard
+  exclusions:
+    presets:
+      # Unchecked Close, Flush, os.Remove(All), fmt.Print* and stdout/stderr
+      # writes are the standard Go idiom, mostly in defers.
+      - std-error-handling

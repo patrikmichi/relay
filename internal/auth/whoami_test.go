@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ func TestWhoami_Success(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL, "static-key")
-	resp, err := Whoami(c, false)
+	resp, err := Whoami(context.Background(), c, false)
 	if err != nil {
 		t.Fatalf("Whoami: %v", err)
 	}
@@ -56,7 +57,7 @@ func TestWhoami_FullRequestsGroups(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL, "static-key")
-	resp, err := Whoami(c, true)
+	resp, err := Whoami(context.Background(), c, true)
 	if err != nil {
 		t.Fatalf("Whoami: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestWhoami_Unauthorized(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL, "static-key")
-	_, err := Whoami(c, false)
+	_, err := Whoami(context.Background(), c, false)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -96,7 +97,7 @@ func TestWhoami_OtherNonOK(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL, "static-key")
-	_, err := Whoami(c, false)
+	_, err := Whoami(context.Background(), c, false)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -115,7 +116,7 @@ func TestWhoami_DecodeError(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL, "static-key")
-	_, err := Whoami(c, false)
+	_, err := Whoami(context.Background(), c, false)
 	if err == nil {
 		t.Fatal("expected decode error, got nil")
 	}

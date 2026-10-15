@@ -2,16 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/agentport"
 )
 
-// AgentScanCmd returns the `relay agent scan <name>` cobra command — a
-// thin wrapper over agentport.AgentScan, the Agent-IR analogue of
-// SkillScanCmd. There is deliberately no `relay agent score` companion
-// command (unlike skills' scan/score pair).
 func AgentScanCmd() *cobra.Command {
 	var (
 		fromFlag  string
@@ -21,10 +18,11 @@ func AgentScanCmd() *cobra.Command {
 		Use:   "scan <name>",
 		Short: "Scan an agent for dangerous shell patterns and hardcoded secrets",
 		Long: fmt.Sprintf(`Load <name> from --from's directory (in the given --scope) and run a
-deterministic, local, no-network scan of its body for dangerous shell
-patterns (curl|bash, rm -rf, ...) and obvious hardcoded credentials. Prints
-findings and a quality score; exits non-zero if any finding has "high"
-severity.
+deterministic, local, no-network scan of its frontmatter and body for
+dangerous shell patterns (curl|bash, rm -rf, ...) and obvious hardcoded
+credentials. Prints findings, exactly what was scanned, and a heuristic
+quality score — not an execution-safety certification. Exits non-zero if
+any finding has "high" severity.
 
 Supported providers: %s.`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
@@ -68,14 +66,23 @@ func runAgentScan(cmd *cobra.Command, name, from, scopeStr string) error {
 	out := cmd.OutOrStdout()
 
 	if len(result.Findings) == 0 {
-		fmt.Fprintln(out, "no findings")
+		fmt.Fprintln(out, "no findings (no configured heuristic pattern matched — not a safety or trust certification)")
 	} else {
 		fmt.Fprintln(out, "findings:")
 		for _, f := range result.Findings {
 			fmt.Fprintf(out, "  [%s] %s in %s: %s\n", f.Severity, f.Pattern, f.File, f.Excerpt)
 		}
 	}
-	fmt.Fprintf(out, "score: %d/100\n", result.Score)
+	fmt.Fprintf(out, "scanned (%d): %s\n", len(result.Scanned), strings.Join(result.Scanned, ", "))
+	if len(result.Skipped) == 0 {
+		fmt.Fprintln(out, "skipped: none")
+	} else {
+		fmt.Fprintln(out, "skipped:")
+		for _, sk := range result.Skipped {
+			fmt.Fprintf(out, "  %s: %s\n", sk.File, sk.Reason)
+		}
+	}
+	fmt.Fprintf(out, "score: %d/100 (%s)\n", result.Score, agentport.ScoreDisclaimer)
 
 	for _, f := range result.Findings {
 		if f.Severity == "high" {

@@ -1,11 +1,11 @@
-// Package catalog implements relay's Phase-2 "GatewaySource" — the
+// Package catalog implements relay's "GatewaySource" — the
 // gateway-backed counterpart to agentport.LoadGenericSkill's local-path
 // source. It downloads a governed skill bundle from the gateway catalog's
 // download endpoint, verifies it end to end (content hash + scan verdict),
 // path-safe extracts it, and loads it through the SAME
 // agentport.LoadGenericSkill code path a local `relay skill install <path>`
-// uses — so everything downstream (Migrate/Write/manifest) is unmodified,
-// shipped Phase-1 code.
+// uses — so everything downstream (Migrate/Write/manifest) is the same
+// code a local install runs.
 //
 // Deliberately NOT part of internal/agentport: that package is intentionally
 // gateway-agnostic (stdlib + gopkg.in/yaml.v3 only, see its package doc) so
@@ -44,7 +44,7 @@ type Doer interface {
 	// a context.WithTimeout(downloadTimeout) — a hanging gateway aborts the
 	// request instead of blocking forever, without imposing a client-wide
 	// timeout that would also affect unrelated, legitimately long-running
-	// gateway calls (m3 in the Go review).
+	// gateway calls.
 	GetContext(ctx context.Context, path string) (*http.Response, error)
 }
 
@@ -189,11 +189,9 @@ func downloadPath(id, version, channel string) string {
 // buildDownloadPath is the prefix-parameterized path builder shared by
 // downloadPath (this file, the legacy skill-only endpoint) and
 // resourceDownloadPath (agent_source.go, the generalized skill+agent
-// endpoint added by gateway D2) — lifted out so both FetchSkill and
-// FetchAgent build query strings identically without duplicating the
-// escaping/query-encoding logic. Behavior-identical to the pre-D4 inline
-// downloadPath body; FetchSkill's own tests (gateway_source_test.go) pass
-// unchanged after this refactor.
+// endpoint) — shared so both FetchSkill and FetchAgent build query
+// strings identically without duplicating the escaping/query-encoding
+// logic.
 func buildDownloadPath(prefix, id, version, channel string) string {
 	p := prefix + url.PathEscape(id) + downloadPathSuffix
 	q := url.Values{}

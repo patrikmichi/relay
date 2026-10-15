@@ -129,7 +129,7 @@ func TestCallTool_PostsJSONRPCToolsCall(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "bearer-tok"), "clockify", "list_workspaces", []string{"workspaceId=ws1"})
+	err := callTool(client.New(srv.URL, "bearer-tok"), "clockify", "list_workspaces", []string{"workspaceId=ws1"}, false)
 	if err != nil {
 		t.Fatalf("callTool: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestCallTool_AccountLabelPassthrough(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "google-workspace", "list_files", []string{"account=work", "folderId=f1"})
+	err := callTool(client.New(srv.URL, "tok"), "google-workspace", "list_files", []string{"account=work", "folderId=f1"}, false)
 	if err != nil {
 		t.Fatalf("callTool: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestCallTool_MapsJSONRPCErrorToGoError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "clockify", "delete_project", nil)
+	err := callTool(client.New(srv.URL, "tok"), "clockify", "delete_project", nil, false)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -225,7 +225,7 @@ func TestCallTool_MapsRateLimitedWithRetryAfter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "clockify", "list_workspaces", nil)
+	err := callTool(client.New(srv.URL, "tok"), "clockify", "list_workspaces", nil, false)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -248,7 +248,7 @@ func TestCallTool_PrintsResultText(t *testing.T) {
 	defer srv.Close()
 
 	stdout := captureStdout(t, func() {
-		if err := callTool(client.New(srv.URL, "tok"), "clockify", "list_projects", nil); err != nil {
+		if err := callTool(client.New(srv.URL, "tok"), "clockify", "list_projects", nil, false); err != nil {
 			t.Fatalf("callTool: %v", err)
 		}
 	})
@@ -295,10 +295,74 @@ func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testin
 	t.Setenv("GATEWAY_API_KEY", "")
 
 	root := &cobra.Command{Use: "relay"}
-	BuildServiceCommands(root, "http://example.invalid")
+	if err := BuildServiceCommands(root, "http://example.invalid"); err != nil {
+		t.Fatalf("BuildServiceCommands: %v", err)
+	}
 
 	if len(root.Commands()) != 0 {
 		t.Errorf("expected no dynamic commands registered without a session, got %d", len(root.Commands()))
+	}
+}
+
+// TestBuildServiceCommandsRejectsCollisionWithStaticCommand: a
+// discovered service name matching an already-registered command must be
+// rejected outright, never silently shadowing (or being shadowed by) it.
+func TestBuildServiceCommandsRejectsCollisionWithStaticCommand(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(IntegrationsResponse{
+			OK: true, ServiceCount: 1, ToolCount: 1,
+			Services: []DiscoveryService{
+				{
+					ID: "login", Name: "Colliding Service", Accessible: true, ToolCount: 1,
+					Tools: []DiscoveryTool{{Name: "x"}},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	root := &cobra.Command{Use: "relay"}
+	root.AddCommand(&cobra.Command{Use: "login"}) // pre-registered static command
+
+	err := BuildServiceCommands(root, srv.URL)
+	if err == nil {
+		t.Fatal("expected a collision error when a discovered service name matches a static command")
+	}
+	for _, c := range root.Commands() {
+		if c.Name() == "login" && len(c.Commands()) != 0 {
+			t.Fatalf("static login command must not be extended/shadowed by the discovered service, got children: %v", c.Commands())
+		}
+	}
+}
+
+// TestBuildServiceCommandsRejectsReservedName covers cobra's own
+// lazily-registered "help"/"completion" commands — these never appear in
+// root.Commands() until Cobra's Find()/Execute() runs, so a discovered
+// service named "help" needs its own explicit check (reservedCommandNames)
+// rather than relying solely on the live command-tree walk.
+func TestBuildServiceCommandsRejectsReservedName(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(IntegrationsResponse{
+			OK: true, ServiceCount: 1, ToolCount: 1,
+			Services: []DiscoveryService{
+				{ID: "help", Name: "Colliding Service", Accessible: true, ToolCount: 1, Tools: []DiscoveryTool{{Name: "x"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	root := &cobra.Command{Use: "relay"} // "help" not yet materialized in root.Commands()
+	err := BuildServiceCommands(root, srv.URL)
+	if err == nil {
+		t.Fatal("expected a collision error when a discovered service is named \"help\"")
 	}
 }
 

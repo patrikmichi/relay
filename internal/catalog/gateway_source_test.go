@@ -62,7 +62,7 @@ func TestFetchSkill_ChecksumMismatchAborts(t *testing.T) {
 		w.Header().Set(headerScanVerdict, "passed")
 		w.Header().Set(headerVersion, "1.0.0")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -79,7 +79,7 @@ func TestFetchSkill_MissingChecksumHeaderAborts(t *testing.T) {
 	doer := newFakeGateway(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(headerScanVerdict, "passed")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -93,7 +93,7 @@ func TestFetchSkill_ScanVerdictMissingAborts(t *testing.T) {
 	doer := newFakeGateway(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(headerContentSha256, sha256HexOf(bundle))
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -108,7 +108,7 @@ func TestFetchSkill_ScanVerdictFailedAborts(t *testing.T) {
 		w.Header().Set(headerContentSha256, sha256HexOf(bundle))
 		w.Header().Set(headerScanVerdict, "failed")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -130,7 +130,7 @@ func TestFetchSkill_ScanVerdictBase64GateFailureAborts(t *testing.T) {
 		w.Header().Set(headerContentSha256, sha256HexOf(bundle))
 		w.Header().Set(headerScanVerdict, verdict)
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -156,7 +156,7 @@ func TestFetchSkill_ScanVerdictBase64AllPassSucceeds(t *testing.T) {
 		w.Header().Set(headerScanVerdict, verdict)
 		w.Header().Set(headerVersion, "2.0.0")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	skill, err := FetchSkill(doer, "res_abc", "", "")
@@ -196,7 +196,7 @@ func TestFetchSkill_StatusCodeMapping(t *testing.T) {
 func TestFetchSkill_UnrecognizedStatusErrors(t *testing.T) {
 	doer := newFakeGateway(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("boom"))
+		_, _ = w.Write([]byte("boom"))
 	})
 	_, err := FetchSkill(doer, "res_abc", "", "")
 	if err == nil {
@@ -212,7 +212,7 @@ func TestFetchSkill_MaliciousTarballRejected(t *testing.T) {
 		w.Header().Set(headerContentSha256, sha256HexOf(bad))
 		w.Header().Set(headerScanVerdict, "passed")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bad)
+		_, _ = w.Write(bad)
 	})
 
 	_, err := FetchSkill(doer, "res_abc", "", "")
@@ -238,7 +238,7 @@ func TestFetchSkill_SuccessRoundTrip(t *testing.T) {
 		w.Header().Set(headerVersion, "1.4.2")
 		w.Header().Set(headerCatalogID, "res_abc123")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	skill, err := FetchSkill(doer, "res_abc123", "1.4.2", "beta")
@@ -271,7 +271,7 @@ func TestFetchSkill_VersionFallsBackToRequestedWhenHeaderAbsent(t *testing.T) {
 		w.Header().Set(headerContentSha256, sha256HexOf(bundle))
 		w.Header().Set(headerScanVerdict, "passed")
 		w.WriteHeader(http.StatusOK)
-		w.Write(bundle)
+		_, _ = w.Write(bundle)
 	})
 
 	skill, err := FetchSkill(doer, "res_abc123", "9.9.9", "")
@@ -299,7 +299,7 @@ func TestReadLimited_PropagatesReaderError(t *testing.T) {
 	}
 }
 
-// TestFetchSkill_HangingServerBoundedByTimeout is the m3 regression: a
+// TestFetchSkill_HangingServerBoundedByTimeout: a
 // gateway that never responds must not hang FetchSkill forever — it must
 // abort cleanly once downloadTimeout elapses. downloadTimeout is shrunk for
 // the duration of this test so it runs fast.
@@ -341,7 +341,7 @@ func TestFetchSkill_SizeCapRejectsOversizedBody(t *testing.T) {
 		w.Header().Set(headerContentSha256, sha256HexOf(oversized))
 		w.Header().Set(headerScanVerdict, "passed")
 		w.WriteHeader(http.StatusOK)
-		w.Write(oversized)
+		_, _ = w.Write(oversized)
 	})
 	_, err := FetchSkill(doer, "res_abc", "", "")
 	if err == nil {

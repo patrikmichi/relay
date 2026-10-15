@@ -9,4 +9,8 @@ policy:
   allow_implicit_invocation: true
 dependencies:
   tools:
-    - git-mcp
+    - type: mcp
+      value: git-mcp
+      description: Git MCP server
+      transport: streamable_http
+      url: https://example.invalid/git-mcp

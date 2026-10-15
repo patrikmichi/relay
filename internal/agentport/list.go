@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -17,8 +18,8 @@ type SkillRef struct {
 }
 
 // recursiveDiscoverer is an additive, OPTIONAL capability interface List
-// uses instead of a hard-coded `a.(cursorAdapter)` type assertion — the
-// one coupling to a concrete
+// uses instead of a hard-coded
+// `a.(cursorAdapter)` type assertion — the one coupling to a concrete
 // adapter type this package had. configAdapter implements it from its
 // `discovery` config field; the Adapter interface itself is unchanged.
 type recursiveDiscoverer interface {
@@ -62,10 +63,7 @@ func List(a Adapter, scope Scope) ([]SkillRef, error) {
 		}
 	}
 
-	recursive := false
-	if rd, ok := a.(recursiveDiscoverer); ok {
-		recursive = rd.DiscoversRecursively(scope)
-	}
+	recursive := adapterDiscoversRecursively(a, scope)
 
 	seen := map[string]bool{}
 	var out []SkillRef
@@ -77,11 +75,28 @@ func List(a Adapter, scope Scope) ([]SkillRef, error) {
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", d, err)
 		}
+		byName := map[string][]string{}
+		for _, h := range hits {
+			byName[h.Name] = append(byName[h.Name], h.Path)
+		}
 		for _, h := range hits {
 			if seen[h.Name] {
 				continue
 			}
 			seen[h.Name] = true
+			// A name appearing more than once WITHIN this single directory
+			// tree is an explicit ambiguity, not a silent first-hit pick —
+			// the same rule findSkillByName (adapter.go) enforces for a
+			// named lookup, so an artifact List shows is never one a
+			// subsequent scan/migrate/uninstall by that name can't actually
+			// resolve. Duplicate names across DIFFERENT directories
+			// remain ordinary priority-order shadowing (the earlier
+			// directory wins), unchanged.
+			if len(byName[h.Name]) > 1 {
+				matches := append([]string(nil), byName[h.Name]...)
+				sort.Strings(matches)
+				return nil, fmt.Errorf("skill name %q is ambiguous under %s: found at %s", h.Name, d, strings.Join(matches, ", "))
+			}
 			out = append(out, SkillRef{Name: h.Name, Provider: a.ID(), Scope: scope, Path: h.Path})
 		}
 	}
@@ -122,16 +137,36 @@ func discoverSkillHits(base string, recursive bool) ([]skillHit, error) {
 
 	var hits []skillHit
 	for _, e := range entries {
-		if e.IsDir() {
-			skillMd := filepath.Join(base, e.Name(), "SKILL.md")
+		entryPath := filepath.Join(base, e.Name())
+		// e.IsDir() (from os.ReadDir's Lstat-based DirEntry) is false for a
+		// symlinked skill directory — isSymlinkToDir follows it explicitly
+		// so an explicitly-selected/discovered symlinked skill root is
+		// still found by `skill list`, matching what named resolution
+		// (findSkillInDirs, which uses os.Stat) already accepts.
+		if e.IsDir() || isSymlinkToDir(entryPath) {
+			skillMd := filepath.Join(entryPath, "SKILL.md")
 			if fi, statErr := os.Stat(skillMd); statErr == nil && !fi.IsDir() {
-				hits = append(hits, skillHit{Name: e.Name(), Path: filepath.Join(base, e.Name())})
+				hits = append(hits, skillHit{Name: e.Name(), Path: entryPath})
 			}
 			continue
 		}
 		if strings.HasSuffix(e.Name(), ".md") {
-			hits = append(hits, skillHit{Name: strings.TrimSuffix(e.Name(), ".md"), Path: filepath.Join(base, e.Name())})
+			hits = append(hits, skillHit{Name: strings.TrimSuffix(e.Name(), ".md"), Path: entryPath})
 		}
 	}
 	return hits, nil
+}
+
+// isSymlinkToDir reports whether path is a symlink whose resolved target is
+// a directory — used only for a root-level skill-directory ENTRY (an
+// explicitly enumerated child of a provider's own directory), never for a
+// resource nested inside a skill (those remain rejected — see
+// loadResources).
+func isSymlinkToDir(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&fs.ModeSymlink == 0 {
+		return false
+	}
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }

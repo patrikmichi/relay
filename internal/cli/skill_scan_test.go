@@ -73,6 +73,35 @@ func TestSkillScore_PrintsNumericScore(t *testing.T) {
 	}
 }
 
+// `skill score`'s stdout must stay script-parseable (bare number), but
+// the score disclaimer must still surface somewhere — on stderr — so a human
+// running the command interactively can't read a bare score as a trust
+// certification.
+func TestSkillScore_DisclaimerOnStderrNotStdout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeSkillFiles(t, home+"/.claude/skills/scored-skill", map[string][]byte{
+		"SKILL.md": []byte("---\nname: scored-skill\ndescription: a longer description well over forty characters for the bonus\n---\n\n" +
+			"A sufficiently long body so the quality score picks up the body-length bonus points here.\n"),
+	})
+
+	cmd := SkillScoreCmd()
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"scored-skill", "--from", "claude"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if _, err := strconv.Atoi(strings.TrimSpace(stdout.String())); err != nil {
+		t.Fatalf("stdout must stay a bare numeric score, got %q: %v", stdout.String(), err)
+	}
+	if !strings.Contains(stderr.String(), "not an execution-safety or trust certification") {
+		t.Fatalf("expected the score disclaimer on stderr, got %q", stderr.String())
+	}
+}
+
 func TestSkillScan_RequiresFrom(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

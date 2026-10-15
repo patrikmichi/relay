@@ -6,22 +6,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // This file implements the format: toml agent codec (Codex's custom-agent
-// format) with the STDLIB ONLY: no TOML dependency, preserving agentport's
-// stdlib+yaml.v3
-// invariant. It supports exactly the flat subset a custom-agent TOML file
-// needs: basic strings, multi-line basic strings (`"""..."""`, used for
-// `developer_instructions`), arrays of strings, integers, floats, booleans,
-// and comments. A table header (`[section]`) or a dotted key (`a.b = 1`) —
-// either of which opens a scope this parser doesn't understand
-// (`[mcp_servers]`, `skills.config`) — is skipped with a recorded warning
-// rather than failing the whole file; Project() never emits one, so a
-// round-trip through this package can never produce a table it can't
-// re-read.
+// format). Reading (loadTOML) uses a full TOML parser (go-toml/v2) so
+// literal strings, nested tables, dotted keys and duplicate keys are handled
+// exactly; any key the provider config does not map is surfaced as an
+// UnmappedSecurityField (and a stderr warning) so migration refuses instead
+// of silently dropping an execution setting. Writing (projectTOML) uses the
+// stdlib-only encoder below, which emits exactly the flat subset a
+// custom-agent file needs: basic strings, multi-line basic strings
+// (`"""..."""`, used for `developer_instructions`), arrays of strings,
+// integers, floats and booleans. parseFlatTOML is the original stdlib flat
+// subset reader; it is kept (and tested) as a dependency-free fallback
+// parser but is no longer on the Load path.
 //
 // Both loadTOML/projectTOML reuse the SAME cfg.Frontmatter-driven field
 // mapping (agentFieldValue/decodeAgentTOMLField) that the markdown codec
@@ -37,23 +40,45 @@ func (a *agentConfigAdapter) loadTOML(path string) (*Agent, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	values, warnings, err := parseFlatTOML(raw)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	for _, w := range warnings {
-		fmt.Fprintf(os.Stderr, "agentport: %s: %s\n", path, w)
+	// Parse with a full TOML parser so literal strings, nested tables, dotted
+	// keys and duplicate keys are all handled exactly (a duplicate key is a
+	// parse error, never a silent last-wins). The error text deliberately
+	// does not echo file content.
+	var values map[string]interface{}
+	if err := toml.Unmarshal(raw, &values); err != nil {
+		return nil, fmt.Errorf("invalid %s agent TOML", a.ID())
 	}
 
 	ag := &Agent{}
+	configured := make(map[string]bool, len(a.cfg.Frontmatter))
 	for _, f := range a.cfg.Frontmatter {
+		configured[f.Key] = true
 		raw, ok := values[f.Key]
 		if !ok {
+			if f.IR == "body" && f.Presence == "required" {
+				return nil, fmt.Errorf("%s agent requires string %s", a.ID(), f.Key)
+			}
 			continue
 		}
 		if err := decodeAgentTOMLField(ag, f.IR, raw); err != nil {
 			return nil, fmt.Errorf("%s: field %q: %w", path, f.Key, err)
 		}
+	}
+
+	// Any key this provider config does not map (execution settings such as
+	// sandbox_mode, nested tables like [mcp_servers], dotted keys) must never
+	// silently disappear: warn, and record it as an unmapped security field
+	// so migration refuses rather than dropping a restriction.
+	extra := make([]string, 0, len(values))
+	for k := range values {
+		if !configured[k] {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(extra)
+	for _, k := range extra {
+		fmt.Fprintf(os.Stderr, "agentport: %s: key %q is not supported by relay's TOML agent codec\n", path, k)
+		ag.UnmappedSecurityFields = append(ag.UnmappedSecurityFields, UnmappedSecurityField{Key: k, Raw: "unmapped execution setting"})
 	}
 
 	// No shipped format: toml config maps an on-disk "name" key today (the
@@ -83,6 +108,7 @@ func (a *agentConfigAdapter) projectTOML(ag *Agent) (map[string][]byte, []LossIt
 		if f.IR == "model" && !isZero {
 			mapped, l := modelLossForTarget(ag.Model, ag.Provenance.SourceProvider, a.ID())
 			val = mapped
+			isZero = mapped == ""
 			modelLoss = l
 		}
 		if isZero {
@@ -101,6 +127,9 @@ func (a *agentConfigAdapter) projectTOML(ag *Agent) (map[string][]byte, []LossIt
 	files := map[string][]byte{ag.Name + a.FileExt(): []byte(sb.String())}
 
 	loss := computeAgentLoss(ag, a.caps)
+	if (len(ag.Tools) > 0 || len(ag.DeniedTools) > 0) && !a.caps.Tools {
+		loss = append(loss, LossItem{Field: "Tools", Kind: LossDropped, Security: true, Note: "target cannot preserve this source tool restriction; migration refused"})
+	}
 	if modelLoss != nil {
 		loss = append(loss, *modelLoss)
 	}

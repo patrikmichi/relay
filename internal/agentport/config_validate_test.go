@@ -213,7 +213,7 @@ dirs:
   project: [{ path: ".x/skills", role: own }]
 frontmatter: [{ ir: not_a_real_field, key: name, type: string, presence: required }]
 `,
-			"unknown canonical IR field",
+			"unknown skill IR field",
 		},
 		{
 			"empty key",
@@ -337,7 +337,7 @@ load_hooks: [not-a-real-hook]
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := parseProviderConfig([]byte(c.yaml), hooks, codecs)
+			_, err := parseProviderConfig([]byte(c.yaml), hooks, codecs, KindSkill)
 			if err == nil {
 				t.Fatalf("expected an error, got nil")
 			}
@@ -360,7 +360,7 @@ dirs:
   project: [{ path: ".x/skills", role: own }]
 frontmatter: [{ ir: name, key: name, type: string, presence: required }]
 `)
-	if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames()); err != nil {
+	if _, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill); err != nil {
 		t.Fatalf("parseProviderConfig: expected admin absolute dir to be accepted, got: %v", err)
 	}
 }
@@ -379,7 +379,7 @@ frontmatter:
   - { ir: name, key: name, type: string, presence: required }
   - { ir: description, key: description, type: string, presence: required }
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}
@@ -409,7 +409,7 @@ frontmatter:
 
 // TestParseProviderConfig_LayoutDefaultsToDir confirms an omitted `layout`
 // defaults to "dir" — every existing provider config predates this field
-// and must see no behavior change.
+// and must be unaffected.
 func TestParseProviderConfig_LayoutDefaultsToDir(t *testing.T) {
 	raw := []byte(`
 id: x
@@ -418,7 +418,7 @@ dirs:
   project: [{ path: ".x/skills", role: own }]
 frontmatter: [{ ir: name, key: name, type: string, presence: required }]
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}
@@ -438,7 +438,7 @@ dirs:
   project: [{ path: ".x/agents", role: own }]
 frontmatter: [{ ir: name, key: name, type: string, presence: required }]
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}
@@ -465,7 +465,7 @@ frontmatter:
   - { ir: name, key: name, type: string, presence: optional }
   - { ir: description, key: description, type: string, presence: required }
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindSkill)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}

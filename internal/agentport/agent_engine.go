@@ -1,11 +1,21 @@
 package agentport
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
+
+// agentLockKey identifies the artifact an agent write mutates — see
+// skillLockKey (engine.go) for why this must be the same identity
+// Rollback/uninstall use.
+func agentLockKey(provider ProviderID, scope Scope, name, projectRoot string) string {
+	return fmt.Sprintf("agent:%s:%s:%s:%s", provider, scope, name, projectRoot)
+}
 
 // AgentPlan is the Agent-IR analogue of Plan (engine.go): the preview of an
 // agent migration — which file would be written to the target provider, the
@@ -25,7 +35,7 @@ type AgentPlan struct {
 	TargetPaths string
 }
 
-// HasDropped reports whether this AgentPlan's loss report contains any
+// HasDropped reports whether the plan's loss report contains any
 // LossDropped item (used by `--strict`) — the AgentPlan analogue of
 // Plan.HasDropped.
 func (p *AgentPlan) HasDropped() bool {
@@ -104,23 +114,51 @@ func MigrateAgent(src *Agent, target AgentAdapter, scope Scope) (*AgentPlan, err
 }
 
 // WriteAgent materializes an AgentPlan's file under plan.TargetPaths and
-// records a manifest ledger entry with Kind: KindAgent — the Agent-IR
-// analogue of Write.
+// records a manifest ledger entry with Kind: KindAgent, through the same
+// durable transaction engine Write uses (see its doc comment for the full
+// state-machine rationale) — the Agent-IR analogue of Write. Staging the
+// individual "<name>.md" file (never the shared agents directory as a
+// whole) is what keeps this surgical: a crash mid-apply only ever leaves
+// one agent's file needing recovery, never the whole provider directory.
 func WriteAgent(plan *AgentPlan) error {
-	if plan == nil {
-		return fmt.Errorf("nil plan")
+	if err := PreflightWriteAgent(plan); err != nil {
+		return err
 	}
+
+	projectRoot := ""
+	if plan.Scope == ScopeProject {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve project root: %w", err)
+		}
+		projectRoot = cwd
+	}
+	lockKey := agentLockKey(plan.Target.ID(), plan.Scope, plan.Agent.Name, projectRoot)
+
+	ctx, cancel := context.WithTimeout(context.Background(), txnLockAcquireTimeout)
+	defer cancel()
+	tx, err := txn.Begin(ctx, fmt.Sprintf("agent write %s -> %s", plan.Agent.Name, plan.Target.ID()), []string{lockKey})
+	if err != nil {
+		return err
+	}
+
+	if err := PreflightWriteAgent(plan); err != nil {
+		return tx.Discard(err)
+	}
+
 	if err := os.MkdirAll(plan.TargetPaths, 0o755); err != nil {
-		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
+		return tx.Discard(fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err))
 	}
 	for rel, data := range plan.Files {
-		dest := filepath.Join(plan.TargetPaths, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return fmt.Errorf("create dir for %s: %w", dest, err)
+		if err := tx.Stage(plan.TargetPaths, rel, data, 0o644); err != nil {
+			return tx.Discard(err)
 		}
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", dest, err)
-		}
+	}
+	if err := tx.Persist(); err != nil {
+		return tx.Discard(err)
+	}
+	if err := tx.Apply(verifyPathHasNoSymlinks); err != nil {
+		return tx.Discard(err)
 	}
 
 	entry := ManifestEntry{
@@ -132,6 +170,8 @@ func WriteAgent(plan *AgentPlan) error {
 		TargetPaths:    HashFiles(plan.Files),
 		Timestamp:      time.Now().UTC(),
 		Provenance:     plan.Agent.Provenance,
+		ProjectRoot:    projectRoot,
+		TransactionID:  tx.ID(),
 	}
-	return RecordEntry(entry)
+	return tx.Commit(func() error { return RecordEntry(entry) })
 }

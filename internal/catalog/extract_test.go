@@ -200,7 +200,7 @@ func TestExtractTarGz_RegularFileOverExistingDirErrors(t *testing.T) {
 
 // buildTruncatedTarGz writes a single tar entry whose HEADER declares
 // declaredSize bytes but whose ACTUAL body is shorter (len(actualBody) <
-// declaredSize) — simulating a truncated/malformed archive (m1 regression).
+// declaredSize) — simulating a truncated/malformed archive.
 // tar.Writer only detects a short write at the NEXT WriteHeader/Close call,
 // so by deliberately never calling either, the raw buffer we gzip contains
 // exactly: a complete, valid header block + a short, unpadded body — which

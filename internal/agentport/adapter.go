@@ -1,9 +1,12 @@
 package agentport
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // LossKind categorizes how a target provider handled one IR field during
@@ -14,7 +17,7 @@ const (
 	// LossPreserved means the field round-trips exactly.
 	LossPreserved LossKind = "preserved"
 	// LossDegraded means the field is represented, but not exactly (e.g. a
-	// synthesized approximate mapping).
+	// best-effort synthesized mapping).
 	LossDegraded LossKind = "degraded"
 	// LossDropped means the target format has no equivalent for the field.
 	LossDropped LossKind = "dropped"
@@ -29,6 +32,25 @@ type LossItem struct {
 	Field string
 	Kind  LossKind
 	Note  string
+	// Security marks a LossItem whose field carries permission/restriction
+	// semantics (tool allow/deny lists, permission modes, lifecycle hooks,
+	// model constraints). Unlike ordinary fidelity loss, this
+	// is never waved through by --strict, --dry-run, or an interactive
+	// prompt: see HasSecurityLoss.
+	Security bool
+}
+
+// HasSecurityLoss reports whether loss contains any Security-flagged item.
+// Callers must check this before any --strict/--dry-run/interactive-
+// confirmation handling and treat true as an unconditional refusal —
+// security-relevant restrictions have no generic bypass.
+func HasSecurityLoss(loss []LossItem) bool {
+	for _, l := range loss {
+		if l.Security {
+			return true
+		}
+	}
+	return false
 }
 
 // CapSet declares which typed-optional/extension IR fields a provider's
@@ -105,7 +127,7 @@ func dirExists(path string) bool {
 // computeLoss inspects a Skill for populated fields the target adapter's
 // CapSet cannot represent, returning a LossDropped LossItem for each.
 // Adapters call this from Project() and may layer their own additional
-// LossItems (e.g. LossDegraded for a synthesized approximate mapping) on
+// LossItems (e.g. LossDegraded for a best-effort synthesized mapping) on
 // top of what this returns.
 func computeLoss(s *Skill, caps CapSet) []LossItem {
 	var loss []LossItem
@@ -113,7 +135,12 @@ func computeLoss(s *Skill, caps CapSet) []LossItem {
 		loss = append(loss, LossItem{Field: field, Kind: LossDropped, Note: note})
 	}
 	if len(s.AllowedTools) > 0 && !caps.AllowedTools {
-		add("AllowedTools", "target provider has no allowed-tools equivalent")
+		loss = append(loss, LossItem{
+			Field:    "AllowedTools",
+			Kind:     LossDropped,
+			Note:     "target provider has no allowed-tools equivalent — a tool restriction cannot silently disappear",
+			Security: true,
+		})
 	}
 	if len(s.Paths) > 0 && !caps.Paths {
 		add("Paths", "target provider has no path-glob activation equivalent")
@@ -139,6 +166,13 @@ func computeLoss(s *Skill, caps CapSet) []LossItem {
 	if len(s.Metadata) > 0 && !caps.Metadata {
 		add("Metadata", "target provider has no metadata map equivalent")
 	}
+	for _, ex := range s.ExcludedResources {
+		loss = append(loss, LossItem{
+			Field: "Resources",
+			Kind:  LossDropped,
+			Note:  "excluded resource " + ex.Path + ": " + ex.Reason,
+		})
+	}
 	return loss
 }
 
@@ -151,17 +185,55 @@ func computeLoss(s *Skill, caps CapSet) []LossItem {
 // and (Claude Code only) legacy flat `<dir>/<name>.md` command files are
 // recognized.
 func ResolveSkillPath(a Adapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
+	recursive := adapterDiscoversRecursively(a, scope)
 	if scope == ScopeProject {
-		return resolveProjectSkillPath(a.ProjectDirs(), name)
+		path, err := resolveProjectSkillPath(a.ProjectDirs(), recursive, name)
+		if err != nil {
+			return "", fmt.Errorf("skill %q not found for provider %s (project scope): %w", name, a.ID(), err)
+		}
+		return path, nil
 	}
-	path, ok := findSkillInDirs(a.UserDirs(), name)
-	if !ok {
-		return "", fmt.Errorf("skill %q not found for provider %s (user scope)", name, a.ID())
+	path, err := findSkillByName(a.UserDirs(), recursive, name)
+	if err != nil {
+		return "", fmt.Errorf("skill %q not found for provider %s (user scope): %w", name, a.ID(), err)
 	}
 	return path, nil
+}
+
+// nameValidator is an additive capability interface (mirrors
+// recursiveDiscoverer, list.go) letting the name-based resolvers honor a
+// provider's configured custom name_regex instead of always validating
+// against the package-default nameRegex: a provider with a custom
+// name_regex has Load/Project already accept names the public
+// ResolveSkillPath/ResolveAgentPath would otherwise wrongly reject (or,
+// for a looser custom regex, wrongly accept) by checking the wrong rule.
+type nameValidator interface {
+	validateName(name string) error
+}
+
+// validateNameFor validates name against a's own configured name_regex when
+// a implements nameValidator, falling back to the package-default
+// ValidateName otherwise (every shipped provider today, none of which set
+// a custom name_regex, so their behavior is unchanged).
+func validateNameFor(a interface{}, name string) error {
+	if v, ok := a.(nameValidator); ok {
+		return v.validateName(name)
+	}
+	return ValidateName(name)
+}
+
+// adapterDiscoversRecursively reports whether a's discovery for scope
+// should walk the full subtree (list.go's recursiveDiscoverer) — shared by
+// List and every name-based resolver so "what list shows" and "what a
+// subsequent lookup by that name finds" can never drift apart.
+func adapterDiscoversRecursively(a interface{}, scope Scope) bool {
+	if rd, ok := a.(recursiveDiscoverer); ok {
+		return rd.DiscoversRecursively(scope)
+	}
+	return false
 }
 
 // ResolveOwnSkillPath finds the on-disk location of a named skill within
@@ -178,13 +250,14 @@ func ResolveSkillPath(a Adapter, scope Scope, name string) (string, error) {
 // delete would let e.g. `relay skill uninstall foo --from cursor` remove a
 // Claude-owned skill it merely reads for compatibility.
 func ResolveOwnSkillPath(a Adapter, scope Scope, name string) (string, error) {
-	if err := ValidateName(name); err != nil {
+	if err := validateNameFor(a, name); err != nil {
 		return "", err
 	}
+	recursive := adapterDiscoversRecursively(a, scope)
 
 	if scope == ScopeProject {
 		dirs := ownDirs(a.ProjectDirs(), a.OwnProjectDirCount())
-		path, err := resolveProjectSkillPath(dirs, name)
+		path, err := resolveProjectSkillPath(dirs, recursive, name)
 		if err != nil {
 			return "", fmt.Errorf("skill %q not found for provider %s (project scope, own dirs only): %w", name, a.ID(), err)
 		}
@@ -192,9 +265,9 @@ func ResolveOwnSkillPath(a Adapter, scope Scope, name string) (string, error) {
 	}
 
 	dirs := ownDirs(a.UserDirs(), a.OwnUserDirCount())
-	path, ok := findSkillInDirs(dirs, name)
-	if !ok {
-		return "", fmt.Errorf("skill %q not found for provider %s (user scope, own dirs only)", name, a.ID())
+	path, err := findSkillByName(dirs, recursive, name)
+	if err != nil {
+		return "", fmt.Errorf("skill %q not found for provider %s (user scope, own dirs only): %w", name, a.ID(), err)
 	}
 	return path, nil
 }
@@ -212,23 +285,51 @@ func ownDirs(dirs []string, n int) []string {
 	return dirs[:n]
 }
 
-// findSkillInDirs checks each candidate base directory (in order) for
-// <dir>/<name>/SKILL.md, then <dir>/<name>.md, returning the first match.
-func findSkillInDirs(dirs []string, name string) (string, bool) {
+// findSkillByName searches each candidate base directory (in order) for
+// name, using the SAME discovery walk List uses for the same adapter+scope
+// (discoverSkillHits, list.go) — recursively when recursive is true — so a
+// resolver's notion of "found" can never drift from what `skill list`
+// already showed (a nested Cursor skill was listable but unusable by
+// name because this function used to only check the non-recursive
+// <dir>/<name>/SKILL.md and <dir>/<name>.md shapes). A directory whose scan
+// finds more than one entry matching name is an explicit, deterministic
+// ambiguity error rather than a silent first-match pick.
+func findSkillByName(dirs []string, recursive bool, name string) (string, error) {
 	for _, d := range dirs {
-		skillDir := filepath.Join(d, name)
-		if fi, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil && !fi.IsDir() {
-			return skillDir, true
+		if !dirExists(d) {
+			continue
 		}
-		flatFile := filepath.Join(d, name+".md")
-		if fi, err := os.Stat(flatFile); err == nil && !fi.IsDir() {
-			return flatFile, true
+		hits, err := discoverSkillHits(d, recursive)
+		if err != nil {
+			return "", fmt.Errorf("scan %s: %w", d, err)
+		}
+		var matches []string
+		for _, h := range hits {
+			if h.Name == name {
+				matches = append(matches, h.Path)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			continue
+		case 1:
+			return matches[0], nil
+		default:
+			sort.Strings(matches)
+			return "", fmt.Errorf("ambiguous: %d entries named %q under %s: %s", len(matches), name, d, strings.Join(matches, ", "))
 		}
 	}
-	return "", false
+	return "", errNotFoundInDirs
 }
 
-func resolveProjectSkillPath(relDirs []string, name string) (string, error) {
+// errNotFoundInDirs is findSkillByName/findAgentByName's "checked every
+// candidate, nothing matched" sentinel — distinct from an ambiguity or scan
+// error, so resolveProjectSkillPath/resolveProjectAgentPath know to keep
+// walking up to the next parent directory rather than propagating a real
+// error immediately.
+var errNotFoundInDirs = errors.New("not found in the searched directories")
+
+func resolveProjectSkillPath(relDirs []string, recursive bool, name string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("get working directory: %w", err)
@@ -239,8 +340,10 @@ func resolveProjectSkillPath(relDirs []string, name string) (string, error) {
 		for i, rel := range relDirs {
 			bases[i] = filepath.Join(dir, rel)
 		}
-		if path, ok := findSkillInDirs(bases, name); ok {
+		if path, err := findSkillByName(bases, recursive, name); err == nil {
 			return path, nil
+		} else if !errors.Is(err, errNotFoundInDirs) {
+			return "", err
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -248,5 +351,5 @@ func resolveProjectSkillPath(relDirs []string, name string) (string, error) {
 		}
 		dir = parent
 	}
-	return "", fmt.Errorf("skill %q not found in project dirs (searched from %s upward)", name, cwd)
+	return "", fmt.Errorf("not found in project dirs (searched from %s upward): %w", cwd, errNotFoundInDirs)
 }

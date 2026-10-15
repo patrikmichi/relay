@@ -20,7 +20,7 @@ import (
 // ---- httptest adapter ----
 
 // testDoer wraps an *httptest.Server and satisfies syncDoer.
-// N8: records ALL request paths so tests can assert routing (e.g. dry-run
+// Records ALL request paths so tests can assert routing (e.g. dry-run
 // must never issue a /plugin/ fetch).
 type testDoer struct {
 	srv   *httptest.Server
@@ -30,14 +30,6 @@ type testDoer struct {
 func (td *testDoer) Get(path string) (*http.Response, error) {
 	td.paths = append(td.paths, path)
 	return http.Get(td.srv.URL + path)
-}
-
-// lastPath returns the most recently requested path (for backward compat).
-func (td *testDoer) lastPath() string {
-	if len(td.paths) == 0 {
-		return ""
-	}
-	return td.paths[len(td.paths)-1]
 }
 
 // ---- fixtures ----
@@ -117,6 +109,7 @@ func buildMockServer(t *testing.T, manifestOverride interface{}, statusOverrides
 
 // TestRunSync_HappyPath verifies that a successful sync creates the expected files.
 func TestRunSync_HappyPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
 	srv := buildMockServer(t, nil, nil)
 	defer srv.Close()
 
@@ -185,7 +178,7 @@ func TestRunSync_DryRun(t *testing.T) {
 		t.Errorf("dry-run: managed-settings.fragment.json should not exist")
 	}
 
-	// N8: verify no /plugin/ fetch was issued during dry-run.
+	// Verify no /plugin/ fetch was issued during dry-run.
 	for _, p := range doer.paths {
 		if strings.HasPrefix(p, "/api/marketplace/plugin/") {
 			t.Errorf("dry-run must not fetch plugins, but got request to %s", p)
@@ -195,6 +188,7 @@ func TestRunSync_DryRun(t *testing.T) {
 
 // TestRunSync_Revocation verifies that a plugin dir absent from the new manifest is removed.
 func TestRunSync_Revocation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // plugin writes go through the transaction engine, which locks/journals under HOME
 	srv := buildMockServer(t, nil, nil)
 	defer srv.Close()
 
@@ -342,8 +336,8 @@ func TestResolveSyncDoer_NoToken(t *testing.T) {
 	}
 }
 
-// TestSync_ToFlag_ErrorsNamingPortableAlternative is relay-cli-completion
-// plan D7's unit test: `relay sync --to <provider>` must error naming the
+// TestSync_ToFlag_ErrorsNamingPortableAlternative: `relay sync --to
+// <provider>` must error naming the
 // portable alternative (skill install / agent install --to), and must do
 // so WITHOUT ever resolving a gateway doer — no HOME/GATEWAY_API_KEY is set
 // up for this test, so a doer-resolution attempt would fail with a
@@ -437,9 +431,10 @@ func TestRunSync_EmptyManifest(t *testing.T) {
 	assertFileExists(t, filepath.Join(dir, "managed-settings.fragment.json"))
 }
 
-// ---- Security tests (T1–T4) ----
+// ---- Security tests ----
 
-// T1: Manifest with a path-traversal plugin source must be rejected and must write NO files.
+// Manifest with a path-traversal plugin source must be rejected and must
+// write NO files.
 func TestRunSync_PathTraversal_PluginSource(t *testing.T) {
 	traversalCases := []struct {
 		name   string
@@ -471,8 +466,8 @@ func TestRunSync_PathTraversal_PluginSource(t *testing.T) {
 				t.Fatalf("source %q: expected rejection error, got nil", tc.source)
 			}
 
-			// No files should have been written (marketplace.json would be written
-			// before plugins are processed — verify the *plugins* dir is absent).
+			// The unsafe source must be rejected before any plugin directory
+			// is created.
 			pluginsDir := filepath.Join(dir, "plugins")
 			if _, statErr := os.Stat(pluginsDir); !os.IsNotExist(statErr) {
 				t.Errorf("source %q: plugins dir must not exist after rejection", tc.source)
@@ -481,7 +476,7 @@ func TestRunSync_PathTraversal_PluginSource(t *testing.T) {
 	}
 }
 
-// T2: Manifest with a path-unsafe Name must be rejected before any file is written.
+// Manifest with a path-unsafe Name must be rejected before any file is written.
 func TestRunSync_PathTraversal_ManifestName(t *testing.T) {
 	nameCases := []struct {
 		name   string
@@ -520,7 +515,7 @@ func TestRunSync_PathTraversal_ManifestName(t *testing.T) {
 	}
 }
 
-// T3: Plugin endpoint returns 401 → error mentions `relay login`.
+// Plugin endpoint returns 401 → error mentions `relay login`.
 func TestRunSync_401_Plugin(t *testing.T) {
 	// We need a manifest with one plugin and the /plugin/ endpoint to return 401.
 	// url.PathEscape("searcher-001") == "searcher-001" and "1.2.3" == "1.2.3",
@@ -543,7 +538,7 @@ func TestRunSync_401_Plugin(t *testing.T) {
 	}
 }
 
-// T4: safePluginID rejects empty or path-unsafe IDs (unit-level).
+// safePluginID rejects empty or path-unsafe IDs (unit-level).
 func TestSafePluginID(t *testing.T) {
 	cases := []struct {
 		source  string

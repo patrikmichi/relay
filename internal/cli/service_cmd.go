@@ -3,7 +3,9 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +17,8 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-// DiscoveryTool mirrors one tool entry returned by GET /api/integrations
-// (gateway app/api/integrations/route.ts's DiscoveryTool). InputSchema is
+// DiscoveryTool mirrors one entry of a service's `tools` array in the
+// GET /api/integrations response. InputSchema is
 // carried through for future use (e.g. flag validation) but not consumed yet.
 type DiscoveryTool struct {
 	Name        string                 `json:"name"`
@@ -24,8 +26,7 @@ type DiscoveryTool struct {
 	InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
 }
 
-// DiscoveryService mirrors one service entry returned by GET /api/integrations
-// (gateway app/api/integrations/route.ts's DiscoveryService).
+// DiscoveryService mirrors one service entry returned by GET /api/integrations.
 type DiscoveryService struct {
 	ID         string          `json:"id"`
 	Name       string          `json:"name"`
@@ -43,29 +44,19 @@ type IntegrationsResponse struct {
 	Services     []DiscoveryService `json:"services"`
 }
 
-// fetchIntegrations calls the always-on GET /api/integrations discovery
-// endpoint and returns the full service+tool catalog (with descriptions and
-// input schemas) for the calling principal.
-//
-// This REPLACES the previous discovery path, which called `gateway.catalog`
-// via the aggregate `POST /api/mcp` JSON-RPC endpoint. That endpoint 503s
-// whenever AGGREGATE_MCP_ENABLED != 'true' (default OFF — see gateway
-// app/api/mcp/route.ts), which silently broke `relay services`,
-// `relay help-tools`, and dynamic per-service sub-command registration on
-// any gateway that hadn't explicitly opted into the (intentional) aggregate
-// kill-switch. /api/integrations is a dedicated, dispatch-free, always-on
-// discovery endpoint (auth: verifyMcpAuth, same as every MCP surface) that
-// was added specifically to serve this need — see gateway
-// app/api/integrations/route.ts's doc comment.
-//
-// Returns (nil, nil) — not an error — when the caller is unauthenticated
-// (401, i.e. c.Do's transparent refresh-and-retry ALSO failed), matching the
-// previous fetchCatalog behavior: callers that want a hard auth failure
-// (e.g. `relay services`) perform their own request instead of going
-// through this helper so they can print the re-authenticate prompt and
-// exit(1).
-func fetchIntegrations(c *client.Client) (*IntegrationsResponse, error) {
-	resp, err := c.Get("/api/integrations")
+// fetchIntegrations calls the always-on GET /api/integrations discovery endpoint and returns the full service+tool catalog (with descriptions and input schemas) for the calling principal.
+func fetchIntegrations(c *client.Client, parents ...context.Context) (_ *IntegrationsResponse, err error) {
+	parent := context.Background()
+	if len(parents) > 0 && parents[0] != nil {
+		parent = parents[0]
+	}
+	ctx, cancel, err := requestContext(parent, controlRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	defer func() { err = timeoutCause(ctx, err) }()
+	resp, err := c.GetContext(ctx, "/api/integrations")
 	if err != nil {
 		return nil, fmt.Errorf("GET /api/integrations: %w", err)
 	}
@@ -90,23 +81,109 @@ func fetchIntegrations(c *client.Client) (*IntegrationsResponse, error) {
 	return &out, nil
 }
 
-// callTool is the shared execution path for both `relay <service> <tool>
-// [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and
-// `relay call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
-//
-// EXECUTION REPOINT: previously POSTed to the REST `/api/<service>/call`
-// endpoint with a flat `{tool, arguments}` body. Now POSTs to the canonical
-// per-service MCP JSON-RPC endpoint (`/api/<service>/mcp`, method
-// "tools/call") with `{name, arguments}` params, so CLI execution goes
-// through the SAME transport as any other MCP client — matching
-// `relay help-tools` / discovery, which already used the per-service MCP
-// surface for tools/list. Governance (rate-limit, allow/block policy,
-// prompt-injection, schema validation, egress/SSRF, audit, redaction —
-// lib/dispatch/run-tool.ts) is byte-for-byte identical either way; only the
-// transport envelope changes (JSON-RPC result/error vs. the REST
-// {ok, result|error} body `/call` used). `/call` itself is unchanged and
-// still works (kept for scripts/back-compat) — this only repoints the CLI.
-func callTool(c *client.Client, service, tool string, rawArgs []string) error {
+// maxToolCallResponseBytes bounds a single tools/call response body — same
+// posture as readLimitedResponse's other caller (skill search): an
+// unbounded read here would let a malicious/misbehaving gateway hang or OOM
+// the CLI process with an oversized body.
+const maxToolCallResponseBytes = 4 << 20 // 4 MiB
+
+// mcpRPCError mirrors the JSON-RPC 2.0 top-level error object.
+type mcpRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type mcpToolResult struct {
+	IsError bool              `json:"isError"`
+	Content []json.RawMessage `json:"content"`
+}
+
+// mcpEnvelope mirrors the full JSON-RPC 2.0 response envelope for any MCP
+// call this CLI makes (per-service tools/call, aggregate tools/call for
+// catalog search, ...). Result/Error are mutually exclusive per the JSON-RPC
+// spec; decodeMCPEnvelope enforces that instead of trusting the caller.
+type mcpEnvelope struct {
+	Result *mcpToolResult `json:"result"`
+	Error  *mcpRPCError   `json:"error"`
+}
+
+func decodeMCPEnvelope(body []byte) (*mcpEnvelope, error) {
+	var env mcpEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("response is not valid JSON-RPC: %w", err)
+	}
+	if env.Result == nil && env.Error == nil {
+		return nil, fmt.Errorf("response has neither a JSON-RPC result nor error field: %s", truncateForError(body))
+	}
+	if env.Result != nil && env.Error != nil {
+		return nil, fmt.Errorf("response carries both a result and an error, which JSON-RPC forbids: %s", truncateForError(body))
+	}
+	return &env, nil
+}
+
+// truncateForError bounds how much of a response body an error message
+// embeds, so a huge or garbage body can't blow up a single log/error line.
+func truncateForError(body []byte) string {
+	const max = 200
+	if len(body) > max {
+		return string(body[:max]) + "…"
+	}
+	return string(body)
+}
+
+// contentBlockText returns a content block's "text" field, and whether the
+// block's "type" is "text" — the shape every current caller in this package
+// expects its own tool's single-block replies to be.
+func contentBlockText(raw json.RawMessage) (string, bool) {
+	var typed struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &typed); err != nil || typed.Type != "text" {
+		return "", false
+	}
+	return typed.Text, true
+}
+
+func renderContentBlock(raw json.RawMessage) string {
+	if text, ok := contentBlockText(raw); ok {
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+			return text
+		}
+		pretty, err := json.MarshalIndent(parsed, "", "  ")
+		if err != nil {
+			return text
+		}
+		return string(pretty)
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, raw, "", "  "); err != nil {
+		return string(raw)
+	}
+	return pretty.String()
+}
+
+// renderContentBlocks renders every block in order, newline-joined.
+func renderContentBlocks(blocks []json.RawMessage) string {
+	parts := make([]string, len(blocks))
+	for i, b := range blocks {
+		parts[i] = renderContentBlock(b)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// callTool is the shared execution path for both `relay <service> <tool> [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and `relay call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
+func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut bool) error {
+	return callToolWithContext(context.Background(), c, service, tool, rawArgs, jsonOut, os.Stdout)
+}
+func callToolWithContext(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut bool, out io.Writer) (err error) {
+	ctx, cancel, err := requestContext(parent, toolCallRequest)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	defer func() { err = timeoutCause(ctx, err) }()
 	arguments := make(map[string]interface{})
 	for _, raw := range rawArgs {
 		k, v, ok := strings.Cut(raw, "=")
@@ -136,96 +213,67 @@ func callTool(c *client.Client, service, tool string, rawArgs []string) error {
 	}
 
 	path := "/api/" + service + "/mcp"
-	resp, err := c.Post(path, "application/json", bytes.NewReader(body))
+	resp, err := c.PostContext(ctx, path, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readLimitedResponse(resp.Body, maxToolCallResponseBytes)
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-		os.Exit(1)
+		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 	}
 
-	// JSON-RPC envelope: {jsonrpc, id, result: {content:[{type,text}]}} on
-	// success, {jsonrpc, id, error: {code, message}} on failure. The gateway
-	// mostly responds 200 even for tool-level errors (JSON-RPC convention),
-	// but returns real HTTP status codes for rate-limit (429, with a
-	// Retry-After header) and a few policy rejections (400/403) — see
-	// gateway app/api/[service]/mcp/route.ts's jsonRpcError helper.
-	var rpcResp struct {
-		Result *struct {
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"result"`
-		Error *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+	if jsonOut {
+		fmt.Fprintln(out, string(respBody))
 	}
 
-	if jsonErr := json.Unmarshal(respBody, &rpcResp); jsonErr != nil {
-		// Not a JSON-RPC body at all (unexpected) — surface raw output,
-		// still respecting the HTTP status for the error/success split.
+	env, envErr := decodeMCPEnvelope(respBody)
+	if envErr != nil {
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
+			return fmt.Errorf("call failed (%d): %w", resp.StatusCode, envErr)
 		}
-		fmt.Println(string(respBody))
-		return nil
+		return envErr
 	}
 
-	if rpcResp.Error != nil {
+	if env.Error != nil {
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-			return fmt.Errorf("call failed (%d, code %d): %s — retry after %ss", resp.StatusCode, rpcResp.Error.Code, rpcResp.Error.Message, retryAfter)
+			return fmt.Errorf("call failed (%d, code %d): %s — retry after %ss", resp.StatusCode, env.Error.Code, env.Error.Message, retryAfter)
 		}
-		return fmt.Errorf("call failed (%d, code %d): %s", resp.StatusCode, rpcResp.Error.Code, rpcResp.Error.Message)
+		return fmt.Errorf("call failed (%d, code %d): %s", resp.StatusCode, env.Error.Code, env.Error.Message)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 
-	if rpcResp.Result == nil || len(rpcResp.Result.Content) == 0 {
-		fmt.Println("{}")
+	if env.Result.IsError {
+		return fmt.Errorf("tool reported failure: %s", renderContentBlocks(env.Result.Content))
+	}
+
+	if jsonOut {
+		return nil // raw envelope already printed above
+	}
+
+	if len(env.Result.Content) == 0 {
+		fmt.Fprintln(out, "{}")
 		return nil
 	}
 
-	// toMcpResult (gateway lib/mcp.ts) JSON-encodes non-string outputs and
-	// passes plain strings through untouched — mirror that here.
-	text := rpcResp.Result.Content[0].Text
-	var result interface{}
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		fmt.Println(text)
-		return nil
+	for _, block := range env.Result.Content {
+		fmt.Fprintln(out, renderContentBlock(block))
 	}
-	pretty, _ := json.MarshalIndent(result, "", "  ")
-	fmt.Println(string(pretty))
 	return nil
 }
 
 // buildToolCmd creates a leaf cobra command for a single tool.
-// The command delegates to callTool.
-//
-// gatewayURL here is already the resolved URL BuildServiceCommands used to
-// discover this tool in the first place (it only runs when !cli.Offline(),
-// see cmd/relay/main.go's PersistentPreRunE) — but RunE re-resolves through
-// resolveGatewayURLOrFailClosed anyway rather than closing over gatewayURL
-// directly, so a dynamic tool command built during an earlier (online)
-// invocation can never dial the gateway if --offline is passed to a later
-// invocation of the same already-registered command. Cobra commands aren't
-// rebuilt per-invocation within a single process, but resolveClient
-// otherwise has no fail-closed check of its own — every gateway-dialing
-// RunE in this package must resolve through resolveGatewayURLOrFailClosed
-// so --offline is enforced uniformly, not just at discovery time.
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
 	var rawArgs []string
+	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:                toolName,
 		Short:              toolDesc,
@@ -235,31 +283,57 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			if err != nil {
 				return err
 			}
-			c := resolveClient(gURL)
-			return callTool(c, serviceName, toolName, rawArgs)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			return callToolWithContext(cmd.Context(), c, serviceName, toolName, rawArgs, jsonOut, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable, JSON values supported)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	return cmd
 }
 
-// BuildServiceCommands fetches the gateway's integrations catalog and
-// registers one cobra command per accessible service, with one sub-command
-// per tool (tool metadata — name + description — comes embedded in the same
-// discovery response, so no additional per-service round trip is needed).
-//
-// Call this from PersistentPreRunE on the root command so it only runs when
-// a service command is about to be invoked. If the user is not logged in or
-// the gateway is unreachable, this is a no-op (static help still works).
-func BuildServiceCommands(root *cobra.Command, gatewayURL string) {
+// reservedCommandNames are command names Cobra registers lazily (only once
+// Find()/Execute() runs) rather than up front via AddCommand — so they
+// can't be caught by walking root.Commands() at discovery time the way an
+// explicitly-registered static command can. A discovered service must never
+// be allowed to claim one of these either.
+var reservedCommandNames = map[string]bool{"help": true, "completion": true}
+
+// commandNameCollides reports whether name already names (or aliases) a
+// top-level command on root, or is one of Cobra's own reserved names. The
+// live command tree is the single source of truth here — not a
+// hand-maintained name list, which silently drifts (cmd/relay/main.go's
+// staticCommandNames omitted "recover" and "history" for exactly this
+// reason until this fix).
+func commandNameCollides(root *cobra.Command, name string) bool {
+	if reservedCommandNames[name] {
+		return true
+	}
+	for _, existing := range root.Commands() {
+		if existing.Name() == name {
+			return true
+		}
+		for _, alias := range existing.Aliases {
+			if alias == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func BuildServiceCommands(root *cobra.Command, gatewayURL string) error {
 	c, err := client.Resolve(gatewayURL)
 	if err != nil {
-		return // not logged in — skip dynamic registration
+		return nil // not logged in — skip dynamic registration
 	}
 
-	info, err := fetchIntegrations(c)
+	info, err := fetchIntegrations(c, root.Context())
 	if err != nil || info == nil || len(info.Services) == 0 {
-		return // unreachable/unauthenticated — degrade gracefully
+		return nil // unreachable/unauthenticated — degrade gracefully
 	}
 
 	for _, svc := range info.Services {
@@ -267,6 +341,9 @@ func BuildServiceCommands(root *cobra.Command, gatewayURL string) {
 			continue
 		}
 		serviceID := svc.ID
+		if commandNameCollides(root, serviceID) {
+			return fmt.Errorf("discovered service %q collides with an existing relay command name — refusing to register it; rename the service or contact your gateway operator", serviceID)
+		}
 
 		svcCmd := &cobra.Command{
 			Use:   serviceID,
@@ -282,4 +359,5 @@ func BuildServiceCommands(root *cobra.Command, gatewayURL string) {
 		}
 		root.AddCommand(svcCmd)
 	}
+	return nil
 }

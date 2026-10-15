@@ -1,28 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
 
 // ServicesCmd returns the `relay services` cobra command.
-// Lists available services and their tool counts from GET /api/integrations.
-//
-// Repointed off GET /api/mcp (aggregate MCP endpoint), which 503s whenever
-// AGGREGATE_MCP_ENABLED != 'true' (default OFF — see gateway
-// app/api/mcp/route.ts, an intentional kill-switch). /api/integrations is a
-// dedicated, always-on, read-only discovery endpoint (auth: verifyMcpAuth,
-// same as every MCP surface) — see gateway app/api/integrations/route.ts.
-//
-// Reuses the shared fetchIntegrations helper (service_cmd.go) instead of
-// building its own HTTP request/decode logic, so there is a single client
-// for GET /api/integrations to maintain. fetchIntegrations returns
-// (nil, nil) specifically (and only) on a 401 — every other failure mode
-// returns a non-nil error — so `info == nil` here is an unambiguous signal
-// to print the "re-authenticate" prompt and exit(1), matching the previous
-// inline behavior.
 func ServicesCmd() *cobra.Command {
 	var gatewayURL string
 
@@ -36,29 +21,31 @@ func ServicesCmd() *cobra.Command {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
-			info, err := fetchIntegrations(c)
+			info, err := fetchIntegrations(c, cmd.Context())
 			if err != nil {
 				return fmt.Errorf("services failed: %w", err)
 			}
 			if info == nil {
-				fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-				os.Exit(1)
+				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
 			}
 
-			fmt.Printf("Services (%d tools total):\n", info.ToolCount)
+			fmt.Fprintf(cmd.OutOrStdout(), "Services (%d tools total):\n", info.ToolCount)
 			for _, svc := range info.Services {
 				marker := ""
 				if !svc.Accessible {
 					marker = "  (no access)"
 				}
-				fmt.Printf("  %-20s %3d tools%s\n", svc.ID, svc.ToolCount, marker)
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-20s %3d tools%s\n", svc.ID, svc.ToolCount, marker)
 			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	return cmd
 }

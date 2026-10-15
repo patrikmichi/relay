@@ -11,50 +11,25 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-// AgentInstallCmd returns the `relay agent install <catalog-id>` cobra
-// command — the Agent-IR analogue of SkillInstallCmd. Unlike skill install,
-// there is no local-path source: an agent install ALWAYS resolves
-// <catalog-id> against the gateway catalog (catalog.FetchAgent, targeting
-// the generalized /api/catalog/resources/<id>/download endpoint added by
-// gateway D1/D2), then projects the result into one or more --to providers
-// via the same agentport.MigrateAgent/WriteAgent engine `relay agent
-// migrate` uses — so a Kind: "agent" manifest entry is recorded per target
-// and `relay agent rollback` works unmodified.
-//
-// If --to is omitted, installs to every agent provider detected as
-// installed on this machine.
+// AgentInstallCmd installs a local Claude agent file or a governed catalog bundle.
 func AgentInstallCmd() *cobra.Command {
 	var (
 		toFlags    []string
 		scopeFlag  string
 		dryRun     bool
 		strict     bool
+		acceptLoss bool
 		version    string
 		channel    string
 		gatewayURL string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "install <catalog-id>",
-		Short: "Install an agent from the gateway catalog",
-		Long: `Fetch an agent definition from the gateway catalog by resource id (res_…)
-or slug, and project it into one or more --to agent providers, printing a
-fidelity-loss report for each. Unless --dry-run, files are written and a
-Kind: "agent" manifest entry is recorded per target — the same engine as
-'relay agent migrate', so 'relay agent rollback' can undo it.
-
-Requires a reachable, authenticated gateway (GATEWAY_URL/GATEWAY_API_KEY env
-vars, or a prior 'relay login') and fails closed — no partial writes — on:
-no gateway configured / --offline, a content-hash mismatch, a missing/failed
-scan verdict, or a malformed bundle.
-
-If --to is omitted, installs to every agent provider detected as installed
-on this machine.
-
-Examples:
-  relay agent install res_abc123 --to claude
-  relay agent install pr-reviewer --to claude --to opencode
-  relay agent install pr-reviewer --version 1.2.0 --channel beta --to claude`,
+		Use:   "install <path|catalog-id>",
+		Short: "Install an agent from a local file or the gateway catalog",
+		Long: `Install a local Claude Markdown agent file or a governed catalog agent bundle.
+Local files work offline. Catalog bundles must contain a single root Markdown agent.
+All targets use migration fidelity checks, overwrite protection, history and rollback.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentInstall(cmd, args[0], agentInstallOpts{
@@ -62,6 +37,7 @@ Examples:
 				scope:      scopeFlag,
 				dryRun:     dryRun,
 				strict:     strict,
+				acceptLoss: acceptLoss,
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
@@ -73,9 +49,10 @@ Examples:
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to write to: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write files")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Abort if any field would be dropped")
+	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Accept non-security fidelity loss")
 	cmd.Flags().StringVar(&version, "version", "", "Exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "stable or beta (default: gateway's default channel)")
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 
 	return cmd
 }
@@ -85,6 +62,7 @@ type agentInstallOpts struct {
 	scope      string
 	dryRun     bool
 	strict     bool
+	acceptLoss bool
 	version    string
 	channel    string
 	gatewayURL string
@@ -96,7 +74,25 @@ func runAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts
 		return err
 	}
 
-	src, err := fetchAgentFromGateway(catalogID, opts)
+	var src *agentport.Agent
+	label := "gateway"
+	local, err := classifyInstallSource(catalogID)
+	if err != nil {
+		return err
+	}
+	if local {
+		label = "local"
+		if opts.version != "" || opts.channel != "" {
+			return fmt.Errorf("--version and --channel apply only to catalog installs")
+		}
+		adapter, ok := agentport.AgentAdapterByID("claude")
+		if !ok {
+			return fmt.Errorf("claude agent adapter unavailable")
+		}
+		src, err = adapter.Load(catalogID)
+	} else {
+		src, err = fetchAgentFromGateway(catalogID, opts)
+	}
 	if err != nil {
 		return err
 	}
@@ -106,7 +102,7 @@ func runAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts
 		return err
 	}
 
-	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, "gateway", targets, scope, opts.dryRun, opts.strict)
+	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, label, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 // fetchAgentFromGateway resolves an authenticated gateway client and fetches
@@ -154,7 +150,7 @@ func resolveAgentInstallTargets(to []string) ([]agentport.AgentAdapter, error) {
 	for _, t := range to {
 		a, ok := agentport.AgentAdapterByID(agentport.ProviderID(t))
 		if !ok {
-			return nil, unsupportedAgentProviderError(t)
+			return nil, fmt.Errorf("unsupported agent provider %q", t)
 		}
 		targets = append(targets, a)
 	}

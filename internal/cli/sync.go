@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 	"github.com/patrikmichi/relay/internal/client"
 )
 
@@ -44,10 +47,6 @@ type pluginBundle struct {
 	Files map[string]string `json:"files"`
 }
 
-// managedSettings is the shape returned by GET /api/marketplace/managed-settings.
-// Written verbatim to managed-settings.fragment.json.
-type managedSettings = json.RawMessage
-
 // ---- syncDoer interface — allows tests to swap in an httptest.Server ----
 
 // syncDoer is the minimal HTTP interface SyncCmd uses.
@@ -78,6 +77,7 @@ func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync the marketplace from the gateway to a local Claude Code directory",
+		Args:  cobra.NoArgs,
 		Long: `Pull the caller's marketplace from the gateway and write a local-path
 Claude Code marketplace under ~/.config/relay/marketplace/<name>/.
 
@@ -102,19 +102,19 @@ Flags:
 					return err
 				}
 			}
-			return runSync(d, customDir, dryRun)
+			return runSync(commandDoer{d, cmd.Context()}, customDir, dryRun, cmd.OutOrStdout())
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	cmd.Flags().StringVar(&customDir, "dir", "", "Local marketplace directory (default: ~/.config/relay/marketplace/<name>/)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Fetch and report changes without writing anything")
-	cmd.Flags().StringVar(&toFlag, "to", "", "NOT supported — relay-cli-completion plan D7 descope; errors naming the portable alternative")
+	cmd.Flags().StringVar(&toFlag, "to", "", "Not supported: sync only targets Claude Code; use `relay skill install --to` / `relay agent install --to` for other providers")
 	return cmd
 }
 
-// errSyncToUnsupported is `relay sync --to <provider>`'s descope error
-// (relay-cli-completion plan D7): sync materializes a Claude-Code-specific
+// errSyncToUnsupported is `relay sync --to <provider>`'s error: sync
+// materializes a Claude-Code-specific
 // plugin-marketplace distribution format with no per-provider analogue.
 // Checked BEFORE any doer/gateway resolution so it never depends on
 // network/auth state — a plain, always-reachable usage error.
@@ -144,64 +144,57 @@ func resolveSyncDoer(overrideURL string) (syncDoer, error) {
 // ---- Core sync logic ----
 
 // runSync implements the sync workflow.
-func runSync(d syncDoer, customDir string, dryRun bool) error {
-	// Step 1: fetch manifest.
+func runSync(d syncDoer, customDir string, dryRun bool, writers ...io.Writer) error {
+	out := outputWriter(writers)
+
 	manifest, rawManifest, err := fetchManifest(d)
 	if err != nil {
 		return err
 	}
 
-	// Step 2: determine local dir.
 	localDir, err := resolveLocalDir(customDir, manifest.Name)
 	if err != nil {
 		return fmt.Errorf("resolve local dir: %w", err)
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] marketplace: %s\n", manifest.Name)
-		fmt.Printf("[dry-run] local dir:   %s\n", localDir)
-		fmt.Printf("[dry-run] plugins (%d):\n", len(manifest.Plugins))
+		fmt.Fprintf(out, "[dry-run] marketplace: %s\n", manifest.Name)
+		fmt.Fprintf(out, "[dry-run] local dir:   %s\n", localDir)
+		fmt.Fprintf(out, "[dry-run] plugins (%d):\n", len(manifest.Plugins))
 		for _, p := range manifest.Plugins {
-			// C1 (dry-run): validate before using.
+			// Validate before using, even in dry-run.
 			id, err := safePluginID(p.Source)
 			if err != nil {
 				return fmt.Errorf("manifest plugin rejected: %w", err)
 			}
-			fmt.Printf("  would write: plugins/%s/ (version %s)\n", id, p.Version)
+			fmt.Fprintf(out, "  would write: plugins/%s/ (version %s)\n", id, p.Version)
 		}
-		// N7: propagate the error instead of silently discarding it.
+		// Propagate the error instead of silently discarding it.
 		stale, err := stalePluginDirs(localDir, manifest)
 		if err != nil {
 			return fmt.Errorf("list stale plugins: %w", err)
 		}
 		for _, s := range stale {
-			fmt.Printf("[dry-run] would remove stale plugin: plugins/%s/\n", s)
+			fmt.Fprintf(out, "[dry-run] would remove stale plugin: plugins/%s/\n", s)
 		}
-		fmt.Printf("[dry-run] would write: marketplace.json\n")
-		fmt.Printf("[dry-run] would write: managed-settings.fragment.json\n")
+		fmt.Fprintf(out, "[dry-run] would write: marketplace.json\n")
+		fmt.Fprintf(out, "[dry-run] would write: managed-settings.fragment.json\n")
 		return nil
 	}
 
-	// Step 3: create dir.
 	if err := os.MkdirAll(localDir, 0o700); err != nil {
 		return fmt.Errorf("create marketplace dir %s: %w", localDir, err)
 	}
 
-	// Step 4: write marketplace.json.
-	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
-		return fmt.Errorf("write marketplace.json: %w", err)
-	}
-
-	// Step 5: fetch and write each plugin.
 	for _, p := range manifest.Plugins {
-		// C1: validate id before using it in filesystem paths.
+		// Validate id before using it in filesystem paths.
 		id, err := safePluginID(p.Source)
 		if err != nil {
 			return fmt.Errorf("manifest plugin rejected: %w", err)
 		}
 		rev := p.Version
 
-		// C1: confirm resolved path is inside plugins/.
+		// Confirm resolved path is inside plugins/.
 		pluginsBase := filepath.Join(localDir, "plugins")
 		pluginDir := filepath.Join(pluginsBase, id)
 		if !strings.HasPrefix(pluginDir+string(os.PathSeparator), pluginsBase+string(os.PathSeparator)) {
@@ -210,19 +203,37 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 
 		rawPlugin, err := fetchPlugin(d, id, rev)
 		if err != nil {
-			// L6: append retry guidance.
+			// Append retry guidance.
 			return fmt.Errorf("fetch plugin %s: %w — re-run `relay sync` to retry", id, err)
 		}
 
-		if err := os.MkdirAll(pluginDir, 0o700); err != nil {
-			return fmt.Errorf("create plugin dir %s: %w", pluginDir, err)
-		}
-		if err := writePluginBundle(pluginDir, rawPlugin); err != nil {
+		if err := writePluginBundle(localDir, id, pluginDir, rawPlugin); err != nil {
 			return fmt.Errorf("write plugin files for %s: %w", id, err)
 		}
 	}
 
-	// Step 6: revocation — remove stale plugin dirs.
+	// Step 5: fetch and write managed-settings.
+	rawSettings, err := fetchManagedSettings(d, localDir)
+	if err != nil {
+		return fmt.Errorf("fetch managed-settings: %w", err)
+	}
+	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
+		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
+	}
+
+	// Step 6: write marketplace.json — only once every plugin and
+	// managed-settings write it references has actually landed.
+	if err := writeFile(filepath.Join(localDir, "marketplace.json"), rawManifest); err != nil {
+		return fmt.Errorf("write marketplace.json: %w", err)
+	}
+
+	// Step 7: revocation — remove stale plugin dirs. Deliberately LAST,
+	// after marketplace.json is confirmed written: revoking first would let
+	// a crash/failure between revocation and the manifest write leave
+	// marketplace.json still pointing at a plugin directory that no longer
+	// exists. Revoking last means
+	// the only failure-direction leftover is a harmless orphaned directory
+	// marketplace.json already doesn't reference.
 	stale, err := stalePluginDirs(localDir, manifest)
 	if err != nil {
 		return fmt.Errorf("list stale plugins: %w", err)
@@ -232,33 +243,23 @@ func runSync(d syncDoer, customDir string, dryRun bool) error {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("remove stale plugin %s: %w", s, err)
 		}
-		fmt.Printf("Removed revoked plugin: plugins/%s/\n", s)
+		fmt.Fprintf(out, "Removed revoked plugin: plugins/%s/\n", s)
 	}
 
-	// Step 7: fetch and write managed-settings.
-	rawSettings, err := fetchManagedSettings(d, localDir)
-	if err != nil {
-		return fmt.Errorf("fetch managed-settings: %w", err)
-	}
-	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
-		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
-	}
-
-	// Step 8: print summary.
-	fmt.Printf("Synced marketplace: %s\n", manifest.Name)
-	fmt.Printf("Local directory:    %s\n", localDir)
-	fmt.Printf("Plugins synced:     %d\n", len(manifest.Plugins))
+	fmt.Fprintf(out, "Synced marketplace: %s\n", manifest.Name)
+	fmt.Fprintf(out, "Local directory:    %s\n", localDir)
+	fmt.Fprintf(out, "Plugins synced:     %d\n", len(manifest.Plugins))
 	if len(stale) > 0 {
-		fmt.Printf("Stale plugins removed: %d\n", len(stale))
+		fmt.Fprintf(out, "Stale plugins removed: %d\n", len(stale))
 	}
-	fmt.Println()
-	fmt.Println("Managed-settings fragment written to:")
-	fmt.Printf("  %s\n", filepath.Join(localDir, "managed-settings.fragment.json"))
-	fmt.Println()
-	fmt.Println("Next step — register the marketplace in Claude Code:")
-	fmt.Printf("  /plugin marketplace add %s\n", localDir)
-	fmt.Println("(Merge managed-settings.fragment.json into your Claude Code managed settings")
-	fmt.Println(" to auto-register and enable granted plugins.)")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Managed-settings fragment written to:")
+	fmt.Fprintf(out, "  %s\n", filepath.Join(localDir, "managed-settings.fragment.json"))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Register the marketplace in Claude Code:")
+	fmt.Fprintf(out, "  /plugin marketplace add %s\n", localDir)
+	fmt.Fprintln(out, "(Merge managed-settings.fragment.json into your Claude Code managed settings")
+	fmt.Fprintln(out, " to auto-register and enable granted plugins.)")
 	return nil
 }
 
@@ -277,12 +278,12 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 		return marketplaceManifest{}, nil, fmt.Errorf("not authenticated — run `relay login` first")
 	}
 	if resp.StatusCode != http.StatusOK {
-		// M4: cap error-body read too.
+		// Cap error-body read too.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 		return marketplaceManifest{}, nil, fmt.Errorf("GET /api/marketplace/manifest returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	// M4: cap response body to prevent OOM from a hostile gateway.
+	// Cap response body to prevent OOM from a hostile gateway.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return marketplaceManifest{}, nil, fmt.Errorf("read manifest response: %w", err)
@@ -295,7 +296,7 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 	if m.Name == "" {
 		return marketplaceManifest{}, nil, fmt.Errorf("manifest has no name field")
 	}
-	// C2: reject names that could escape ~/.config/relay/marketplace/ when used as a
+	// Reject names that could escape ~/.config/relay/marketplace/ when used as a
 	// path component — even if the caller supplied --dir, the name is printed and
 	// logged, so we reject unsafe names unconditionally.
 	if strings.ContainsAny(m.Name, "/\\") || strings.Contains(m.Name, "..") {
@@ -305,9 +306,9 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 }
 
 // fetchPlugin calls GET /api/marketplace/plugin/<id>/<rev> and returns the raw bytes.
-// id and rev are URL-path-escaped to prevent request hijacking (H3).
+// id and rev are URL-path-escaped to prevent request hijacking.
 func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
-	// H3: escape both id and rev so slashes / dots in rev cannot redirect the request.
+	// Escape both id and rev so slashes / dots in rev cannot redirect the request.
 	path := "/api/marketplace/plugin/" + url.PathEscape(id) + "/" + url.PathEscape(rev)
 	resp, err := d.Get(path)
 	if err != nil {
@@ -323,7 +324,7 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
 		return nil, fmt.Errorf("GET %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	// M4: cap response body.
+	// Cap response body.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read plugin response: %w", err)
@@ -331,40 +332,75 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
 	return raw, nil
 }
 
-// writePluginBundle validates and writes every artifact returned by the
-// gateway. Before the bundle contract existed, the endpoint returned a raw
-// plugin manifest; accept that legacy shape and place it at Claude Code's
-// required .claude-plugin/plugin.json path so older gateways remain usable.
-func writePluginBundle(pluginDir string, raw []byte) error {
+// syncTxnTimeout bounds how long a plugin bundle write waits for another
+// `relay sync` process's lock on the same plugin — local disk contention,
+// never a network wait.
+const syncTxnTimeout = 30 * time.Second
+
+func writePluginBundle(localDir, pluginID, pluginDir string, raw []byte) error {
 	var bundle pluginBundle
 	if err := json.Unmarshal(raw, &bundle); err != nil {
 		return fmt.Errorf("decode plugin bundle: %w", err)
 	}
+
+	newFiles := map[string][]byte{}
 	if len(bundle.Files) == 0 {
-		manifestDir := filepath.Join(pluginDir, ".claude-plugin")
-		if err := os.MkdirAll(manifestDir, 0o700); err != nil {
-			return fmt.Errorf("create legacy manifest directory: %w", err)
+		newFiles[filepath.ToSlash(filepath.Join(".claude-plugin", "plugin.json"))] = raw
+	} else {
+		for rel, contents := range bundle.Files {
+			clean := filepath.Clean(rel)
+			if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+				return fmt.Errorf("plugin bundle contains unsafe path %q", rel)
+			}
+			target := filepath.Join(pluginDir, clean)
+			if !strings.HasPrefix(target+string(os.PathSeparator), pluginDir+string(os.PathSeparator)) {
+				return fmt.Errorf("plugin bundle path %q escapes plugin directory", rel)
+			}
+			newFiles[filepath.ToSlash(clean)] = []byte(contents)
 		}
-		return writeFile(filepath.Join(manifestDir, "plugin.json"), raw)
 	}
 
-	for rel, contents := range bundle.Files {
-		clean := filepath.Clean(rel)
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("plugin bundle contains unsafe path %q", rel)
-		}
-		target := filepath.Join(pluginDir, clean)
-		if !strings.HasPrefix(target+string(os.PathSeparator), pluginDir+string(os.PathSeparator)) {
-			return fmt.Errorf("plugin bundle path %q escapes plugin directory", rel)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create directory for %q: %w", rel, err)
-		}
-		if err := writeFile(target, []byte(contents)); err != nil {
-			return fmt.Errorf("write %q: %w", rel, err)
+	ownedBefore, err := loadOwnedFiles(localDir, pluginID)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), syncTxnTimeout)
+	defer cancel()
+	tx, err := txn.Begin(ctx, fmt.Sprintf("sync plugin %s", pluginID), []string{"sync-plugin:" + localDir + ":" + pluginID})
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
+		return tx.Discard(fmt.Errorf("create plugin dir %s: %w", pluginDir, err))
+	}
+	for rel, contents := range newFiles {
+		if err := tx.Stage(pluginDir, filepath.FromSlash(rel), contents, 0o644); err != nil {
+			return tx.Discard(err)
 		}
 	}
-	return nil
+	for _, rel := range ownedBefore {
+		if _, keep := newFiles[rel]; keep {
+			continue
+		}
+		if err := tx.StageRemoval(pluginDir, filepath.FromSlash(rel)); err != nil {
+			return tx.Discard(err)
+		}
+	}
+
+	if err := tx.Persist(); err != nil {
+		return tx.Discard(err)
+	}
+	if err := tx.Apply(txn.VerifyNoSymlinks); err != nil {
+		return tx.Discard(err)
+	}
+
+	newOwned := make([]string, 0, len(newFiles))
+	for rel := range newFiles {
+		newOwned = append(newOwned, rel)
+	}
+	return tx.Commit(func() error { return saveOwnedFiles(localDir, pluginID, newOwned) })
 }
 
 // fetchManagedSettings calls GET /api/marketplace/managed-settings?localDir=<abs> and returns raw bytes.
@@ -385,7 +421,7 @@ func fetchManagedSettings(d syncDoer, localDir string) ([]byte, error) {
 		return nil, fmt.Errorf("GET managed-settings returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	// M4: cap response body.
+	// Cap response body.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read managed-settings response: %w", err)
@@ -396,7 +432,7 @@ func fetchManagedSettings(d syncDoer, localDir string) ([]byte, error) {
 // ---- Validation helpers ----
 
 // safePluginID extracts the plugin ID from a source path and validates it.
-// C1: rejects IDs that are empty, contain path separators, or contain "..".
+// Rejects IDs that are empty, contain path separators, or contain "..".
 // Returns the safe ID string on success.
 func safePluginID(source string) (string, error) {
 	id := pluginIDFromSource(source)
@@ -414,7 +450,7 @@ func safePluginID(source string) (string, error) {
 // resolveLocalDir returns the absolute path for the marketplace dir.
 // If customDir is non-empty it is used; otherwise defaults to
 // ~/.config/relay/marketplace/<marketplaceName>/.
-// C2: rejects marketplace names containing path-unsafe characters.
+// Rejects marketplace names containing path-unsafe characters.
 func resolveLocalDir(customDir, marketplaceName string) (string, error) {
 	if customDir != "" {
 		abs, err := filepath.Abs(customDir)
@@ -423,7 +459,7 @@ func resolveLocalDir(customDir, marketplaceName string) (string, error) {
 		}
 		return abs, nil
 	}
-	// C2: validate the name before embedding it in a path.
+	// Validate the name before embedding it in a path.
 	if strings.ContainsAny(marketplaceName, "/\\") || strings.Contains(marketplaceName, "..") {
 		return "", fmt.Errorf("marketplace name %q contains path-unsafe characters", marketplaceName)
 	}

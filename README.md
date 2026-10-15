@@ -49,7 +49,7 @@ dependencies and no built-in gateway: point it at one with
 ## Quickstart
 
 ```bash
-# Authenticate against a gateway (only needed for catalog commands below).
+# Authenticate against a gateway for catalog access and service calls.
 relay login
 
 # Fully offline: migrate a skill you already have installed for one
@@ -97,9 +97,10 @@ report (verified 2026-09-05 against a real 7-way `skill migrate` run):
 ## Agent provider support
 
 `relay agent migrate/list/diff/scan/uninstall/rollback` work offline against
-5 providers; `relay agent install <catalog-id>` (gateway-only — installs an
-agent definition from the catalog, same fan-out/`--to`/manifest/rollback
-model as `relay skill install`) projects onto the same 5:
+5 providers; `relay agent install <path|catalog-id>` (a local Claude
+Markdown agent works offline; a catalog id needs the gateway — same
+fan-out/`--to`/manifest/rollback model as `relay skill install`) projects
+onto the same 5:
 
 | Provider | Shape | Support |
 |---|---|---|
@@ -117,7 +118,7 @@ not silently identical), `-` = dropped, reported in the fidelity report:
 | Field | claude | opencode | codex | cursor | gemini-cli |
 |---|---|---|---|---|---|
 | Name/Description/Body | x | x | x | x | x |
-| Model | x | ~ (alias-mapped) | ~ (passthrough, no alias table) | ~ (passthrough, no alias table) | ~ (passthrough, no alias table) |
+| Model | x | ~ (alias-mapped) | - (no alias table; omitted, target default used) | - (no alias table; omitted, target default used) | - (no alias table; omitted, target default used) |
 | Tools | x | ~ (list ↔ `{tool: bool}` map) | - (no tools key) | - (no tools key) | x (real list) |
 | Temperature | - | x | - | - | x |
 | Mode | - | x | - | - | - |
@@ -195,7 +196,7 @@ scripts/CI that must never make a network call.
 | `relay login [--device]` | gateway | Authenticate via Google OAuth (browser or device-code flow) |
 | `relay logout` | gateway | Revoke the current session and remove the stored token |
 | `relay whoami [--full]` | gateway | Show the current authenticated identity |
-| `relay authorize <service>` | gateway | Authorize a specific service (e.g. Google Workspace scopes) |
+| `relay authorize <service> --scope <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay tokens list` | gateway | Show active session info |
 | `relay tokens revoke` | gateway | Revoke the current session token |
 | `relay config set-gateway <url>` | local | Persist a gateway URL to `~/.config/relay/config.json` |
@@ -213,7 +214,7 @@ scripts/CI that must never make a network call.
 | `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only; `install`/`remove` are not implemented) |
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
 | `relay skill install <catalog-id>` | gateway | Install a skill by catalog id/slug into one or more providers |
-| `relay agent install <catalog-id> [--to <p>...]` | gateway | Install an agent by catalog id/slug into one or more agent providers |
+| `relay agent install <path\|catalog-id> [--to <p>...]` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle into one or more agent providers; supports history and rollback |
 | `relay skill search [query]` | gateway | Search the catalog for installable skills |
 | `relay skill migrate <name> --from <p> [--to <p>...]` | local | Project an installed skill from one provider to another |
 | `relay skill list` | local | List installed skills across providers |
@@ -245,6 +246,7 @@ with environment variables — env always wins over the config file:
 | `GATEWAY_URL` | Gateway base URL (overrides the config file) |
 | `GATEWAY_API_KEY` | Non-interactive bearer auth — use in scripts/CI instead of `relay login` |
 | `RELAY_EMAIL` | Selects which keychain-stored session to use (overrides the last `relay login`'d identity) |
+| `RELAY_TIMEOUT` | Limit for each gateway request, e.g. `90s` or `10m`; `0` means no limit. Defaults: 30s, 150s for tool calls and uploads. `--timeout` overrides it. A request that hits the limit exits with status 4 |
 
 Interactive sessions authenticate via `relay login` (OAuth, tokens stored in
 the OS keychain, auto-refreshing). Non-interactive contexts should set
@@ -253,3 +255,31 @@ the OS keychain, auto-refreshing). Non-interactive contexts should set
 ## License
 
 [Apache-2.0](LICENSE)
+
+## Gateway compatibility
+
+Skill search uses `GET /api/catalog/skills/search?query=...`, independent of aggregate MCP. Older gateways need upgrading for search.
+Catalog agent installation requires `X-Resource-Type: agent`, catalog identity and version headers, a verified checksum, and scan verdict. Bundles containing resources the flat agent format cannot preserve are rejected. Local agent installation accepts a Claude Markdown file and works without gateway credentials.
+Source format provenance remains Claude for downloaded agents so tool and model translation remain correct; catalog id and version separately record catalog origin.
+
+Provider formats were checked against [Codex custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Cursor subagents](https://cursor.com/docs/subagents), and [Gemini CLI subagents](https://geminicli.com/docs/core/subagents/). The adapters support the fields documented in [agent formats](docs/agent-formats.md) and refuse migrations that cannot preserve execution restrictions.
+
+`relay authorize <service> --scope <tool>` requests access to gateway tools.
+Repeat `--scope` for multiple tools and use `--account` when selecting a linked
+account. The command polls for approved grants and required credentials, with a
+default timeout of ten minutes (`--timeout`, maximum thirty minutes). Tool grants
+do not verify the upstream provider's OAuth scopes; connect the required account
+in the gateway.
+
+### Diagnostics and format fidelity
+
+`relay doctor [--json]` checks provider directories, current installed hashes and
+permissions, pending recovery journals, override validation and gateway/session
+health. `--offline` skips network checks. Directory permission checks inspect
+mode bits, not ACLs or an actual write probe.
+
+`relay mcp inspect <catalog-id> [--json]` shows source, transport, authentication
+mode/scope and declared tool count. Commands, endpoint URLs and credential
+reference values are excluded from inspection output.
+
+See [agent formats](docs/agent-formats.md) for supported fields and refusal rules.

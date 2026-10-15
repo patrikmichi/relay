@@ -1,11 +1,31 @@
 package agentport
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
+
+// lockAcquireTimeout bounds how long Write waits for another `relay`
+// process to release its lock on the same (provider, scope, name,
+// project) artifact before giving up — this is local disk contention
+// between CLI invocations, never a network wait, so a short bound is
+// correct; a genuinely stuck holder should be investigated, not waited on
+// indefinitely.
+const txnLockAcquireTimeout = 30 * time.Second
+
+// skillLockKey identifies the artifact a skill write mutates, for
+// txn.Begin's deterministic-order locking and pending-journal detection —
+// the same identity Rollback/uninstall use to scope their own operations
+// (name+provider+scope[+projectRoot]), so a concurrent write and rollback
+// of the same skill can never interleave.
+func skillLockKey(provider ProviderID, scope Scope, name, projectRoot string) string {
+	return fmt.Sprintf("skill:%s:%s:%s:%s", provider, scope, name, projectRoot)
+}
 
 // Plan is the preview of a migration: which files would be written to the
 // target provider, the projected fidelity-loss report, and where they'd
@@ -20,7 +40,7 @@ type Plan struct {
 	TargetPaths string // absolute directory the files would be written under (<dir>/<name>/)
 }
 
-// HasDropped reports whether this Plan's loss report contains any
+// HasDropped reports whether the plan's loss report contains any
 // LossDropped item (used by `--strict`).
 func (p *Plan) HasDropped() bool {
 	for _, l := range p.Loss {
@@ -78,12 +98,11 @@ func TargetDir(target pathAdapter, scope Scope, name string) (string, error) {
 
 // resolveTargetForEntry picks the correctly-kinded adapter for a manifest
 // entry's Provider: an AgentAdapter when entry.Kind == KindAgent, a Skill
-// Adapter otherwise (KindSkill, or the default LoadManifest normalizes an
-// absent Kind to). This is the resolver that picks which adapter to
-// load-back — TargetPaths hashing, Write, withManifestLock, atomic save,
-// and rollback.go's hash-verify-then-remove are already kind-agnostic
-// (they operate on map[relpath]sha256); only adapter SELECTION needed to
-// become kind-aware.
+// Adapter otherwise (KindSkill, or the default LoadManifest normalizes
+// absent Kind to). TargetPaths hashing, Write, withManifestLock, atomic
+// save, and rollback.go's hash-verify-then-remove are already
+// kind-agnostic (they operate on map[relpath]sha256); only adapter
+// SELECTION needs to be kind-aware.
 func resolveTargetForEntry(entry ManifestEntry) (pathAdapter, error) {
 	if entry.Kind == KindAgent {
 		a, ok := AgentAdapterByID(entry.Provider)
@@ -133,22 +152,65 @@ func Migrate(src *Skill, target Adapter, scope Scope) (*Plan, error) {
 }
 
 // Write materializes a Plan's files under Plan.TargetPaths and records a
-// manifest ledger entry.
+// manifest ledger entry, through the durable transaction/recovery engine
+// preflight -> staged -> prepared journal ->
+// applying -> committed. It refuses to touch the filesystem at all unless
+// PreflightWrite passes, both before acquiring the artifact's lock and
+// again immediately after (protects against a stale decision if another
+// process changed the ledger or destination between planning and
+// locking), and refuses to start at all if a prior interrupted write on
+// the same artifact left a pending journal (`relay recover` owns that
+// case).
 func Write(plan *Plan) error {
-	if plan == nil {
-		return fmt.Errorf("nil plan")
+	if err := PreflightWrite(plan); err != nil {
+		return err
 	}
+
+	projectRoot := ""
+	if plan.Scope == ScopeProject {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve project root: %w", err)
+		}
+		projectRoot = cwd
+	}
+	lockKey := skillLockKey(plan.Target.ID(), plan.Scope, plan.Skill.Name, projectRoot)
+
+	ctx, cancel := context.WithTimeout(context.Background(), txnLockAcquireTimeout)
+	defer cancel()
+	tx, err := txn.Begin(ctx, fmt.Sprintf("skill write %s -> %s", plan.Skill.Name, plan.Target.ID()), []string{lockKey})
+	if err != nil {
+		return err
+	}
+
+	// Re-check preflight now that the lock is held — nothing else can be
+	// concurrently mutating this artifact from this point on, but the
+	// decision above was made before that guarantee existed.
+	if err := PreflightWrite(plan); err != nil {
+		return tx.Discard(err)
+	}
+
 	if err := os.MkdirAll(plan.TargetPaths, 0o755); err != nil {
-		return fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err)
+		return tx.Discard(fmt.Errorf("create target dir %s: %w", plan.TargetPaths, err))
 	}
 	for rel, data := range plan.Files {
-		dest := filepath.Join(plan.TargetPaths, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return fmt.Errorf("create dir for %s: %w", dest, err)
+		mode := os.FileMode(0o644)
+		if rf, ok := plan.Skill.Resources[rel]; ok {
+			mode = rf.Mode
 		}
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", dest, err)
+		if err := tx.Stage(plan.TargetPaths, rel, data, mode); err != nil {
+			return tx.Discard(err)
 		}
+	}
+	if err := tx.Persist(); err != nil {
+		return tx.Discard(err)
+	}
+	// Apply re-verifies containment immediately before each write (a
+	// path validated at preflight can go stale — an intermediate
+	// directory swapped for a symlink between then and now), reusing
+	// verifyPathHasNoSymlinks directly rather than duplicating its logic.
+	if err := tx.Apply(verifyPathHasNoSymlinks); err != nil {
+		return tx.Discard(err)
 	}
 
 	entry := ManifestEntry{
@@ -158,8 +220,27 @@ func Write(plan *Plan) error {
 		Scope:          plan.Scope,
 		SourceProvider: plan.Skill.Provenance.SourceProvider,
 		TargetPaths:    HashFiles(plan.Files),
+		FileModes:      fileModes(plan.Files, plan.Skill.Resources),
 		Timestamp:      time.Now().UTC(),
 		Provenance:     plan.Skill.Provenance,
+		ProjectRoot:    projectRoot,
+		TransactionID:  tx.ID(),
 	}
-	return RecordEntry(entry)
+	return tx.Commit(func() error { return RecordEntry(entry) })
+}
+
+// fileModes projects each written file's resolved mode (0644 default,
+// or the resource's own mode when tracked) into the ledger-storable
+// map[relpath]uint32 shape: a hash alone can't tell a later
+// rollback whether a script needs its executable bit restored.
+func fileModes(files map[string][]byte, resources map[string]ResourceFile) map[string]uint32 {
+	out := make(map[string]uint32, len(files))
+	for rel := range files {
+		mode := os.FileMode(0o644)
+		if rf, ok := resources[rel]; ok {
+			mode = rf.Mode
+		}
+		out[rel] = uint32(mode)
+	}
+	return out
 }

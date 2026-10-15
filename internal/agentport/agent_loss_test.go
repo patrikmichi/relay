@@ -88,14 +88,14 @@ func TestComputeAgentLoss_EmptyFieldsNeverReported(t *testing.T) {
 // alias mapping table in both directions.
 func TestModelLossForTarget_KnownAlias(t *testing.T) {
 	mapped, loss := modelLossForTarget("sonnet", ProviderClaude, ProviderOpencode)
-	if mapped != "anthropic/claude-sonnet-4" {
-		t.Errorf("mapped = %q, want anthropic/claude-sonnet-4", mapped)
+	if mapped != "anthropic/claude-sonnet-5" {
+		t.Errorf("mapped = %q, want anthropic/claude-sonnet-5", mapped)
 	}
 	if loss == nil || loss.Kind != LossDegraded || loss.Field != "Model" {
 		t.Fatalf("loss = %#v, want a LossDegraded Model item", loss)
 	}
 
-	mapped2, loss2 := modelLossForTarget("anthropic/claude-sonnet-4", ProviderOpencode, ProviderClaude)
+	mapped2, loss2 := modelLossForTarget("anthropic/claude-sonnet-5", ProviderOpencode, ProviderClaude)
 	if mapped2 != "sonnet" {
 		t.Errorf("mapped2 = %q, want sonnet", mapped2)
 	}
@@ -104,16 +104,11 @@ func TestModelLossForTarget_KnownAlias(t *testing.T) {
 	}
 }
 
-// TestModelLossForTarget_UnrecognizedModelPassesThroughDegraded confirms an
-// unmapped model string is never silently dropped — it passes through
-// unchanged with a LossDegraded note, per the "unmapped -> degraded" rule.
-func TestModelLossForTarget_UnrecognizedModelPassesThroughDegraded(t *testing.T) {
+// Unknown cross-provider model names are omitted and reported.
+func TestModelLossForTarget_UnrecognizedModelDropped(t *testing.T) {
 	mapped, loss := modelLossForTarget("some-custom-finetune", ProviderClaude, ProviderOpencode)
-	if mapped != "some-custom-finetune" {
-		t.Errorf("mapped = %q, want passthrough of the unrecognized model", mapped)
-	}
-	if loss == nil || loss.Kind != LossDegraded {
-		t.Fatalf("loss = %#v, want a LossDegraded item for an unmapped model", loss)
+	if mapped != "" || loss == nil || loss.Kind != LossDropped {
+		t.Fatalf("unknown model must be omitted with a loss: %q %+v", mapped, loss)
 	}
 }
 

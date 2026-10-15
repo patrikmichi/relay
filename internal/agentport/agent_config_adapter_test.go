@@ -77,7 +77,7 @@ func TestAgentConfigAdapter_ClaudeRoundTrip(t *testing.T) {
 func TestAgentConfigAdapter_OpencodeNameInferredFromFilename(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string][]byte{
-		"reviewer.md": []byte("---\ndescription: Reviews code.\nmode: subagent\nmodel: anthropic/claude-sonnet-4\ntemperature: 0.2\n---\n\nReview the diff.\n"),
+		"reviewer.md": []byte("---\ndescription: Reviews code.\nmode: subagent\nmodel: anthropic/claude-sonnet-5\ntemperature: 0.2\n---\n\nReview the diff.\n"),
 	})
 
 	oc := NewOpencodeAgentAdapter()
@@ -94,7 +94,7 @@ func TestAgentConfigAdapter_OpencodeNameInferredFromFilename(t *testing.T) {
 
 	// Project the opencode-sourced agent onto claude: Temperature/Mode are
 	// dropped (claude has no equivalent), and Model degrades via the
-	// alias-mapping table (opencode "anthropic/claude-sonnet-4" -> claude
+	// alias-mapping table (opencode "anthropic/claude-sonnet-5" -> claude
 	// "sonnet").
 	claude := NewClaudeAgentAdapter()
 	files, loss, err := claude.Project(ag)
@@ -249,7 +249,7 @@ func TestAgentConfigAdapter_Detect(t *testing.T) {
 func TestAgentConfigAdapter_DirsAndCapabilities(t *testing.T) {
 	wantOwnDirs := map[ProviderID]int{
 		ProviderClaude:           1,
-		ProviderOpencode:         2, // plural "agents" dirs[0] + legacy singular "agent" fallback
+		ProviderOpencode:         1, // plural "agents" dirs[0]; legacy singular "agent" is a read-only compat fallback, not own
 		ProviderCodex:            1,
 		ProviderCursor:           1, // dirs.project also has 2 trailing compat entries, not counted
 		ProviderID("gemini-cli"): 1,
@@ -364,7 +364,7 @@ frontmatter:
   - { ir: name, key: name, type: string, presence: required }
   - { ir: description, key: description, type: string, presence: required }
 `)
-	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames())
+	cfg, err := parseProviderConfig(raw, registeredHookNames(), registeredCodecNames(), KindAgent)
 	if err != nil {
 		t.Fatalf("parseProviderConfig: %v", err)
 	}

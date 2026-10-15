@@ -16,6 +16,7 @@ import (
 func CallCmd() *cobra.Command {
 	var gatewayURL string
 	var rawArgs []string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "call <service> <tool>",
@@ -34,12 +35,16 @@ Example:
 				return err
 			}
 
-			c := resolveClient(gURL)
-			return callTool(c, args[0], args[1], rawArgs)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			return callToolWithContext(cmd.Context(), c, args[0], args[1], rawArgs, jsonOut, cmd.OutOrStdout())
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	return cmd
 }

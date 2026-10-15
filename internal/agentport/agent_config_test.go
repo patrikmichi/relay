@@ -50,8 +50,8 @@ func TestEmbeddedAgentConfigsValid(t *testing.T) {
 }
 
 // TestParseAgentProviderConfig_ClaudeShape exercises the claude agent
-// config's declared shape against the documented Claude Code subagent
-// format: name, description, tools (CSV),
+// config's declared shape against the real, verified format
+// (claude-infra/shared-claude/agents/*.md): name, description, tools (CSV),
 // model, memory, skills (list) — all mapped to their fixed Agent IR names
 // with matching canonical types.
 func TestParseAgentProviderConfig_ClaudeShape(t *testing.T) {

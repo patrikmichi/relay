@@ -29,6 +29,7 @@ func SkillInstallCmd() *cobra.Command {
 		scopeFlag  string
 		dryRun     bool
 		strict     bool
+		acceptLoss bool
 		version    string
 		channel    string
 		gatewayURL string
@@ -70,6 +71,7 @@ Examples:
 				scope:      scopeFlag,
 				dryRun:     dryRun,
 				strict:     strict,
+				acceptLoss: acceptLoss,
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
@@ -81,9 +83,10 @@ Examples:
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to write to: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write files")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Abort if any field would be dropped")
+	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Proceed despite non-security fidelity loss without an interactive prompt")
 	cmd.Flags().StringVar(&version, "version", "", "Catalog install only: exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "Catalog install only: stable or beta (default: gateway's default channel)")
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $GATEWAY_URL, then the config file)")
 
 	return cmd
 }
@@ -93,6 +96,7 @@ type skillInstallOpts struct {
 	scope      string
 	dryRun     bool
 	strict     bool
+	acceptLoss bool
 	version    string
 	channel    string
 	gatewayURL string
@@ -112,7 +116,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 	var src *agentport.Skill
 	fromLabel := "local"
 	if isLocal {
-		// s1 (Go review suggestion): a stray same-named local dir would
+		// A stray same-named local dir would
 		// otherwise silently shadow a catalog id/slug with the same name —
 		// note it so the user isn't surprised the catalog was never checked.
 		fmt.Fprintf(cmd.ErrOrStderr(), "note: installing local path %q (not checking the catalog)\n", arg)
@@ -133,7 +137,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 		return err
 	}
 
-	return applyMigrationToTargets(cmd.OutOrStdout(), src, fromLabel, targets, scope, opts.dryRun, opts.strict)
+	return applyMigrationToTargets(cmd.OutOrStdout(), src, fromLabel, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 // classifyInstallSource decides whether arg is a local filesystem path or a
@@ -155,8 +159,8 @@ func classifyInstallSource(arg string) (isLocal bool, err error) {
 
 // fetchFromGateway resolves an authenticated gateway client and fetches
 // catalogID via catalog.FetchSkill, translating auth/offline/gateway-error
-// failures into the fail-closed degradation guidance. No files are ever
-// written on any of these paths.
+// failures into fail-closed guidance. No files are ever written on any of
+// these paths.
 // resolveGatewayURLOrFailClosed itself checks the root --offline flag
 // (cli.Offline()) and refuses with offlineGuidance before this ever reaches
 // client.Resolve.
@@ -182,7 +186,7 @@ func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill
 }
 
 // translateGatewayFetchError maps catalog.FetchSkill's sentinel errors to
-// user-facing degradation guidance.
+// user-facing guidance.
 func translateGatewayFetchError(catalogID string, err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrNoAccess):
@@ -202,7 +206,7 @@ func translateGatewayFetchError(catalogID string, err error) error {
 // --to was omitted — every detected provider. Unlike
 // resolveMigrateTargets, there's no --from adapter to exclude: an install's
 // source is an arbitrary local path or a gateway catalog id, never one of
-// the loaded skill providers itself.
+// the 4 providers itself.
 func resolveInstallTargets(to []string) ([]agentport.Adapter, error) {
 	if len(to) == 0 {
 		targets := agentport.DetectedProviders()
