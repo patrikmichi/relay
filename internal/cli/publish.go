@@ -344,17 +344,16 @@ Supported agent providers: %s.`, agentProviderIDsCSV()),
 func MCPCmd() *cobra.Command {
 	mcp := &cobra.Command{
 		Use:   "mcp",
-		Short: "Publish, list, and inspect MCP servers in the gateway catalog",
-		Long: `Publish, list, and inspect MCP servers in the gateway catalog.
+		Short: "Publish, list and inspect catalog MCP servers, and register servers in your coding agents",
+		Long: `Publish, list and inspect MCP servers in the gateway catalog, and register
+MCP servers in the config of your coding agents.
 
-'relay mcp install'/'relay mcp remove' are NOT implemented: writing an
-MCP-server registration into per-provider client config (~/.claude.json,
-~/.codex/config.toml, .cursor/mcp.json, ...) is a separate artifact kind
-with its own IR and per-provider codecs — a distinct design from anything
-this CLI currently ships. 'relay mcp list' and 'relay mcp inspect' are
-read-only.`,
+'relay mcp list' and 'relay mcp inspect' are read-only. 'relay mcp install'
+and 'relay mcp remove' write to the agents' own MCP config (~/.claude.json,
+~/.codex/config.toml, .cursor/mcp.json, ...) and never touch entries you
+created; 'relay sync' keeps them current.`,
 	}
-	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd())
+	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd(), McpInstallCmd(), McpRemoveCmd())
 	return mcp
 }
 

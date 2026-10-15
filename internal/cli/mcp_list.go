@@ -77,11 +77,8 @@ func McpListCmd() *cobra.Command {
 		Long: `List catalog resources of type mcp_server: id, slug, name, registration
 source (builtin/url/repo), and current published version.
 
-Read-only — this command never writes any provider config. 'relay mcp
-install'/'relay mcp remove' are deliberately NOT implemented (see README):
-writing MCP-server registrations into per-provider client config
-(~/.claude.json, ~/.codex/config.toml, .cursor/mcp.json, ...) is a separate,
-larger design.
+Read-only — this command never writes any provider config. Use 'relay mcp
+install' to register a server in your coding agents.
 
 Requires a reachable, authenticated gateway; fails closed offline.
 
