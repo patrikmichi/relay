@@ -27,6 +27,8 @@ type AgentPlan struct {
 	Scope  Scope
 	Files  map[string][]byte // relative path -> content, from Target.Project() — always a single "<name>.md" entry (agents carry no resources)
 	Loss   []LossItem
+	// Overwrite is the AgentPlan analogue of Plan.Overwrite.
+	Overwrite bool
 	// TargetPaths is the absolute directory the files would be written
 	// under. Unlike Plan.TargetPaths (a skill's own "<dir>/<name>/"
 	// subdirectory), this is the provider's directory ITSELF (e.g.

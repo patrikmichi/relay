@@ -64,7 +64,7 @@ func verifyPathHasNoSymlinks(root, rel string) error {
 	return nil
 }
 
-func preflightWrite(targetPaths string, files map[string][]byte) error {
+func preflightWrite(targetPaths string, files map[string][]byte, overwrite bool) error {
 	if _, err := LoadManifest(); err != nil {
 		return fmt.Errorf("%w: %v", ErrLedgerUnavailable, err)
 	}
@@ -72,6 +72,9 @@ func preflightWrite(targetPaths string, files map[string][]byte) error {
 		if err := verifyPathHasNoSymlinks(targetPaths, rel); err != nil {
 			return err
 		}
+	}
+	if overwrite {
+		return nil
 	}
 	for rel, data := range files {
 		dest := filepath.Join(targetPaths, filepath.FromSlash(rel))
@@ -93,7 +96,7 @@ func PreflightWrite(plan *Plan) error {
 	if plan == nil {
 		return fmt.Errorf("nil plan")
 	}
-	return preflightWrite(plan.TargetPaths, plan.Files)
+	return preflightWrite(plan.TargetPaths, plan.Files, plan.Overwrite)
 }
 
 // PreflightWriteAgent is the AgentPlan analogue of PreflightWrite.
@@ -106,7 +109,7 @@ func PreflightWriteAgent(plan *AgentPlan) error {
 			return fmt.Errorf("agent write refused: target cannot preserve security field %s", loss.Field)
 		}
 	}
-	return preflightWrite(plan.TargetPaths, plan.Files)
+	return preflightWrite(plan.TargetPaths, plan.Files, plan.Overwrite)
 }
 
 func verifyProjectRollbackTarget(entry ManifestEntry) error {

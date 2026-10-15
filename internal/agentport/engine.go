@@ -38,6 +38,11 @@ type Plan struct {
 	Files       map[string][]byte // relative path -> content, from Target.Project()
 	Loss        []LossItem
 	TargetPaths string // absolute directory the files would be written under (<dir>/<name>/)
+	// Overwrite lets Write replace files whose content differs. Callers set
+	// it only after ClassifyInstalled shows the destination is an unmodified
+	// relay installation (or the user passed --force); the replaced bytes are
+	// still backed up by the transaction.
+	Overwrite bool
 }
 
 // HasDropped reports whether the plan's loss report contains any
@@ -200,6 +205,13 @@ func Write(plan *Plan) error {
 		}
 		if err := tx.Stage(plan.TargetPaths, rel, data, mode); err != nil {
 			return tx.Discard(err)
+		}
+	}
+	if plan.Overwrite {
+		for _, rel := range droppedFiles(plan.Skill.Name, plan.Target.ID(), plan.Scope, KindSkill, plan.Files) {
+			if err := tx.StageRemoval(plan.TargetPaths, rel); err != nil {
+				return tx.Discard(err)
+			}
 		}
 	}
 	if err := tx.Persist(); err != nil {

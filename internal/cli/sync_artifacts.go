@@ -21,6 +21,7 @@ type skillSyncOpts struct {
 	subagents  bool
 	acceptLoss bool
 	dryRun     bool
+	force      bool
 }
 
 // syncSourceProvider picks the provider whose skills and subagents are
@@ -48,6 +49,26 @@ func compareFiles(dir string, files map[string][]byte) (same, conflict bool, err
 		}
 	}
 	return same, false, nil
+}
+
+// installDecision maps the destination's ownership to a sync outcome:
+// identical content is unchanged; a missing or relay-installed and unedited
+// artifact is added or updated; anything the user owns or edited is a
+// conflict that only --force replaces.
+func installDecision(same bool, state agentport.InstallState, force bool) (status, detail string, overwrite bool) {
+	switch {
+	case same:
+		return agentsync.StatusUnchanged, "", false
+	case state == agentport.InstallNone:
+		return agentsync.StatusAdded, "", false
+	case state == agentport.InstallRelay:
+		return agentsync.StatusUpdated, "", true
+	case force:
+		return agentsync.StatusUpdated, "replaced with --force", true
+	case state == agentport.InstallEdited:
+		return agentsync.StatusConflict, "edited since relay installed it; --force overwrites", false
+	}
+	return agentsync.StatusConflict, "exists and was not installed by relay; --force overwrites", false
 }
 
 func lossSummary(loss []agentport.LossItem) string {
@@ -115,16 +136,15 @@ func planSkillsAndSubagents(o skillSyncOpts) ([]agentsync.Item, []func() error, 
 					item(target, agentsync.KindSkills, ref.Name, plan.TargetPaths, agentsync.StatusSkipped, "would drop "+lossSummary(plan.Loss)+"; rerun with --accept-loss")
 					continue
 				}
-				same, conflict, err := compareFiles(plan.TargetPaths, plan.Files)
-				switch {
-				case err != nil:
+				same, _, err := compareFiles(plan.TargetPaths, plan.Files)
+				if err != nil {
 					return nil, nil, err
-				case same:
-					item(target, agentsync.KindSkills, ref.Name, plan.TargetPaths, agentsync.StatusUnchanged, "")
-				case conflict:
-					item(target, agentsync.KindSkills, ref.Name, plan.TargetPaths, agentsync.StatusConflict, "installed with different content; relay skill uninstall it to resync")
-				default:
-					item(target, agentsync.KindSkills, ref.Name, plan.TargetPaths, agentsync.StatusAdded, "")
+				}
+				state := agentport.ClassifyInstalled(skill.Name, dst.ID(), scope, agentport.KindSkill, plan.TargetPaths, plan.Files)
+				status, detail, overwrite := installDecision(same, state, o.force)
+				item(target, agentsync.KindSkills, ref.Name, plan.TargetPaths, status, detail)
+				plan.Overwrite = overwrite
+				if status == agentsync.StatusAdded || status == agentsync.StatusUpdated {
 					if !o.dryRun {
 						writes = append(writes, func() error {
 							if err := agentport.PreflightWrite(plan); err != nil {
@@ -176,16 +196,15 @@ func planSkillsAndSubagents(o skillSyncOpts) ([]agentsync.Item, []func() error, 
 					item(target, agentsync.KindSubagents, ref.Name, plan.TargetPaths, agentsync.StatusSkipped, "would drop "+lossSummary(plan.Loss)+"; rerun with --accept-loss")
 					continue
 				}
-				same, conflict, err := compareFiles(plan.TargetPaths, plan.Files)
-				switch {
-				case err != nil:
+				same, _, err := compareFiles(plan.TargetPaths, plan.Files)
+				if err != nil {
 					return nil, nil, err
-				case same:
-					item(target, agentsync.KindSubagents, ref.Name, plan.TargetPaths, agentsync.StatusUnchanged, "")
-				case conflict:
-					item(target, agentsync.KindSubagents, ref.Name, plan.TargetPaths, agentsync.StatusConflict, "installed with different content; relay agent uninstall it to resync")
-				default:
-					item(target, agentsync.KindSubagents, ref.Name, plan.TargetPaths, agentsync.StatusAdded, "")
+				}
+				state := agentport.ClassifyInstalled(agent.Name, dst.ID(), scope, agentport.KindAgent, plan.TargetPaths, plan.Files)
+				status, detail, overwrite := installDecision(same, state, o.force)
+				item(target, agentsync.KindSubagents, ref.Name, plan.TargetPaths, status, detail)
+				plan.Overwrite = overwrite
+				if status == agentsync.StatusAdded || status == agentsync.StatusUpdated {
 					if !o.dryRun {
 						writes = append(writes, func() error {
 							if err := agentport.PreflightWriteAgent(plan); err != nil {

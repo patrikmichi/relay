@@ -222,7 +222,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		for _, scope := range scopes {
 			items, writes, err := planSkillsAndSubagents(skillSyncOpts{
 				from: o.from, targets: agents, scope: scope, skills: kinds.skills, subagents: kinds.subagents,
-				acceptLoss: o.acceptLoss, dryRun: o.dryRun,
+				acceptLoss: o.acceptLoss, dryRun: o.dryRun, force: o.force,
 			})
 			if err != nil {
 				return nil, err
