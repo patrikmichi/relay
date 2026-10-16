@@ -60,8 +60,10 @@ login` without `--agent` as the same user on the same machine gets an
 unrestricted session, a process that unsets `RELAY_AGENT` runs as you, and one
 that can read the OS keychain can read your own session. The agent profile and
 `relay sync` below make the default path safe, but they are not a sandbox.
-Closing the gap needs the human session to live where the agent cannot reach
-it: keylatch is the fix for processes that run as the same user.
+`RELAY_AGENT` selects a profile; it is not a security boundary. The planned
+protection is gateway-side human presence: passkey step-up for approvals and
+high-risk actions, with approvals confirmed on the approving device. keylatch
+is an optional integration.
 
 The one check relay can add on its own is a person at the keyboard. `relay
 approvals approve` and `deny` therefore refuse to run without an interactive

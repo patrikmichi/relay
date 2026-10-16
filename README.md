@@ -332,8 +332,9 @@ and what `relay sync` sets are in
 agent marker is chosen when a session is issued; an unmarked `relay login` on
 the same machine is still unrestricted, and a process that unsets `RELAY_AGENT`
 or reads your keychain acts as you. The agent profile makes the default safe;
-it is not a sandbox. keylatch is the fix for processes that run as the same
-user. As a minimum, `relay approvals approve` and `deny` need an interactive
+it is not a sandbox. The planned protection is gateway-side human presence:
+passkey step-up for approvals and high-risk actions, with approvals confirmed
+on the approving device. keylatch is an optional integration. As a minimum, `relay approvals approve` and `deny` need an interactive
 terminal and show the whole call before they ask; they refuse when stdin is not
 a terminal.
 
