@@ -1045,3 +1045,30 @@ whitespace) of `signed`; `contentHash` is the hex SHA-256 of the same bytes.
 The CLI compares the fields it prints with `signed`, so a changed step does not
 verify; other keys in `signed` (the catalog version, scope, organisation) are
 signed but not compared.
+
+## Catalog and custom connectors
+
+Bearer auth. The routes are the plan's; the wrappers and the draft fields are
+this client's decisions. The refusal codes `spec_invalid`, `spec_unsupported`,
+`connector_slug_taken`, `connector_version_conflict`, `quality_gate_failed`,
+`agent_not_allowed` and `meta_executor_blocked` are in the exit-code table.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/catalog/browse?q=&source=&cursor=` | `{"items": [{"key", "name", "summary"?, "sources": [{"source", "tools", "name"?}], "preferred"?}], "nextCursor"?}` |
+| `GET /api/catalog/services/{key}` | `{"service": {...the item}}` |
+| `GET /api/catalog/federated`, `GET /api/catalog/federated/{id}` | `{"items": [{"id", "vendor", "credentialMode", "apps", "health", "reviewQueue"}]}`; `{"federated": {"id", "vendor", "credentialMode", "health", "apps": [{"vendorApp", "status", "tools"}]}}` |
+| `POST /api/catalog/federated` | `{"vendor", "credentials": {...}, "credentialMode": "shared\|per_user"}`; `201` `{"federated": {"id"}}`; the credential is write-only |
+| `POST /api/catalog/federated/{id}/apps` | `{"apps": [{"vendorApp"}]}` |
+| `GET /api/catalog/registry?q=&source=&cursor=` | `{"items": [{"name", "description", "version", "status"}], "nextCursor"?}` |
+| `GET /api/catalog/registry/{name}/versions` | `{"versions": [{"version", "packages": [{"registryType": "npm\|pypi\|oci", "identifier"}], "remotes": [{"url"}]}]}` |
+| `POST /api/catalog/registry/install` | `{"source": "registry", "name", "version"?, "remote"?: true, "package"?: true}`; `201` `{"upstreamId", "status"}` |
+| `POST /api/connectors/import` | `{"url"}` or `{"text", "format"}`; answers `{"draftId", "revision", "format", "operations": [{"id", "method", "path", "summary", "risk"?}], "warnings"}` |
+| `PATCH /api/connectors/drafts/{id}` | `{"expectedRevision", "selection": {"operations": [id]} \| {"suggest": true}, "slug"?, "authConfigId"?, "riskOverrides"?: {tool: {"class", "reason"}}}` |
+| `POST /api/connectors/drafts/{id}/preview` | `{}`; answers `{"tools": [{"name", "risk", "method", "path"}], "quality": {"passed", "issues"}, "version"}` |
+| `POST /api/connectors/drafts/{id}/publish` | `{"expectedVersion"}`; answers `{"slug", "version"}` |
+| `GET /api/connectors/drafts?slug=` | `{"items": [{"id", "nextVersion"}]}` |
+| `GET /api/connectors/custom`, `GET /api/connectors/custom/{slug}` | `{"items": [{"slug", "name", "version", "status", "tools", "updatedAt"}]}`; `{"connector": {"slug", "name", "version", "status", "auth", "tools": [{"name", "risk"}]}}` |
+| `GET /api/connectors/custom/{slug}/versions`, `POST /api/connectors/custom/{slug}/disable`, `GET /api/connectors/custom/{slug}/export` | `{"items": [{"version", "status", "at", "by"?}]}`; `{}`; the connector JSON |
+
+Pages the CLI opens (no API call): `/catalog/federated/{id}`.
