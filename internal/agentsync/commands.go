@@ -56,7 +56,7 @@ func cursorCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
 func opencodeCommands(env Env, scope Scope, cmds []Command) ([]Op, string) {
 	dir := filepath.Join(env.Project, ".opencode", "commands")
 	if scope == ScopeUser {
-		dir = filepath.Join(env.Home, ".config", "opencode", "commands")
+		dir = filepath.Join(opencodeDir(env), "commands")
 	}
 	return markdownCommands(OpenCode, scope, dir, ".md", cmds, func(c Command) []string {
 		return commandFrontmatter(c, "description")

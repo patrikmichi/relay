@@ -171,7 +171,7 @@ func geminiMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 func opencodeConfigPath(env Env, scope Scope) string {
 	dir := env.Project
 	if scope == ScopeUser {
-		dir = filepath.Join(env.Home, ".config", "opencode")
+		dir = opencodeDir(env)
 	}
 	if p := filepath.Join(dir, "opencode.jsonc"); fileExists(p) {
 		return p
@@ -218,11 +218,7 @@ func windsurfMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 // the rename keep theirs in ~/.codeium/windsurf, which is also written when
 // that directory exists so either generation of the app sees the servers.
 func windsurfMCPPaths(env Env) []string {
-	xdg := env.getenv("XDG_CONFIG_HOME")
-	if xdg == "" {
-		xdg = filepath.Join(env.Home, ".config")
-	}
-	paths := []string{filepath.Join(xdg, "devin", "mcp_config.json")}
+	paths := []string{filepath.Join(devinConfigDir(env), "mcp_config.json")}
 	if dirExists(filepath.Join(env.Home, ".codeium", "windsurf")) {
 		paths = append(paths, filepath.Join(env.Home, ".codeium", "windsurf", "mcp_config.json"))
 	}
@@ -236,7 +232,7 @@ func clineSettingsPaths(env Env) []string {
 		return []string{p}
 	}
 	paths := []string{filepath.Join(env.Home, ".cline", "data", "settings", "cline_mcp_settings.json")}
-	vscode := filepath.Join(env.Home, ".config", "Code", "User", "globalStorage", "saoudrizwan.claude-dev", "settings")
+	vscode := filepath.Join(vscodeGlobalStorage(env), "saoudrizwan.claude-dev", "settings")
 	if dirExists(vscode) {
 		paths = append(paths, filepath.Join(vscode, "cline_mcp_settings.json"))
 	}

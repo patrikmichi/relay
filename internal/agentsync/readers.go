@@ -187,7 +187,7 @@ func (r *agentReader) rules() []Rule {
 	case Codex:
 		return r.blockRule(r.pick(home(".codex", "AGENTS.md"), project("AGENTS.md")))
 	case OpenCode:
-		return r.blockRule(r.pick(home(".config", "opencode", "AGENTS.md"), project("AGENTS.md")))
+		return r.blockRule(r.pick(func(e Env) string { return filepath.Join(opencodeDir(e), "AGENTS.md") }, project("AGENTS.md")))
 	case Gemini:
 		return r.blockRule(r.pick(home(".gemini", "GEMINI.md"), project("GEMINI.md")))
 	case Copilot:
@@ -292,7 +292,7 @@ func (r *agentReader) commandDir() (dir, ext string, ok bool) {
 		return filepath.Join(root, ".cursor", "commands"), ".md", true
 	case OpenCode:
 		if r.scope == ScopeUser {
-			return filepath.Join(r.env.Home, ".config", "opencode", "commands"), ".md", true
+			return filepath.Join(opencodeDir(r.env), "commands"), ".md", true
 		}
 		return filepath.Join(r.env.Project, ".opencode", "commands"), ".md", true
 	case Windsurf:

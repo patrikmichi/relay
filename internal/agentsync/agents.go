@@ -52,7 +52,7 @@ func Agents() []Agent {
 		},
 		{
 			ID: OpenCode, Name: "OpenCode",
-			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".config", "opencode")) },
+			Detect: func(e Env) bool { return dirExists(opencodeDir(e)) },
 			MCP:    refAware(OpenCode, opencodeMCP), Hooks: opencodeHooks, Rules: opencodeRules, Commands: opencodeCommands,
 		},
 		{

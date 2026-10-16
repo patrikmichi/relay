@@ -295,7 +295,7 @@ func opencodeHooks(env Env, scope Scope, hooks []Hook) ([]Op, string) {
 	m := meta{OpenCode, KindHooks, scope}
 	dir := filepath.Join(env.Project, ".opencode", "plugins")
 	if scope == ScopeUser {
-		dir = filepath.Join(env.Home, ".config", "opencode", "plugins")
+		dir = filepath.Join(opencodeDir(env), "plugins")
 	}
 	type entry struct {
 		Event   string `json:"event"`

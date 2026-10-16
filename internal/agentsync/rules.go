@@ -76,7 +76,7 @@ func project(parts ...string) func(Env) string {
 var (
 	claudeRules   = blockRules(Claude, home(".claude", "CLAUDE.md"), project("CLAUDE.md"), "", "")
 	codexRules    = blockRules(Codex, home(".codex", "AGENTS.md"), project("AGENTS.md"), "", "")
-	opencodeRules = blockRules(OpenCode, home(".config", "opencode", "AGENTS.md"), project("AGENTS.md"), "", "")
+	opencodeRules = blockRules(OpenCode, func(e Env) string { return filepath.Join(opencodeDir(e), "AGENTS.md") }, project("AGENTS.md"), "", "")
 	geminiRules   = blockRules(Gemini, home(".gemini", "GEMINI.md"), project("GEMINI.md"), "", "")
 	copilotRules  = blockRules(Copilot, nil, project(".github", "copilot-instructions.md"), "GitHub Copilot instructions are configured per repository", "")
 )
