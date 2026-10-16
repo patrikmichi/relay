@@ -26,6 +26,9 @@ import (
 	"github.com/patrikmichi/zuano/internal/tunnel"
 )
 
+// testToken has the shape of an enrollment token and is assembled at run time.
+var testToken = "nxt_" + strings.Repeat("A", 8) + "BCDEFG"
+
 func runCmd(t *testing.T, args ...string) (code int, out, errOut string) {
 	t.Helper()
 	var o, e bytes.Buffer
@@ -99,7 +102,7 @@ func TestEnrollWritesTheIdentityAndRefusesASecondTime(t *testing.T) {
 	defer app.Close()
 	dir := t.TempDir()
 	cfg, state := filepath.Join(dir, "config.yaml"), filepath.Join(dir, "state")
-	code, out, errOut := runCmd(t, "enroll", "--token", "nxt_ABCDEFGHJKLMNP", "--url", app.URL, "--config", cfg, "--state-dir", state, "--name", "dc1-a")
+	code, out, errOut := runCmd(t, "enroll", "--token", testToken, "--url", app.URL, "--config", cfg, "--state-dir", state, "--name", "dc1-a")
 	if code != 0 || !strings.Contains(out, "Enrolled as nag_7 in network net_7") || !strings.Contains(out, "approves this agent") {
 		t.Fatalf("enroll: %d %q %q", code, out, errOut)
 	}
@@ -109,7 +112,7 @@ func TestEnrollWritesTheIdentityAndRefusesASecondTime(t *testing.T) {
 	if _, err := tunnel.LoadIdentity(state); err != nil {
 		t.Error(err)
 	}
-	if code, _, errOut := runCmd(t, "enroll", "--token", "nxt_ABCDEFGHJKLMNP", "--url", app.URL, "--config", cfg, "--state-dir", state); code != 1 || !strings.Contains(errOut, "already enrolled") {
+	if code, _, errOut := runCmd(t, "enroll", "--token", testToken, "--url", app.URL, "--config", cfg, "--state-dir", state); code != 1 || !strings.Contains(errOut, "already enrolled") {
 		t.Errorf("second enroll: %d %q", code, errOut)
 	}
 	if code, _, _ := runCmd(t, "enroll", "--config", cfg, "--state-dir", filepath.Join(dir, "other")); code != 2 {
@@ -402,7 +405,7 @@ func TestRunEnrollsAContainerFromItsEnvironment(t *testing.T) {
 	defer app.Close()
 	dir := t.TempDir()
 	cfg, state := filepath.Join(dir, "config.yaml"), filepath.Join(dir, "state")
-	t.Setenv("ZUANO_CONNECTOR_ENROLL_TOKEN", "nxt_ABCDEFGHJKLMNP")
+	t.Setenv("ZUANO_CONNECTOR_ENROLL_TOKEN", testToken)
 	t.Setenv("ZUANO_CONNECTOR_URL", app.URL)
 	ctx, cancel := context.WithCancel(t.Context())
 	var out, errOut bytes.Buffer

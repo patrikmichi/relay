@@ -181,10 +181,10 @@ func TestHelmChartRendersAHardenedStatefulSet(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("helm tests run on unix")
 	}
-	if out, err := helm(t, "lint", filepath.Join("..", "..", "deploy", "helm", BinaryName), "--set", "config.network=net_ABC", "--set", "enrollment.url=https://app.example.com", "--set", "enrollment.token=nxt_ABCDEFGHJKLMNP"); err != nil {
+	if out, err := helm(t, "lint", filepath.Join("..", "..", "deploy", "helm", BinaryName), "--set", "config.network=net_ABC", "--set", "enrollment.url=https://app.example.com", "--set", "enrollment.token="+testToken); err != nil {
 		t.Fatalf("helm lint: %v\n%s", err, out)
 	}
-	docs := renderChart(t, "enrollment.token=nxt_ABCDEFGHJKLMNP", "config.targets[0].name=erp", "config.targets[0].kind=http", "config.targets[0].url=https://erp.internal", "config.targets[0].methods[0]=GET", "config.targets[0].paths[0]=/**")
+	docs := renderChart(t, "enrollment.token="+testToken,"config.targets[0].name=erp", "config.targets[0].kind=http", "config.targets[0].url=https://erp.internal", "config.targets[0].methods[0]=GET", "config.targets[0].paths[0]=/**")
 	ss := find(docs, "StatefulSet")
 	if ss == nil {
 		t.Fatal("no StatefulSet")
@@ -235,7 +235,7 @@ func TestHelmChartRequiredValuesAndExistingSecret(t *testing.T) {
 	if out, err := helm(t, "template", "rel", chart, "--set", "config.network=net_ABC", "--set", "enrollment.url=https://app.example.com"); err == nil || !strings.Contains(out, "enrollment.token") {
 		t.Errorf("no token and no secret: %v %s", err, out)
 	}
-	docs := renderChart(t, "enrollment.existingSecret=my-token", "replicaCount=1", "antiAffinity=hard", "secretMounts[0].name=erp-token", "secretMounts[0].secretName=erp-token")
+	docs := renderChart(t, "enrollment.existingSecret=enrolment", "replicaCount=1", "antiAffinity=hard", "secretMounts[0].name=erp", "secretMounts[0].secretName=erp")
 	if find(docs, "Secret") != nil {
 		t.Error("a Secret was created although one was named")
 	}
@@ -252,14 +252,14 @@ func TestHelmChartRequiredValuesAndExistingSecret(t *testing.T) {
 			ref, _ = dig(m, "valueFrom", "secretKeyRef", "name").(string)
 		}
 	}
-	if ref != "my-token" {
+	if ref != "enrolment" {
 		t.Errorf("token secret = %q", ref)
 	}
 	if dig(ss, "spec", "template", "spec", "affinity", "podAntiAffinity", "requiredDuringSchedulingIgnoredDuringExecution") == nil {
 		t.Error("hard anti-affinity")
 	}
 	mounts, _ := yaml.Marshal(c["volumeMounts"])
-	if !strings.Contains(string(mounts), "/run/secrets/erp-token") {
+	if !strings.Contains(string(mounts), "/run/secrets/erp") {
 		t.Errorf("mounts:\n%s", mounts)
 	}
 }

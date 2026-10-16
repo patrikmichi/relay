@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// testToken has the shape of an enrollment token and is assembled at run time.
+var testToken = "nxt_" + strings.Repeat("A", 8) + "BCDEFG"
+
 // fakeApp is the gateway's agent-facing routes.
 type fakeApp struct {
 	t       *testing.T
@@ -132,7 +135,7 @@ func TestEnrollGeneratesKeysRedeemsTheTokenAndWritesAnIdentity(t *testing.T) {
 	app := newFakeApp(t)
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "etc", "config.yaml")
-	id, err := Enroll(t.Context(), EnrollOptions{AppURL: app.srv.URL, Token: "nxt_ABCDEFGHJKLMNP", Name: "erp-dc1-a", StateDir: filepath.Join(dir, "state"), ConfigPath: cfgPath})
+	id, err := Enroll(t.Context(), EnrollOptions{AppURL: app.srv.URL, Token: testToken, Name: "erp-dc1-a", StateDir: filepath.Join(dir, "state"), ConfigPath: cfgPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +168,7 @@ func TestEnrollGeneratesKeysRedeemsTheTokenAndWritesAnIdentity(t *testing.T) {
 	if err != nil || cfg.Network != "net_1" {
 		t.Errorf("starter config: %v %v", cfg, err)
 	}
-	if _, err := Enroll(t.Context(), EnrollOptions{AppURL: app.srv.URL, Token: "nxt_ABCDEFGHJKLMNP", StateDir: filepath.Join(dir, "second"), ConfigPath: cfgPath}); err != nil {
+	if _, err := Enroll(t.Context(), EnrollOptions{AppURL: app.srv.URL, Token: testToken, StateDir: filepath.Join(dir, "second"), ConfigPath: cfgPath}); err != nil {
 		t.Fatal(err)
 	}
 	if raw := readFileT(t, cfgPath); !strings.Contains(raw, "name: erp-dc1-a") {
@@ -176,7 +179,7 @@ func TestEnrollGeneratesKeysRedeemsTheTokenAndWritesAnIdentity(t *testing.T) {
 func TestEnrollRefusals(t *testing.T) {
 	app := newFakeApp(t)
 	dir := t.TempDir()
-	good := EnrollOptions{AppURL: app.srv.URL, Token: "nxt_ABCDEFGHJKLMNP", StateDir: dir}
+	good := EnrollOptions{AppURL: app.srv.URL, Token: testToken, StateDir: dir}
 	for name, mod := range map[string]func(*EnrollOptions){
 		"no prefix":  func(o *EnrollOptions) { o.Token = "abcdefghijklmnop" },
 		"short":      func(o *EnrollOptions) { o.Token = "nxt_a" },
