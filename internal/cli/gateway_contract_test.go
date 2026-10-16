@@ -34,6 +34,24 @@ const (
 	contractEvalSet = `{"set":{"id":"evs_1","skillId":"res_1","name":"smoke","description":"","versionId":"rev_1","trainPercent":70,"counts":{"trigger":8,"task":0,"train":5,"validation":3},"cases":[{"id":"evc_1","kind":"trigger","name":"asks","input":"invoice Acme","shouldTrigger":true,"split":"train","requiredConnectors":[]}]}}`
 )
 
+// lib/marketplace/generate-manifest.ts MarketplaceManifestSchema output: the
+// owner is an object, not a string.
+const contractMarketplaceManifest = `{"name":"org-abc123-marketplace","owner":{"name":"org_abc123","email":"admin@example.com"},"plugins":[{"name":"searcher","source":"./plugins/res_abc123","version":"1.2.3","description":"Search","displayName":"Searcher"}],"description":"Plugins","version":"2026.10.1"}`
+
+func TestContract_MarketplaceManifestDecodes(t *testing.T) {
+	var m marketplaceManifest
+	if err := json.Unmarshal([]byte(contractMarketplaceManifest), &m); err != nil {
+		t.Fatalf("the gateway's manifest does not decode: %v", err)
+	}
+	if m.Owner.Name != "org_abc123" || m.Owner.Email != "admin@example.com" || len(m.Plugins) != 1 || m.Plugins[0].Source != "./plugins/res_abc123" {
+		t.Errorf("manifest = %+v", m)
+	}
+	var empty marketplaceManifest
+	if err := json.Unmarshal([]byte(`{"name":"org-marketplace","owner":{"name":"org"},"plugins":[]}`), &empty); err != nil || empty.Owner.Name != "org" {
+		t.Errorf("empty manifest = %+v, %v", empty, err)
+	}
+}
+
 func TestContract_ApprovalShowReadsArgsPreview(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 		"GET /api/approvals/apr_1": reply(200, contractApprovalPreview),

@@ -36,7 +36,7 @@ func (td *testDoer) Get(path string) (*http.Response, error) {
 
 var testManifest = marketplaceManifest{
 	Name:  "acme-corp-plugins",
-	Owner: "acme-corp",
+	Owner: manifestOwner{Name: "acme-corp"},
 	Plugins: []manifestPlugin{
 		{Name: "searcher", Source: "./plugins/searcher-001", Version: "1.2.3"},
 		{Name: "formatter", Source: "./plugins/fmt-002", Version: "0.9.0"},

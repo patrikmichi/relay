@@ -36,11 +36,19 @@ type manifestPlugin struct {
 	DisplayName string `json:"displayName,omitempty"`
 }
 
+// manifestOwner is the marketplace owner object the gateway emits.
+type manifestOwner struct {
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
+}
+
 // marketplaceManifest mirrors the CC marketplace.json top-level object.
 type marketplaceManifest struct {
-	Name    string           `json:"name"`
-	Owner   string           `json:"owner,omitempty"`
-	Plugins []manifestPlugin `json:"plugins"`
+	Name        string           `json:"name"`
+	Owner       manifestOwner    `json:"owner"`
+	Plugins     []manifestPlugin `json:"plugins"`
+	Description string           `json:"description,omitempty"`
+	Version     string           `json:"version,omitempty"`
 }
 
 // pluginBundle is the materialisable shape returned by
