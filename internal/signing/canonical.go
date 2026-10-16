@@ -33,6 +33,16 @@ func Message(a Artifact) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// CanonicalJSON returns v, a decoded JSON document (maps, slices and
+// scalars), in the form the gateway signs.
+func CanonicalJSON(v any) ([]byte, error) {
+	var b bytes.Buffer
+	if err := canonicalJSON(&b, v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // canonicalJSON writes v the way the gateway's canonicalJson does: object keys
 // sorted at every depth, no whitespace, and <, > and & left unescaped.
 func canonicalJSON(b *bytes.Buffer, v any) error {
