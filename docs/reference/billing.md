@@ -1,6 +1,6 @@
 # Billing, usage and plan limits
 
-relay reads the organisation's plan and usage from the gateway and reports a
+zuano reads the organisation's plan and usage from the gateway and reports a
 refusal by the plan the same way on every command. Changing the plan, paying
 and the customer portal are done in the gateway's billing page: the CLI holds
 no billing credential and cannot spend money.
@@ -9,10 +9,10 @@ no billing credential and cannot spend money.
 
 | Command | Request |
 |---|---|
-| `relay billing status [--json]` | `GET /api/billing/status` |
-| `relay billing usage [--meter KEY] [--period current\|previous] [--by member\|service\|tool] [--json]` | `GET /api/billing/usage?meter=&period=&by=` |
-| `relay billing open [--no-browser]` | none: opens `<gateway>/settings/billing` |
-| `relay usage [--from DAY] [--to DAY] [--json]` | `GET /api/org/usage?from=&to=` |
+| `zuano billing status [--json]` | `GET /api/billing/status` |
+| `zuano billing usage [--meter KEY] [--period current\|previous] [--by member\|service\|tool] [--json]` | `GET /api/billing/usage?meter=&period=&by=` |
+| `zuano billing open [--no-browser]` | none: opens `<gateway>/settings/billing` |
+| `zuano usage [--from DAY] [--to DAY] [--json]` | `GET /api/org/usage?from=&to=` |
 
 All of them accept the personal and the agent session (they only read), and
 `--json` prints the response body unchanged. The request and response shapes
@@ -24,7 +24,7 @@ platform administrator), the subscription state and trial end, the billing
 period, whether it cancels at the end of the period, seats used, purchased and
 allowed, whether the organisation is verified, whether overage is on and the
 spend cap. A member without billing rights gets the gateway's reduced view and
-relay says so.
+zuano says so.
 
 `billing usage` prints one row per meter: used, included (or `unlimited`),
 percent of the allowance, the projection to the end of the period and its cost
@@ -40,7 +40,7 @@ agent session or with `--no-browser` it prints the link only.
 
 Any gateway response that carries the billing error shape ends the command
 with one of these, whatever the command (call, skill eval and optimize,
-publish, connect, webhooks, files, plugins). relay prints the gateway's
+publish, connect, webhooks, files, plugins). zuano prints the gateway's
 sentence, the plan you are on and the plan that has the feature, when the
 quota resets, and the upgrade link.
 
@@ -53,13 +53,13 @@ quota resets, and the upgrade link.
 | 13 | `quota_exceeded` on a metered quota | 429 |
 
 Statuses 13 and 14 (step-up) are described in [approvals.md](approvals.md#exit-statuses)
-and [step-up.md](step-up.md). `relay call --wait` treats 402 as final: it does
+and [step-up.md](step-up.md). `zuano call --wait` treats 402 as final: it does
 not retry.
 
 ```
-$ relay call sandbox run_code
+$ zuano call sandbox run_code
 run_code needs the Pro plan (plan_required, plan free, needs pro)
-Upgrade: https://gateway.example/settings/billing/plans?highlight=sandbox.run_code&org=acme
+Upgrade: https://app.zuano.ai/settings/billing/plans?highlight=sandbox.run_code&org=acme
 $ echo $?
 30
 ```

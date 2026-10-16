@@ -8,7 +8,7 @@ frontmatter in Markdown. Only each provider's own agent directory is writable.
 Codex TOML parsing and serialization use go-toml/v2, including nested tables,
 dotted keys, multiline strings and escaping; unsupported fields are reported.
 
-Codex and Cursor do not have a supported Relay tools-allowlist mapping. Agents
+Codex and Cursor do not have a supported Zuano tools-allowlist mapping. Agents
 with tools restrictions cannot migrate into them. Gemini's tools field is an
 array; same-provider nonempty allowlists are preserved. Cross-provider Gemini
 tool restrictions, explicit empty allowlists, and all unbound execution settings

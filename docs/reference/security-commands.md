@@ -4,35 +4,35 @@ Read-mostly views of the gateway's security state. Changing a policy, enrolling
 a passkey or enabling strict mode is done in the dashboard, where a passkey
 confirms it.
 
-## relay sessions
+## zuano sessions
 
 | Command | Request |
 |---|---|
-| `relay sessions list [--json]` | `GET /api/me/sessions`: your browser and CLI sessions; the one this CLI uses is marked |
-| `relay sessions revoke <id>` | `DELETE /api/me/sessions/{id}` |
-| `relay sessions revoke-all` | `POST /api/me/sessions/revoke-all`: every session, CLI refresh token and OAuth family, this one included |
+| `zuano sessions list [--json]` | `GET /api/me/sessions`: your browser and CLI sessions; the one this CLI uses is marked |
+| `zuano sessions revoke <id>` | `DELETE /api/me/sessions/{id}` |
+| `zuano sessions revoke-all` | `POST /api/me/sessions/revoke-all`: every session, CLI refresh token and OAuth family, this one included |
 
 `revoke-all` needs a passkey confirmation. The gateway asks for it with a
-step-up (see [step-up.md](step-up.md)); relay opens the page, waits and retries,
+step-up (see [step-up.md](step-up.md)); zuano opens the page, waits and retries,
 or exits 14 without a person at the keyboard.
 
-## relay audit
+## zuano audit
 
 Both commands need an organisation admin.
 
 | Command | Request |
 |---|---|
-| `relay audit verify [--from D] [--to D] [--json]` | `GET /api/admin/audit/verify?from=&to=` |
-| `relay audit export [--format ndjson\|csv] [--from] [--to] [--q] [--actor] [--service] [--tool] [--outcome] [--output FILE]` | `GET /api/admin/audit/export?format=&...` |
+| `zuano audit verify [--from D] [--to D] [--json]` | `GET /api/admin/audit/verify?from=&to=` |
+| `zuano audit export [--format ndjson\|csv] [--from] [--to] [--q] [--actor] [--service] [--tool] [--outcome] [--output FILE]` | `GET /api/admin/audit/export?format=&...` |
 
 `verify` asks the gateway to recompute the hash chain and check the signed
 daily checkpoints. It exits 0 when the log verifies and 1 when it does not,
 naming the first broken event. `export` streams the response to stdout, or to
 `--output FILE`, which must not exist yet and is created with mode 0600.
 
-## relay policy
+## zuano policy
 
-`relay policy explain <service> <tool> [--arg k=v] [--arg-json k=<json>] [--principal KIND] [--json]`
+`zuano policy explain <service> <tool> [--arg k=v] [--arg-json k=<json>] [--principal KIND] [--json]`
 calls `GET /api/admin/risk-policy/preview?service=&tool=&params=<json>&principal=`
 and prints the decision the organisation's risk matrix, the tool's overrides and
 the platform blocks give that call:

@@ -12,7 +12,7 @@ be left out.
 
 Everything here needs a gateway and a login. Starting a run or an optimization
 needs the hosted runtime on the gateway (`503` otherwise) and an admin, owner or
-the skill's author. An agent session (`relay login --agent`) can read all of it
+the skill's author. An agent session (`zuano login --agent`) can read all of it
 and is refused on every command that changes something; see
 [approvals.md](approvals.md). Every command takes `--json` (the gateway's body,
 indented) and `--gateway-url`.
@@ -20,19 +20,19 @@ indented) and `--gateway-url`.
 ## Sets and cases
 
 ```bash
-relay skill evals sets list weekly-timesheet
-relay skill evals sets create weekly-timesheet --name smoke --version 1.2.0
-relay skill evals sets show weekly-timesheet smoke
-relay skill evals sets export weekly-timesheet smoke --out smoke.json
-relay skill evals sets import other-skill smoke.json
-relay skill evals sets delete weekly-timesheet smoke --yes
+zuano skill evals sets list weekly-timesheet
+zuano skill evals sets create weekly-timesheet --name smoke --version 1.2.0
+zuano skill evals sets show weekly-timesheet smoke
+zuano skill evals sets export weekly-timesheet smoke --out smoke.json
+zuano skill evals sets import other-skill smoke.json
+zuano skill evals sets delete weekly-timesheet smoke --yes
 
-relay skill evals case add weekly-timesheet smoke --kind trigger \
+zuano skill evals case add weekly-timesheet smoke --kind trigger \
   --name "asks for an invoice" --input "Please invoice Acme for March" --should-trigger
-relay skill evals case add weekly-timesheet smoke --kind task \
+zuano skill evals case add weekly-timesheet smoke --kind task \
   --name "invoice total" --input "What is the total of invoice 42?" \
   --contains "1 250" --regex 'EUR|€' --rubric "States the total and the currency."
-relay skill evals case remove weekly-timesheet smoke evc_123
+zuano skill evals case remove weekly-timesheet smoke evc_123
 ```
 
 | Command | Request |
@@ -52,7 +52,7 @@ relay skill evals case remove weekly-timesheet smoke evc_123
 `--reference`; `--connector` (repeatable) skips the case when a run does not
 reach that connector; `--split train|validation` pins the case. `--file FILE`
 (or `-`) reads the whole case as JSON, which is how `json_path` and `structured`
-assertions are written. relay checks the flags before sending anything.
+assertions are written. zuano checks the flags before sending anything.
 
 `sets export` writes a `relay.skill-evals/v1` document that `sets import` reads,
 so a set can move between skills and organizations.
@@ -60,14 +60,14 @@ so a set can move between skills and organizations.
 ## Running evals
 
 ```bash
-relay skill eval weekly-timesheet                          # start; prints the run id
-relay skill eval weekly-timesheet --wait                   # start and print the scores
-relay skill eval weekly-timesheet --version 1.1.0 --repeats 5 --split validation --wait
-relay skill eval weekly-timesheet --draft sdr_123 --wait
-relay skill eval weekly-timesheet --run evr_123 --wait     # follow a run started earlier
-relay skill eval weekly-timesheet --run evr_123 --cancel
-relay skill compare weekly-timesheet --versions 1.1.0,1.2.0 --wait
-relay skill compare weekly-timesheet --versions 1.1.0,sdr_123 --fail-on-regression
+zuano skill eval weekly-timesheet                          # start; prints the run id
+zuano skill eval weekly-timesheet --wait                   # start and print the scores
+zuano skill eval weekly-timesheet --version 1.1.0 --repeats 5 --split validation --wait
+zuano skill eval weekly-timesheet --draft sdr_123 --wait
+zuano skill eval weekly-timesheet --run evr_123 --wait     # follow a run started earlier
+zuano skill eval weekly-timesheet --run evr_123 --cancel
+zuano skill compare weekly-timesheet --versions 1.1.0,1.2.0 --wait
+zuano skill compare weekly-timesheet --versions 1.1.0,sdr_123 --fail-on-regression
 ```
 
 Without `--version` or `--draft`, `eval` scores the current published version.
@@ -78,7 +78,7 @@ Without `--version` or `--draft`, `eval` scores the current published version.
 `--wait` polls `GET /evals/runs/{runId}` every few seconds, printing progress on
 stderr, until the run is `succeeded`, `failed` or `cancelled`, or until
 `--wait-timeout` (default 20 minutes) passes. The run keeps going on the
-gateway when relay stops waiting, and the error says which command resumes it.
+gateway when zuano stops waiting, and the error says which command resumes it.
 With `--json`, only the final document is printed.
 
 `compare` is `eval` with two or more variants. The first is the baseline; each
@@ -95,7 +95,7 @@ connector the run did not reach).
 |---|---|
 | 0 | the run finished (or, without `--wait`, started) |
 | 1 | an error: bad arguments, a refusal by the gateway, a failed request |
-| 4 | `--wait-timeout`, or relay's own request limit, passed |
+| 4 | `--wait-timeout`, or zuano's own request limit, passed |
 | 20 | the run or optimization job ended `failed` or `cancelled` |
 | 21 | `--fail-on-regression`, and a score dropped |
 
@@ -104,22 +104,22 @@ gateway recorded `summary.regressions` (the version scores lower on validation
 than the previous version on the same set and kind, by more than 0.02), or when a
 compared variant is significantly worse than the baseline on validation (on all
 cases when the run had no validation split). The gateway records
-regressions just after it marks a run `succeeded`, so relay reads the run once
+regressions just after it marks a run `succeeded`, so zuano reads the run once
 more before it decides. In CI:
 
 ```bash
-relay skill eval weekly-timesheet --wait --fail-on-regression --json > eval.json
+zuano skill eval weekly-timesheet --wait --fail-on-regression --json > eval.json
 ```
 
 ## Optimization and drafts
 
 ```bash
-relay skill optimize weekly-timesheet --kind description --set smoke --wait
-relay skill optimize weekly-timesheet --job opj_123 --wait     # follow a job
-relay skill drafts list weekly-timesheet
-relay skill drafts show weekly-timesheet sdr_123
-relay skill drafts promote weekly-timesheet sdr_123 --version 1.3.0
-relay skill drafts discard weekly-timesheet sdr_123
+zuano skill optimize weekly-timesheet --kind description --set smoke --wait
+zuano skill optimize weekly-timesheet --job opj_123 --wait     # follow a job
+zuano skill drafts list weekly-timesheet
+zuano skill drafts show weekly-timesheet sdr_123
+zuano skill drafts promote weekly-timesheet sdr_123 --version 1.3.0
+zuano skill drafts discard weekly-timesheet sdr_123
 ```
 
 `optimize` starts a job on a set: it scores the version, asks the model for
@@ -140,8 +140,8 @@ can land in a state that waits for approval; `--version X.Y.Z` sets the semver
 ## Quality
 
 ```bash
-relay skill quality weekly-timesheet     # score, latest per kind, history by version
-relay skill quality --all                # every skill of the organization, weakest first
+zuano skill quality weekly-timesheet     # score, latest per kind, history by version
+zuano skill quality --all                # every skill of the organization, weakest first
 ```
 
 The score is 0 to 100: the mean over kinds of the latest validation score (train
@@ -150,9 +150,9 @@ when there is no validation score), or `not evaluated` until the skill has run.
 
 ## Errors
 
-relay prints the gateway's message. Some it explains further: `NOT_ENABLED`
+zuano prints the gateway's message. Some it explains further: `NOT_ENABLED`
 (the gateway has not enabled the hosted runtime), `SKILL_REQUIREMENTS_UNMET`
-(the skill's connectors are not connected: `relay connect` them first),
+(the skill's connectors are not connected: `zuano connect` them first),
 `VALIDATION_ERROR` (with the offending fields) and `EVAL_LIMIT` (cases x
 variants x repeats is over the gateway's cap; lower `--repeats` or use fewer
 variants).

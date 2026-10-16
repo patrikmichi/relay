@@ -1,19 +1,19 @@
-# Gateway contracts relay assumes
+# Gateway contracts zuano assumes
 
-relay is built against these gateway routes and response shapes. The gateway
+zuano is built against these gateway routes and response shapes. The gateway
 does not serve all of them yet; each section says where its shape comes from
 (a spec, or a decision of this client where the spec leaves the shape open).
 The gateway's contract tests should produce the documents in
-`internal/cli/testdata/contracts/`, which relay's own tests read.
+`internal/cli/testdata/contracts/`, which zuano's own tests read.
 
 Conventions: a field name in `snake_case` follows the approvals and runtime
 routes, `camelCase` follows the billing, evals and entitlement types. A field
-relay does not read may be added at any time; a field relay reads must not
+zuano does not read may be added at any time; a field zuano reads must not
 change its meaning.
 
 ## Refusals every command understands
 
-Any gateway response, on any route, may be one of these. relay maps them in
+Any gateway response, on any route, may be one of these. zuano maps them in
 its HTTP client, so no route needs to handle them separately.
 
 | Response | Client behaviour | Exit |
@@ -24,16 +24,16 @@ its HTTP client, so no route needs to handle them separately.
 | `403` `{"error": "org_suspended" \| "seat_suspended", "message"}` | prints the message | 33 |
 | `429` `{"error": "quota_exceeded", "message", "metric", "limit", "resets_at"}` | prints metric, limit and reset | 13 |
 | `401` `{"error": "step_up_required", "step_up_id", "step_up_url"}` | completes the step-up, see below | 14 when nobody can |
-| `401` `{"error": "reauth_required"}` | treated like an expired token: `relay login` | 1 |
+| `401` `{"error": "reauth_required"}` | treated like an expired token: `zuano login` | 1 |
 | `200`/`403` body or MCP `structuredContent` `{"reason": "policy_off", "message"}` | prints the message | 10 |
 
 Source: billing plan section 5.8 (codes, statuses, JSON, exit 30 to 33),
 scalability plan sections 5.9 and 8 (`429` quota, exit 13), risk policy plan
 sections 5.2 and 5.14 (`policy_off`, exit 10; `step_up_required`, exit 14).
 The billing and scalability plans disagree on the status of `quota_exceeded`
-(`402` and exit 31 against `429` and exit 13); relay accepts both and keeps
+(`402` and exit 31 against `429` and exit 13); zuano accepts both and keeps
 the exit statuses apart. `limit` is a limit key (text) in a plan refusal and a
-number in a quota refusal; relay reads either.
+number in a quota refusal; zuano reads either.
 
 ## Login
 
@@ -54,11 +54,11 @@ client's decision.
 
 `GET /api/me/passkeys` returns `{"passkeys": [{"id", "name", "created_at",
 "last_used_at": null|text, "backed_up"}]}` (fixture `passkeys.json`) and
-`GET /api/cli/whoami` may add `"strict_mode": true`; `relay doctor` reads both.
+`GET /api/cli/whoami` may add `"strict_mode": true`; `zuano doctor` reads both.
 
 Source: risk policy plan 5.1 and 5.14. A credential without a principal is
-answered `401 {"error": "reauth_required"}`; relay does not refresh such a
-session and tells the person to run `relay login`.
+answered `401 {"error": "reauth_required"}`; zuano does not refresh such a
+session and tells the person to run `zuano login`.
 
 ## Approvals
 
@@ -67,9 +67,9 @@ session and tells the person to run `relay login`.
 | `GET /api/approvals?status=S` | unchanged: `{"approvals": [...]}` |
 | `GET /api/approvals/{id}` | unchanged: `{"approval": {...}, "args_preview": ...}`; Bearer allowed |
 | `POST /api/approvals/{id}/await` | unchanged |
-| page `GET /approvals/{id}?decision=approve\|deny` | where a person decides with a passkey; relay opens it and never posts a decision |
+| page `GET /approvals/{id}?decision=approve\|deny` | where a person decides with a passkey; zuano opens it and never posts a decision |
 
-relay calls no `approve`, `deny`, `challenge` or `decide` route. The gateway
+zuano calls no `approve`, `deny`, `challenge` or `decide` route. The gateway
 must reject a Bearer decision (risk policy plan 5.3).
 
 ## Step-up
@@ -92,7 +92,7 @@ decision; the plan names the route and the three states.
 | `POST /api/me/sessions/revoke-all` | `200` any JSON; step-up gated |
 
 Source: risk policy plan 5.6, 5.13 and 5.14. The session document follows the
-`user_sessions` table; relay lists CLI sessions beside browser ones, which the
+`user_sessions` table; zuano lists CLI sessions beside browser ones, which the
 plan asks for, so the gateway must include them.
 
 ## Audit
@@ -173,7 +173,7 @@ JOB = {"id": "job_<ulid>", "kind", "status": "queued|running|retrying|succeeded|
 Source: scalability plan sections 5.1, 5.3, 6, 7 and 8. The plan names the
 routes, the statuses and the table columns; the `{"job": ...}` wrapper and
 `snake_case` fields are this client's decision, following the approvals and
-runtime routes. relay treats an id that starts with `job_` as a job.
+runtime routes. zuano treats an id that starts with `job_` as a job.
 
 ## Quota usage
 
