@@ -1,0 +1,16 @@
+{
+  "orgId": "org_abc123",
+  "plan": "free",
+  "from": "2026-10-15",
+  "to": "2026-10-16",
+  "metrics": [
+    { "metric": "tool_calls", "window": "day", "used": 1650, "soft": 1600, "hard": 2000, "resetsAt": "2026-10-17T00:00:00Z" },
+    { "metric": "agent_runs", "window": "day", "used": 3, "soft": 40, "hard": 50, "resetsAt": "2026-10-17T00:00:00Z" },
+    { "metric": "storage_bytes", "window": "gauge", "used": 52428800, "soft": 800000000, "hard": 1000000000, "resetsAt": null },
+    { "metric": "seats", "window": "gauge", "used": 3, "soft": 3, "hard": 3, "resetsAt": null }
+  ],
+  "daily": [
+    { "day": "2026-10-15", "metric": "tool_calls", "quantity": 900 },
+    { "day": "2026-10-16", "metric": "tool_calls", "quantity": 1650 }
+  ]
+}

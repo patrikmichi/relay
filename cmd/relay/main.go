@@ -62,6 +62,7 @@ var staticCommandNames = map[string]bool{
 	"publish": true, "skill": true, "agent": true, "mcp": true,
 	"providers": true, "doctor": true, "recover": true, "history": true,
 	"explain": true, "connectors": true, "connect": true, "approvals": true,
+	"billing": true, "usage": true,
 	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
@@ -192,6 +193,8 @@ func newRootCmd() *cobra.Command {
 		cli.CallCmd(),
 		cli.ExplainCmd(),
 		cli.ApprovalsCmd(),
+		cli.BillingCmd(),
+		cli.UsageCmd(),
 		cli.ServicesCmd(),
 		cli.ConnectorsCmd(),
 		cli.ConnectCmd(),

@@ -1,0 +1,21 @@
+{
+  "orgId": "org_abc123",
+  "orgSlug": "acme",
+  "orgName": "Acme",
+  "view": "reduced",
+  "plan": {
+    "key": "expert",
+    "displayName": "Expert",
+    "source": "simulated",
+    "status": "none",
+    "periodStart": "2026-10-01T00:00:00Z",
+    "periodEnd": "2026-11-01T00:00:00Z",
+    "cancelAtPeriodEnd": true
+  },
+  "verified": false,
+  "suspended": false,
+  "overageEnabled": true,
+  "spendCapMicros": 25000000,
+  "seats": { "used": 2, "purchased": 0, "max": null },
+  "billingUrl": "https://gateway.example/settings/billing"
+}

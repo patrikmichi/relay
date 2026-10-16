@@ -1,0 +1,25 @@
+{
+  "jobs": [
+    {
+      "id": "job_01J9ZK3",
+      "kind": "agent_run",
+      "status": "running",
+      "attempts": 1,
+      "error": null,
+      "created_at": "2026-10-16T12:00:00Z",
+      "started_at": "2026-10-16T12:00:02Z",
+      "finished_at": null
+    },
+    {
+      "id": "job_01J9ZH8",
+      "kind": "webhook_delivery",
+      "status": "dead",
+      "attempts": 7,
+      "error": "target answered 500 for 24 hours",
+      "created_at": "2026-10-15T08:00:00Z",
+      "started_at": "2026-10-15T08:00:01Z",
+      "finished_at": "2026-10-16T08:00:05Z"
+    }
+  ],
+  "nextCursor": "cur_2"
+}

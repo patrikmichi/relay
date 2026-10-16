@@ -1,0 +1,40 @@
+{
+  "period": { "key": "current", "start": "2026-10-16T12:00:00Z", "end": "2026-11-16T12:00:00Z" },
+  "by": null,
+  "currency": "EUR",
+  "meters": [
+    {
+      "meter": "tool_calls",
+      "unit": "call",
+      "used": 41000,
+      "included": 50000,
+      "percent": 82,
+      "projected": 62000,
+      "projectedCostMicros": 6000000,
+      "overage": "bill",
+      "breakdown": []
+    },
+    {
+      "meter": "sandbox_seconds",
+      "unit": "second",
+      "used": 1800,
+      "included": 18000,
+      "percent": 10,
+      "projected": 3600,
+      "projectedCostMicros": 0,
+      "overage": "bill",
+      "breakdown": []
+    },
+    {
+      "meter": "trace_spans",
+      "unit": "span",
+      "used": 120,
+      "included": null,
+      "percent": null,
+      "projected": 240,
+      "projectedCostMicros": 0,
+      "overage": "none",
+      "breakdown": []
+    }
+  ]
+}
