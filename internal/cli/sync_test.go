@@ -340,7 +340,7 @@ func TestRunSync_OrgNamespacing(t *testing.T) {
 // TestResolveSyncDoer_NoToken verifies that missing ZUANO_EMAIL (and no
 // persisted login / ZUANO_API_KEY) returns an actionable error.
 func TestResolveSyncDoer_NoToken(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json
 	t.Setenv("ZUANO_EMAIL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 

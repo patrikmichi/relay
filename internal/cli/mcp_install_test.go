@@ -97,7 +97,7 @@ func TestMcpSourceRefusesDuplicateNamesAndTheGatewaysName(t *testing.T) {
 	if _, err := runCommand(t, McpInstallCmd(), "relay", "--url", "https://docs.example.com/mcp", "--to", "claude"); err == nil || !strings.Contains(err.Error(), "gateway's own") {
 		t.Errorf("installing a server named relay = %v, want a refusal", err)
 	}
-	writeTestFile(t, filepath.Join(home, ".config", "relay", "sync", "mcp.json"),
+	writeTestFile(t, filepath.Join(home, ".config", "zuano", "sync", "mcp.json"),
 		`{"servers":[{"name":"docs","url":"https://a.example.com/mcp"},{"name":"docs","url":"https://b.example.com/mcp"}]}`)
 	if _, err := agentsync.LoadMCPSource(agentsync.Env{Home: home}, agentsync.ScopeUser); err == nil || !strings.Contains(err.Error(), "listed twice") {
 		t.Errorf("duplicate names = %v, want an error", err)

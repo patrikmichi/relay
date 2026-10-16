@@ -642,7 +642,7 @@ func RecoverAll(ctx context.Context) ([]Journal, error) {
 // partially-written destination file.
 func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
 	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".relay-tmp-*")
+	tmp, err := os.CreateTemp(dir, ".zuano-tmp-*")
 	if err != nil {
 		return fmt.Errorf("create temp file in %s: %w", dir, err)
 	}

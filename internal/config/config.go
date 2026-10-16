@@ -1,5 +1,5 @@
 // Package config provides persistent CLI configuration stored as JSON.
-// Config file: ~/.config/relay/config.json
+// Config file: ~/.config/zuano/config.json
 package config
 
 import (
@@ -118,13 +118,13 @@ func AgentMode() bool {
 	return false
 }
 
-// configDir returns ~/.config/relay, creating it if necessary.
+// configDir returns ~/.config/zuano, creating it if necessary.
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "relay")
+	dir := filepath.Join(home, ".config", "zuano")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create config dir %s: %w", dir, err)
 	}
@@ -408,5 +408,5 @@ func ResolveEmail() (string, error) {
 	return cfg.Email, nil
 }
 
-// Dir returns the relay config directory (~/.config/relay), creating it if necessary.
+// Dir returns the relay config directory (~/.config/zuano), creating it if necessary.
 func Dir() (string, error) { return configDir() }

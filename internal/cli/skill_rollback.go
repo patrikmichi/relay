@@ -24,7 +24,7 @@ file that has changed since, unless --force) and drop the manifest entry.
 
 Use --last to roll back the most recently recorded entry, or pass a
 manifest entry id (see 'relay skill list --provenance' or inspect
-~/.config/relay/agentport-manifest.json) to roll back a specific one.`,
+~/.config/zuano/agentport-manifest.json) to roll back a specific one.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var id string

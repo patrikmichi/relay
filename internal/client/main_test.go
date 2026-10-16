@@ -8,7 +8,7 @@ import (
 // TestMain points the home directory at a temporary one so refresh locks of
 // tests that do not isolate it never land in the real config directory.
 func TestMain(m *testing.M) {
-	home, err := os.MkdirTemp("", "relay-client-home")
+	home, err := os.MkdirTemp("", "zuano-client-home")
 	if err != nil {
 		panic(err)
 	}

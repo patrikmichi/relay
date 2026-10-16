@@ -58,7 +58,7 @@ func jsonHandler(status int, body any) http.HandlerFunc {
 
 func writeCorruptConfig(t *testing.T) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".config", "relay")
+	dir := filepath.Join(os.Getenv("HOME"), ".config", "zuano")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

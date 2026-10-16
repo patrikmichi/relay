@@ -358,7 +358,7 @@ func SyncRoutesCmd() *cobra.Command {
 		Use:   "routes",
 		Short: "Show and change the saved routes relay sync follows",
 		Long: `Saved routes tell a plain 'relay sync' what to copy where. They live in the
-"sync" key of ~/.config/relay/config.json.
+"sync" key of ~/.config/zuano/config.json.
 
   relay sync routes add --from claude --to cursor --kind skills,subagents
   relay sync routes add --kind hooks,rules --to claude,codex

@@ -68,7 +68,7 @@ func TestPrune_RejectsTraversalID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UserHomeDir: %v", err)
 	}
-	// base is <home>/.config/relay/transactions (3 components below home);
+	// base is <home>/.config/zuano/transactions (3 components below home);
 	// "../../../canary" walks all three back off, landing on <home>/canary
 	// — exactly where an unvalidated Join(base, id) would resolve.
 	canary := filepath.Join(home, "canary")

@@ -290,7 +290,7 @@ func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testin
 	// BuildServiceCommands resolves a client.Client (ZUANO_API_KEY /
 	// ZUANO_EMAIL+keychain / persisted login email+keychain) before it does
 	// anything network-related; without any of those it must no-op.
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json
 	t.Setenv("ZUANO_EMAIL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 

@@ -589,7 +589,7 @@ func TestRunPublish_Error_401(t *testing.T) {
 // TestResolvePublishDoer_NoToken verifies that a missing ZUANO_EMAIL (and no
 // persisted login / ZUANO_API_KEY) returns an actionable error.
 func TestResolvePublishDoer_NoToken(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json
 	t.Setenv("ZUANO_EMAIL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 

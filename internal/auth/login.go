@@ -29,7 +29,7 @@ const (
 	// then bounds the token request on its own.
 	loginTimeout    = 120 * time.Second
 	exchangeTimeout = 30 * time.Second
-	cliClientID     = "relay-cli"
+	cliClientID     = "zuano-cli"
 )
 
 // openBrowser launches the system browser to the given URL. A package-level

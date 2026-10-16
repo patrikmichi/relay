@@ -43,7 +43,7 @@ func TestLoadedProviderConfigs_UserOverrideWholeReplace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestLoadedProviderConfigs_InvalidOverrideFallsBackToEmbedded(t *testing.T) 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestLoadedProviderConfigs_ProjectOverrideGatedByFlag(t *testing.T) {
 		t.Fatalf("AllowProjectProviderOverrides must default to false")
 	}
 
-	overrideDir := filepath.Join(root, ".relay", "providers")
+	overrideDir := filepath.Join(root, ".zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestLoadedProviderConfigs_ExtendsShallowOverlay(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

@@ -157,7 +157,7 @@ func TestWriteToken_OverwritesExisting(t *testing.T) {
 
 // TestReadToken_CorruptData verifies that malformed JSON returns an unmarshal error.
 func TestReadToken_CorruptData(t *testing.T) {
-	const svcName = "relay-cli"
+	const svcName = "zuano-cli"
 	email := "corrupt@example.com"
 	account := "oauth-refresh-token:" + testOrigin + ":" + email
 
@@ -178,7 +178,7 @@ func TestReadToken_CorruptData(t *testing.T) {
 // ─── Entries with no gateway binding ────────────────────────────────────────
 
 func TestHasUnboundToken(t *testing.T) {
-	const svcName = "relay-cli"
+	const svcName = "zuano-cli"
 	email := "unbound@example.com"
 
 	if keychain.HasUnboundToken(email) {
@@ -195,7 +195,7 @@ func TestHasUnboundToken(t *testing.T) {
 }
 
 func TestDeleteUnboundToken(t *testing.T) {
-	const svcName = "relay-cli"
+	const svcName = "zuano-cli"
 	email := "unbound-delete@example.com"
 
 	if err := keyring.Set(svcName, "oauth-refresh-token:"+email, `{"access_token":"stray-access"}`); err != nil {

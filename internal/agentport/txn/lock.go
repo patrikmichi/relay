@@ -90,7 +90,7 @@ func lockPath(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".config", "relay", "transaction-locks")
+	dir := filepath.Join(home, ".config", "zuano", "transaction-locks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

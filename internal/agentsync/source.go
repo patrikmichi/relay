@@ -18,13 +18,13 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
-// SourceDir is where relay reads what to sync: ~/.config/relay/sync for the
+// SourceDir is where relay reads what to sync: ~/.config/zuano/sync for the
 // user scope and <project>/.relay for the project scope.
 func SourceDir(env Env, scope Scope) string {
 	if scope == ScopeProject {
-		return filepath.Join(env.Project, ".relay")
+		return filepath.Join(env.Project, ".zuano")
 	}
-	return filepath.Join(env.Home, ".config", "relay", "sync")
+	return filepath.Join(env.Home, ".config", "zuano", "sync")
 }
 
 var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)

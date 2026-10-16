@@ -22,7 +22,7 @@ func init() {
 
 // withTempHome redirects os.UserHomeDir (via $HOME) to an isolated temp dir
 // for the duration of the test, so config.Load/Save never touch the real
-// developer machine's ~/.config/relay.
+// developer machine's ~/.config/zuano.
 func withTempHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())

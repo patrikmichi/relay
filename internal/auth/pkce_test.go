@@ -25,7 +25,7 @@ func init() {
 
 // withTempHome redirects os.UserHomeDir (via $HOME) to an isolated temp dir
 // for the duration of the test, so config.Load/Save never touch the real
-// developer machine's ~/.config/relay.
+// developer machine's ~/.config/zuano.
 func withTempHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -80,7 +80,7 @@ func TestRandomHex_LengthAndCharset(t *testing.T) {
 // ─── buildAuthorizeURL ──────────────────────────────────────────────────────
 
 func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
-	got := buildAuthorizeURL("https://gw.example.com/", "relay-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1", "cli_personal")
+	got := buildAuthorizeURL("https://gw.example.com/", "zuano-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1", "cli_personal")
 
 	u, err := url.Parse(got)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
 
 	q := u.Query()
 	cases := map[string]string{
-		"client_id":             "relay-cli",
+		"client_id":             "zuano-cli",
 		"redirect_uri":          "http://127.0.0.1:1234/callback",
 		"state":                 "state-1",
 		"code_challenge":        "challenge-1",
@@ -229,7 +229,7 @@ func driveCallback(t *testing.T, overrides map[string]string) (restore func()) {
 
 func TestLogin_HappyPath(t *testing.T) {
 	withTempHome(t)
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
 		t.Fatal(err)
 	}
 

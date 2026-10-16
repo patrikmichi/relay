@@ -17,7 +17,7 @@ import (
 
 func keyFiles(t *testing.T) []string {
 	t.Helper()
-	entries, _ := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".config", "relay", "dpop"))
+	entries, _ := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".config", "zuano", "dpop"))
 	var names []string
 	for _, e := range entries {
 		names = append(names, e.Name())

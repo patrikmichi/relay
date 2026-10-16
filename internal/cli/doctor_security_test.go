@@ -108,7 +108,7 @@ func TestDoctor_BoundSessionReportsItsKeyAndAMissingKeyFails(t *testing.T) {
 func TestDoctor_ReportsAStrayEmailOnlyKeychainEntry(t *testing.T) {
 	setupDoctor(t)
 	t.Setenv("ZUANO_EMAIL", "stray@example.com")
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:stray@example.com", `{"access_token":"stray"}`); err != nil {
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:stray@example.com", `{"access_token":"stray"}`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = keychain.DeleteUnboundToken("stray@example.com") })

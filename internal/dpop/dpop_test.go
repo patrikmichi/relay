@@ -165,7 +165,7 @@ func TestFileKeyIsStoredPrivatelyAndReloads(t *testing.T) {
 	if k.Backend() != "file" || k.Hardware() || !strings.HasPrefix(k.Ref(), "file:") {
 		t.Errorf("key = %s hardware %v ref %s", k.Backend(), k.Hardware(), k.Ref())
 	}
-	dir := filepath.Join(home, ".config", "relay", "dpop")
+	dir := filepath.Join(home, ".config", "zuano", "dpop")
 	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
 		t.Errorf("key directory: %v %v", info, err)
 	}
@@ -194,7 +194,7 @@ func TestLoadRefusesAKeyOthersCanRead(t *testing.T) {
 	home := withHome(t)
 	withoutHardware(t)
 	k, _ := Create(false)
-	path := filepath.Join(home, ".config", "relay", "dpop", strings.TrimPrefix(k.Ref(), "file:")+".pem")
+	path := filepath.Join(home, ".config", "zuano", "dpop", strings.TrimPrefix(k.Ref(), "file:")+".pem")
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestRequiringHardwareWithoutOneFailsInsteadOfFallingBack(t *testing.T) {
 	if _, err := Create(true); !errors.Is(err, ErrNoHardwareKey) {
 		t.Fatalf("err = %v, want ErrNoHardwareKey", err)
 	}
-	if entries, _ := os.ReadDir(filepath.Join(home, ".config", "relay", "dpop")); len(entries) != 0 {
+	if entries, _ := os.ReadDir(filepath.Join(home, ".config", "zuano", "dpop")); len(entries) != 0 {
 		t.Errorf("a file key was written although hardware was required: %v", entries)
 	}
 	if HardwareAvailable() {

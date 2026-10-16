@@ -28,7 +28,7 @@ func TestCredentialNotSentToUnboundGateway(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("ZUANO_API_KEY", "")
 	t.Setenv("ZUANO_EMAIL", "review@example.invalid")
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:review@example.invalid",
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:review@example.invalid",
 		`{"access_token":"gateway-A-access","refresh_token":"gateway-A-refresh"}`); err != nil {
 		t.Fatal(err)
 	}

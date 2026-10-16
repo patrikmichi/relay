@@ -25,7 +25,7 @@ func TestResolve_UnboundEntryIsNeverUsed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("ZUANO_API_KEY", "")
 	t.Setenv("ZUANO_EMAIL", resolveEmail)
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:"+resolveEmail,
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:"+resolveEmail,
 		`{"access_token":"stray-access","refresh_token":"stray-refresh","email":"user@example.com","expires_at":4102444800}`); err != nil {
 		t.Fatal(err)
 	}

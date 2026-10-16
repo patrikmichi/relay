@@ -53,7 +53,7 @@ func TestSave_CreatesDir(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	cfgPath := filepath.Join(home, ".config", "relay", "config.json")
+	cfgPath := filepath.Join(home, ".config", "zuano", "config.json")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		t.Errorf("config file not created at %s", cfgPath)
 	}

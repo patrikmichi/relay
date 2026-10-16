@@ -122,7 +122,7 @@ func TestLogin_ConfigPersistFailureOnlyWarns(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ZUANO_EMAIL", "")
-	cfgDir := filepath.Join(home, ".config", "relay")
+	cfgDir := filepath.Join(home, ".config", "zuano")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

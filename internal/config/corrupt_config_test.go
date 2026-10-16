@@ -16,7 +16,7 @@ func TestGatewayURLFailsOnCorruptConfig(t *testing.T) {
 	dir := withTempHome(t)
 	t.Setenv("ZUANO_URL", "")
 
-	cfgDir := filepath.Join(dir, ".config", "relay")
+	cfgDir := filepath.Join(dir, ".config", "zuano")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

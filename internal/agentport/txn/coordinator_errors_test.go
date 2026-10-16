@@ -585,7 +585,7 @@ func TestAtomicWrite_DestinationIsDirectory(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".relay-tmp-") {
+		if strings.HasPrefix(e.Name(), ".zuano-tmp-") {
 			t.Fatalf("temp file %s left behind", e.Name())
 		}
 	}

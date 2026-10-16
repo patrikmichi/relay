@@ -11,7 +11,7 @@ import (
 
 func writeConfigFile(t *testing.T, home, body string) string {
 	t.Helper()
-	dir := filepath.Join(home, ".config", "relay")
+	dir := filepath.Join(home, ".config", "zuano")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestConfigDirUncreatable(t *testing.T) {
 
 func TestLoad_UnreadableConfigIsAnError(t *testing.T) {
 	home := withTempHome(t)
-	if err := os.MkdirAll(filepath.Join(home, ".config", "relay", "config.json"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".config", "zuano", "config.json"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	_, err := config.Load()
@@ -136,7 +136,7 @@ func TestLoad_UnreadableConfigIsAnError(t *testing.T) {
 
 func TestSave_UnopenableLockFileIsAnError(t *testing.T) {
 	home := withTempHome(t)
-	if err := os.MkdirAll(filepath.Join(home, ".config", "relay", "config.lock"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".config", "zuano", "config.lock"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	err := config.Save(config.Config{GatewayURL: "https://gw.example.com"})
@@ -147,7 +147,7 @@ func TestSave_UnopenableLockFileIsAnError(t *testing.T) {
 
 func TestSave_RenameFailureRemovesTempFile(t *testing.T) {
 	home := withTempHome(t)
-	target := filepath.Join(home, ".config", "relay", "config.json")
+	target := filepath.Join(home, ".config", "zuano", "config.json")
 	if err := os.MkdirAll(filepath.Join(target, "occupied"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestSave_PrivatePermissions(t *testing.T) {
 	if err := config.Save(config.Config{Email: "user@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(home, ".config", "relay")
+	dir := filepath.Join(home, ".config", "zuano")
 	for path, want := range map[string]os.FileMode{dir: 0o700, filepath.Join(dir, "config.json"): 0o600} {
 		info, err := os.Stat(path)
 		if err != nil {

@@ -52,7 +52,7 @@ func syncHome(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	src := filepath.Join(home, ".config", "relay", "sync")
+	src := filepath.Join(home, ".config", "zuano", "sync")
 	writeTestFile(t, filepath.Join(src, "rules", "style.md"), "---\ndescription: Style\n---\nBe terse.\n")
 	writeTestFile(t, filepath.Join(src, "commands", "review.md"), "---\ndescription: Review\n---\nReview $ARGUMENTS\n")
 	writeTestFile(t, filepath.Join(src, "hooks.json"), `{"hooks":[{"event":"stop","command":"/opt/notify.sh"}]}`)
@@ -171,7 +171,7 @@ func TestSyncProjectScopeUsesProjectSources(t *testing.T) {
 	syncHome(t)
 	project := t.TempDir()
 	t.Chdir(project)
-	writeTestFile(t, filepath.Join(project, ".relay", "rules", "repo.md"), "Run the tests.\n")
+	writeTestFile(t, filepath.Join(project, ".zuano", "rules", "repo.md"), "Run the tests.\n")
 	if _, err := runCommand(t, SyncCmd(), "--scope", "project", "--to", "claude,gemini", "--yes"); err != nil {
 		t.Fatal(err)
 	}

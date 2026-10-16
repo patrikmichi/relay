@@ -252,7 +252,7 @@ func TestAgentUninstall_ManifestUpdateErrorPropagates(t *testing.T) {
 		t.Fatalf("RecordEntry: %v", err)
 	}
 
-	relayConfigDir := filepath.Join(home, ".config", "relay")
+	relayConfigDir := filepath.Join(home, ".config", "zuano")
 	if err := os.Chmod(relayConfigDir, 0o555); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -263,6 +263,6 @@ func TestAgentUninstall_ManifestUpdateErrorPropagates(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--yes"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected a manifest-update error when ~/.config/relay is unwritable")
+		t.Fatalf("expected a manifest-update error when ~/.config/zuano is unwritable")
 	}
 }

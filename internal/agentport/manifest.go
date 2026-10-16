@@ -94,14 +94,14 @@ func normalizeManifestKinds(m *Manifest) {
 	}
 }
 
-// manifestPath returns ~/.config/relay/agentport-manifest.json, creating the
+// manifestPath returns ~/.config/zuano/agentport-manifest.json, creating the
 // parent directory if necessary.
 func manifestPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "relay")
+	dir := filepath.Join(home, ".config", "zuano")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create config dir %s: %w", dir, err)
 	}
@@ -177,7 +177,7 @@ func SaveManifest(m Manifest) error {
 }
 
 // manifestLockPath returns the advisory lock file path sitting alongside the
-// manifest (e.g. ~/.config/relay/agentport-manifest.json.lock).
+// manifest (e.g. ~/.config/zuano/agentport-manifest.json.lock).
 func manifestLockPath() (string, error) {
 	path, err := manifestPath()
 	if err != nil {

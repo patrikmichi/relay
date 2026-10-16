@@ -43,7 +43,7 @@ func TestOverrideDiagnostics_ReportsEveryOverrideOutcome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Chdir(t.TempDir())
 
-	skills := filepath.Join(home, ".config", "relay", "providers")
+	skills := filepath.Join(home, ".config", "zuano", "providers")
 	want := map[string]string{
 		writeOverride(t, skills, "a-custom.yml", fmt.Sprintf(validSkillOverride, "custom")): "loaded",
 		writeOverride(t, skills, "b-dup.yml", fmt.Sprintf(validSkillOverride, "custom")):    "duplicate provider id",
@@ -59,7 +59,7 @@ func TestOverrideDiagnostics_ReportsEveryOverrideOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agents := filepath.Join(home, ".config", "relay", "agents")
+	agents := filepath.Join(home, ".config", "zuano", "agents")
 	want[writeOverride(t, agents, "noid.yml", "format: markdown\n")] = "missing provider id"
 
 	got := diagnosticsByPath(OverrideDiagnostics())
@@ -76,11 +76,11 @@ func TestOverrideDiagnostics_ReportsEveryOverrideOutcome(t *testing.T) {
 func TestOverrideDiagnostics_ProjectTierGatedByFlag(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	writeOverride(t, filepath.Join(".relay", "providers"), "p.yml", fmt.Sprintf(validSkillOverride, "projprov"))
-	writeOverride(t, filepath.Join(".relay", "agents"), "readme.md", "ignored")
+	writeOverride(t, filepath.Join(".zuano", "providers"), "p.yml", fmt.Sprintf(validSkillOverride, "projprov"))
+	writeOverride(t, filepath.Join(".zuano", "agents"), "readme.md", "ignored")
 
 	got := diagnosticsByPath(OverrideDiagnostics())
-	path := filepath.Join(".relay", "providers", "p.yml")
+	path := filepath.Join(".zuano", "providers", "p.yml")
 	if got[path] != "project overrides disabled" || len(got) != 1 {
 		t.Fatalf("diagnostics = %v, want only %s reported as disabled", got, path)
 	}

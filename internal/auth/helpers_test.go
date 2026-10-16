@@ -48,7 +48,7 @@ func TestWriteToken_PropagatesKeychainError(t *testing.T) {
 
 func TestWriteToken_RemovesUnboundSession(t *testing.T) {
 	withTempHome(t)
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeToken(keychain.ProfileHuman, "https://gw.example.com", "user@example.com", "access-1", "refresh-1", 3600); err != nil {

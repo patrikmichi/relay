@@ -13,7 +13,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-const serviceName = "relay-cli"
+const serviceName = "zuano-cli"
 
 // schemaVersion tags the shape of a persisted session: bound to a gateway
 // identity.

@@ -146,7 +146,7 @@ func TestPublishRejectsContradictoryAliasType(t *testing.T) {
 // runPublish — so `relay skill publish --dry-run` fails without credentials
 // even though the intended work is entirely local packaging/validation.
 func TestDryRunSucceedsWithoutCredentials(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json or keychain
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json or keychain
 	t.Setenv("ZUANO_EMAIL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 	t.Setenv("ZUANO_URL", "")

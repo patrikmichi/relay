@@ -101,7 +101,7 @@ func snapshot(t *testing.T, root string) map[string]string {
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel == ".config/relay" {
+			if rel == ".config/zuano" {
 				return filepath.SkipDir
 			}
 			return nil

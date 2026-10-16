@@ -16,7 +16,7 @@ func ConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage CLI configuration",
-		Long:  "Read and write CLI configuration stored at ~/.config/relay/config.json.",
+		Long:  "Read and write CLI configuration stored at ~/.config/zuano/config.json.",
 	}
 	cmd.AddCommand(
 		configSetGatewayCmd(),
@@ -32,7 +32,7 @@ func configSetGatewayCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set-gateway <url>",
 		Short: "Set the gateway URL",
-		Long: `Save the gateway URL to ~/.config/relay/config.json.
+		Long: `Save the gateway URL to ~/.config/zuano/config.json.
 
 Example:
   relay config set-gateway https://gateway.example.com`,

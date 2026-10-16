@@ -47,7 +47,7 @@ func TestSave_LeavesNoTempFilesAndNeverATornFile(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".config", "relay"))
+	entries, err := os.ReadDir(filepath.Join(home, ".config", "zuano"))
 	if err != nil {
 		t.Fatal(err)
 	}

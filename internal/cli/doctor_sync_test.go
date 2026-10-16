@@ -39,7 +39,7 @@ func doctorSyncSetup(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	src := filepath.Join(home, ".config", "relay", "sync")
+	src := filepath.Join(home, ".config", "zuano", "sync")
 	writeTestFile(t, filepath.Join(src, "rules", "style.md"), "Be terse.\n")
 	writeTestFile(t, filepath.Join(src, "commands", "review.md"), "Review it.\n")
 	writeTestFile(t, filepath.Join(src, "hooks.json"), `{"hooks":[{"event":"stop","command":"/opt/notify.sh"}]}`)
@@ -85,7 +85,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeTestFile(t, filepath.Join(home, ".config", "relay", "sync", "rules", "extra.md"), "Another rule.\n")
+	writeTestFile(t, filepath.Join(home, ".config", "zuano", "sync", "rules", "extra.md"), "Another rule.\n")
 	checks, err := doctorChecksByName(t)
 	if err == nil || checks["sync:user:claude:rules"].OK || !strings.Contains(checks["sync:user:claude:rules"].Detail, "out of sync") {
 		t.Fatalf("drift not reported: %v %+v", err, checks["sync:user:claude:rules"])
@@ -120,7 +120,7 @@ func TestDoctorChecksBearerEnvironmentOfSyncedMCPServers(t *testing.T) {
 		t.Errorf("the gateway entry authenticates with OAuth and reads no variable: %+v", c)
 	}
 
-	writeTestFile(t, filepath.Join(os.Getenv("HOME"), ".config", "relay", "sync", "mcp.json"),
+	writeTestFile(t, filepath.Join(os.Getenv("HOME"), ".config", "zuano", "sync", "mcp.json"),
 		`{"servers":[{"name":"docs","url":"https://docs.example.com/mcp","bearerEnv":"DOCS_TOKEN"}]}`)
 	t.Setenv("DOCS_TOKEN", "x")
 	checks, _ = doctorChecksByName(t)

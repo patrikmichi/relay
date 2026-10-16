@@ -36,7 +36,7 @@ func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string)
 }
 
 // withNoGateway unsets $ZUANO_URL and points $HOME at a fresh temp dir so
-// no ~/.config/relay/config.json is picked up.
+// no ~/.config/zuano/config.json is picked up.
 func withNoGateway(t *testing.T) {
 	t.Helper()
 	t.Setenv("ZUANO_URL", "")

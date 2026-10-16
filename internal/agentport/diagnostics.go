@@ -23,9 +23,9 @@ func OverrideDiagnostics() []OverrideDiagnostic {
 		}
 		report := func(path, reason string) { out = append(out, OverrideDiagnostic{Path: path, Status: reason}) }
 		if home, err := os.UserHomeDir(); err == nil {
-			applyOverrideTier(configs, filepath.Join(home, ".config", "relay", folder), hooks, codecs, kind, report)
+			applyOverrideTier(configs, filepath.Join(home, ".config", "zuano", folder), hooks, codecs, kind, report)
 		}
-		dir := filepath.Join(".relay", folder)
+		dir := filepath.Join(".zuano", folder)
 		if AllowProjectProviderOverrides {
 			applyOverrideTier(configs, dir, hooks, codecs, kind, report)
 		} else if entries, err := os.ReadDir(dir); err == nil {

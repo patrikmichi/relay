@@ -223,7 +223,7 @@ func TestResolve_CorruptBoundSessionPointsAtLogin(t *testing.T) {
 	t.Setenv("ZUANO_API_KEY", "")
 	t.Setenv("ZUANO_EMAIL", "user@example.com")
 	const origin = "https://gw.example.com"
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:"+origin+":user@example.com", "{not json"); err != nil {
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:"+origin+":user@example.com", "{not json"); err != nil {
 		t.Fatal(err)
 	}
 	_, err := client.Resolve(origin)

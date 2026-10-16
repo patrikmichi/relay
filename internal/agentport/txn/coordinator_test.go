@@ -11,7 +11,7 @@ import (
 
 // isolate points HOME at a fresh t.TempDir() so every test operates only
 // under its own throwaway directory — never a real user's
-// ~/.config/relay/transactions.
+// ~/.config/zuano/transactions.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())

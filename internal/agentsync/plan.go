@@ -360,7 +360,7 @@ func init() {
 }
 
 func LedgerPath(home string) string {
-	return filepath.Join(home, ".config", "relay", "sync-ledger.json")
+	return filepath.Join(home, ".config", "zuano", "sync-ledger.json")
 }
 
 func LoadLedger(home string) (*Ledger, error) { return readLedger(LedgerPath(home)) }

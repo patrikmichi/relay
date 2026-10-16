@@ -18,7 +18,7 @@ func isolatedTempDir(t *testing.T) string {
 }
 
 func lockDirOf(home string) string {
-	return filepath.Join(home, ".config", "relay", "session-locks")
+	return filepath.Join(home, ".config", "zuano", "session-locks")
 }
 
 func TestLockPath_StablePerPairAndPrivate(t *testing.T) {

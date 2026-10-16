@@ -95,7 +95,7 @@ Sources
   MCP servers   the gateway (when configured) plus servers added with
                 'relay mcp install'
   hooks, rules, commands
-                ~/.config/relay/sync/{hooks.json,rules/*.md,commands/*.md}
+                ~/.config/zuano/sync/{hooks.json,rules/*.md,commands/*.md}
                 for the user scope and <project>/.relay/ for the project scope
   skills, subagents
                 everything installed for --from (default claude), copied to
@@ -123,7 +123,7 @@ has no format for are reported as unsupported, never skipped silently; see
 'relay sync --matrix'.
 
 --marketplace (or --dir) also pulls the gateway's Claude Code plugin
-marketplace into ~/.config/relay/marketplace/<name>/.
+marketplace into ~/.config/zuano/marketplace/<name>/.
 
 Examples:
   relay sync --dry-run
@@ -218,7 +218,7 @@ Examples:
 	f.BoolVar(&marketplace, "marketplace", false, "Also pull the gateway's Claude Code plugin marketplace")
 	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $ZUANO_URL, then the config file)")
 	f.BoolVar(&requireSig, "require-signature", false, "With --marketplace: refuse plugin bundles the gateway did not sign")
-	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/relay/marketplace/<name>/)")
+	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/zuano/marketplace/<name>/)")
 	cmd.AddCommand(SyncRoutesCmd())
 	return cmd
 }
@@ -442,7 +442,7 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 	if m.Name == "" {
 		return marketplaceManifest{}, nil, fmt.Errorf("manifest has no name field")
 	}
-	// Reject names that could escape ~/.config/relay/marketplace/ when used as a
+	// Reject names that could escape ~/.config/zuano/marketplace/ when used as a
 	// path component — even if the caller supplied --dir, the name is printed and
 	// logged, so we reject unsafe names unconditionally.
 	if strings.ContainsAny(m.Name, "/\\") || strings.Contains(m.Name, "..") {
@@ -596,7 +596,7 @@ func safePluginID(source string) (string, error) {
 
 // resolveLocalDir returns the absolute path for the marketplace dir.
 // If customDir is non-empty it is used; otherwise defaults to
-// ~/.config/relay/marketplace/<marketplaceName>/.
+// ~/.config/zuano/marketplace/<marketplaceName>/.
 // Rejects marketplace names containing path-unsafe characters.
 func resolveLocalDir(customDir, marketplaceName string) (string, error) {
 	if customDir != "" {
@@ -614,7 +614,7 @@ func resolveLocalDir(customDir, marketplaceName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
-	return filepath.Join(home, ".config", "relay", "marketplace", marketplaceName), nil
+	return filepath.Join(home, ".config", "zuano", "marketplace", marketplaceName), nil
 }
 
 // pluginIDFromSource extracts the plugin ID from a source path like "./plugins/<id>".

@@ -119,7 +119,7 @@ type Journal struct {
 	Finalize *Finalizer `json:"finalize,omitempty"`
 }
 
-// baseDir returns ~/.config/relay/transactions, creating it if needed.
+// baseDir returns ~/.config/zuano/transactions, creating it if needed.
 // Backup/staged bytes under <baseDir>/<id>/{backup,staged}/* are 0600 and
 // outlive the process that wrote them (recovery needs that); finished
 // transactions are pruned by DefaultRetention on the next Begin.
@@ -128,7 +128,7 @@ func baseDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "relay", "transactions")
+	dir := filepath.Join(home, ".config", "zuano", "transactions")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create transactions dir %s: %w", dir, err)
 	}

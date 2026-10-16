@@ -45,7 +45,7 @@ func TestDoctor_TextOutputMarksFailures(t *testing.T) {
 func TestDoctor_UnreadableManifestAndPendingRecovery(t *testing.T) {
 	home := setupDoctor(t)
 	interruptedJournal(t, t.TempDir(), "a.md")
-	if err := os.WriteFile(filepath.Join(home, ".config", "relay", "agentport-manifest.json"), []byte("{"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".config", "zuano", "agentport-manifest.json"), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

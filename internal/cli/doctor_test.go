@@ -56,7 +56,7 @@ func TestDoctorLocalAndOverrideDiagnostics(t *testing.T) {
 	if err != nil || !strings.Contains(output, "local checks only") {
 		t.Fatalf("%v: %s", err, output)
 	}
-	dir := filepath.Join(home, ".config", "relay", "providers")
+	dir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}

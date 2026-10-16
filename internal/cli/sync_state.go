@@ -16,7 +16,7 @@ import (
 // recorded here are candidates for removal when a later sync's bundle no
 // longer includes them. Sibling to plugins/, not inside any individual plugin
 // directory, so it's never mistaken for plugin content.
-const syncStateDir = ".relay-sync"
+const syncStateDir = ".zuano-sync"
 
 func ownedFilesPath(localDir, pluginID string) string {
 	return filepath.Join(localDir, syncStateDir, pluginID+".json")
