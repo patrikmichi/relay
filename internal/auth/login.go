@@ -259,6 +259,9 @@ func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redire
 	if binding != nil {
 		data.Set("dpop_key_type", binding.keyType())
 	}
+	if id, err := config.InstallID(); err == nil {
+		data.Set("install_id", id)
+	}
 
 	// Token exchange must never follow a redirect — a compromised or
 	// misconfigured gateway could otherwise relocate the response carrying

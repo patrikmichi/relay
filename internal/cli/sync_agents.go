@@ -162,6 +162,9 @@ func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, i
 		return nil, "", ignored, nil
 	}
 	s = &agentsync.MCPServer{Name: gatewayServerName, URL: strings.TrimRight(gw, "/") + "/api/mcp"}
+	if id, idErr := config.InstallID(); idErr == nil {
+		s.Headers = map[string]string{brand.InstallHeader: id}
+	}
 	switch mode {
 	case "", "auto", "oauth":
 		// The gateway marks every OAuth session as an agent's, so its writes

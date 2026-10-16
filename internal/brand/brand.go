@@ -14,5 +14,9 @@ const (
 	Company = "Loopmatic"
 )
 
+// InstallHeader is the non-secret header zuano writes into an agent's gateway
+// entry so the gateway can show which machine a session came from.
+const InstallHeader = "X-" + Product + "-Install"
+
 // Cmd returns a command line as the person types it, such as "zuano login".
 func Cmd(args string) string { return Name + " " + args }

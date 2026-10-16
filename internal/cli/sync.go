@@ -14,9 +14,10 @@ const maxResponseBytes = 10 << 20
 // SyncCmd returns the `zuano sync` cobra command.
 func SyncCmd() *cobra.Command {
 	var (
-		o       agentSyncOpts
-		matrix  bool
-		noPacks bool
+		o             agentSyncOpts
+		matrix        bool
+		noPacks       bool
+		hostLabelFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -64,6 +65,14 @@ Starter packs
   is signed by the gateway and checked first. Without a gateway, or with
   --no-packs, nothing is fetched. A pack that needs a connection you have not
   made is listed with the command that makes it.
+
+Device report
+  After a sync that wrote files, and when you are signed in, zuano tells the
+  gateway which coding agents this machine has, whether each has the gateway's
+  MCP server, and the name, transport and host (or program name) of each MCP
+  server. It never sends arguments, environment values or headers, and an agent
+  session never sends it. The gateway entry carries your install id in the
+  ` + brand.InstallHeader + ` header, which is metadata and grants nothing.
 
 Plugin bundles from the gateway are installed with 'zuano plugin install'.
 
@@ -113,6 +122,11 @@ Examples:
 			if err := run.apply(cmd.Context()); err != nil {
 				return err
 			}
+			var label *string
+			if cmd.Flags().Changed("host-label") {
+				label = &hostLabelFlag
+			}
+			deviceReporter(cmd, o.gatewayURL, label)
 			if ps != nil {
 				return ps.apply(cmd)
 			}
@@ -132,6 +146,7 @@ Examples:
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
 	f.BoolVar(&noPacks, "no-packs", false, "Do not fetch or write the rules, skills and bundles your organisation's starter packs assign")
+	f.StringVar(&hostLabelFlag, "host-label", "", "Name this machine goes by in the gateway's device list (default: its host name; give an empty value to send none); remembered for later syncs")
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
 	f.StringVar(&o.gatewayURL, "gateway-url", "", "Gateway URL for the gateway MCP server (default: $ZUANO_URL, then the config file)")
 	cmd.AddCommand(SyncRoutesCmd())

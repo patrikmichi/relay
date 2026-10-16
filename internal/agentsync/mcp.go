@@ -108,6 +108,21 @@ func bearer(prefix, env, suffix string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + prefix + env + suffix}
 }
 
+// remoteHeaders joins the bearer header with the server's fixed headers.
+func remoteHeaders(s MCPServer, bearerHeaders map[string]string) map[string]string {
+	if len(s.Headers) == 0 {
+		return bearerHeaders
+	}
+	out := make(map[string]string, len(s.Headers)+len(bearerHeaders))
+	for k, v := range s.Headers {
+		out[k] = v
+	}
+	for k, v := range bearerHeaders {
+		out[k] = v
+	}
+	return out
+}
+
 // withHeaders appends a headers object when auth headers exist.
 func withHeaders(o obj, headers map[string]string) obj {
 	if len(headers) > 0 {
@@ -138,7 +153,7 @@ func claudeMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	}
 	return jsonMCP(m, path, []string{"mcpServers"}, nil, servers, func(s MCPServer) any {
 		if s.remote() {
-			return withHeaders(obj{{"type", "http"}, {"url", s.URL}}, bearer("${", s.BearerEnv, "}"))
+			return withHeaders(obj{{"type", "http"}, {"url", s.URL}}, remoteHeaders(s, bearer("${", s.BearerEnv, "}")))
 		}
 		return withEnv(obj{{"type", "stdio"}, {"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
 	}), ""
@@ -149,7 +164,7 @@ func cursorMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	path := filepath.Join(env.root(scope), ".cursor", "mcp.json")
 	return jsonMCP(m, path, []string{"mcpServers"}, nil, servers, func(s MCPServer) any {
 		if s.remote() {
-			return withHeaders(obj{{"url", s.URL}}, bearer("${env:", s.BearerEnv, "}"))
+			return withHeaders(obj{{"url", s.URL}}, remoteHeaders(s, bearer("${env:", s.BearerEnv, "}")))
 		}
 		return withEnv(obj{{"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
 	}), ""
@@ -160,7 +175,7 @@ func geminiMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	path := filepath.Join(env.root(scope), ".gemini", "settings.json")
 	return jsonMCP(m, path, []string{"mcpServers"}, nil, servers, func(s MCPServer) any {
 		if s.remote() {
-			return withHeaders(obj{{"httpUrl", s.URL}}, bearer("${", s.BearerEnv, "}"))
+			return withHeaders(obj{{"httpUrl", s.URL}}, remoteHeaders(s, bearer("${", s.BearerEnv, "}")))
 		}
 		return withEnv(obj{{"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
 	}), ""
@@ -185,7 +200,7 @@ func opencodeMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	seed := obj{{"$schema", "https://opencode.ai/config.json"}}
 	return jsonMCP(m, path, []string{"mcp"}, seed, servers, func(s MCPServer) any {
 		if s.remote() {
-			return withHeaders(obj{{"type", "remote"}, {"url", s.URL}, {"enabled", true}}, bearer("{env:", s.BearerEnv, "}"))
+			return withHeaders(obj{{"type", "remote"}, {"url", s.URL}, {"enabled", true}}, remoteHeaders(s, bearer("{env:", s.BearerEnv, "}")))
 		}
 		o := obj{{"type", "local"}, {"command", append([]string{s.Command}, s.Args...)}, {"enabled", true}}
 		if len(s.Env) > 0 {
@@ -269,7 +284,7 @@ func copilotMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	path := filepath.Join(env.Project, ".vscode", "mcp.json")
 	ops := jsonMCP(m, path, []string{"servers"}, nil, servers, func(s MCPServer) any {
 		if s.remote() {
-			return obj{{"type", "http"}, {"url", s.URL}}
+			return withHeaders(obj{{"type", "http"}, {"url", s.URL}}, s.Headers)
 		}
 		return withEnv(obj{{"type", "stdio"}, {"command", s.Command}, {"args", argsOrEmpty(s.Args)}}, s.Env)
 	})
@@ -338,6 +353,18 @@ func codexMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 			fmt.Fprintf(&b, "url = %s\n", tomlStr(s.URL))
 			if s.BearerEnv != "" {
 				fmt.Fprintf(&b, "bearer_token_env_var = %s\n", tomlStr(s.BearerEnv))
+			}
+			if len(s.Headers) > 0 {
+				keys := make([]string, 0, len(s.Headers))
+				for k := range s.Headers {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				pairs := make([]string, len(keys))
+				for i, k := range keys {
+					pairs[i] = tomlKey(k) + " = " + tomlStr(s.Headers[k])
+				}
+				fmt.Fprintf(&b, "http_headers = { %s }\n", strings.Join(pairs, ", "))
 			}
 		} else {
 			fmt.Fprintf(&b, "command = %s\n", tomlStr(s.Command))

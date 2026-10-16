@@ -489,6 +489,68 @@ extraction document are this client's decisions. The shape of each agent's
 session file is read from the formats as currently documented and may need
 adjusting against real files from newer agent versions.
 
+## Agent inventory and access reviews
+
+| Route | Request and response |
+|---|---|
+| `POST /api/agents/devices/report` | the device report, personal session only: `{"installId", "cliVersion", "os", "arch", "hostLabel", "agents": [{"id", "version"?, "gatewayMcp", "mcpServers": [{"name", "transport": "http\|stdio", "host"?, "command"?, "firewall"}]}]}`; never arguments, environment values or headers |
+| `GET /api/agents?kind=&status=&owner=&label=k=v&stale=true&exposure=&can=&risk=&mode=` | `{"agents": [{"id", "name", "kind", "owner", "status", "lastActivity", "exposure", "labels", "reviewDue"}]}` |
+| `GET /api/agents/{id}` | `{"agent": {...row, "credentials": [{"kind", "createdAt", "expiresAt"}], "device": {"hostLabel", "os"}, "access": [{"service", "risk", "mode", "source"}], "exposureFactors": [text]}}` |
+| `GET /api/agents/{id}/activity?from=&to=` | `{"activity": {"calls": [{"service", "count"}], "approvals", "refusals"}}` |
+| `POST /api/agents/{id}/suspend`, `/revoke` | `{"reason"}`; `POST .../resume` `{}`; `401 step_up_required` for resume and revoke |
+| `GET /api/agents/devices`, `GET /api/agents/shadow-mcp` | `{"devices": [{"hostLabel", "os", "cliVersion", "owner", "lastReportAt", "agents": [{"id", "gatewayMcp"}]}]}`, `{"servers": [{"name", "transport", "host"?, "command"?, "devices"}]}` |
+| `GET /api/access-reviews`, `GET /api/access-reviews/{id}`, `GET .../{id}/export?format=csv\|json` | `{"reviews": [{"id", "name", "status", "dueAt", "progress": {"decided", "total"}}]}`; `{"review", "items": [{"identityId", "name", "reviewer", "decision"}]}`; the export body as it is |
+| `GET /api/cli/whoami` | gains `"identityId"` and `"identityStatus"` |
+| login: `POST /api/cli/token`, `POST /api/cli/device/code` | the request gains `install_id` (32 hex characters, an identifier and not a credential) |
+
+A request from a suspended, revoked or expired identity answers `403` with
+`{"error": "identity_suspended" | "identity_revoked" | "identity_expired",
+"message"}`; zuano exits 33. The gateway's MCP entry written by `zuano sync`
+carries `X-Zuano-Install: <install id>` for the agents whose config takes
+headers.
+
+Source: agent inventory and policy as code plan (identity model, device report,
+surfaces). The plan names the routes and commands; the response wrappers, the
+`whoami` fields and the `host`/`command` split of the device report are this
+client's decisions.
+
+## Policy as code
+
+| Route | Request and response |
+|---|---|
+| `GET /api/policy/document?format=yaml\|json` | the live policy as a document, as it is |
+| `POST /api/policy/validate` | `{"files": [{"path", "content"}]}` answers `200`, or `422` `{"error": "policy_invalid", "errors": [DIAG]}` |
+| `POST /api/policy/plan` | `{"files", "base": "live"}` answers `{"plan": PLAN}` or the `422` above |
+| `POST /api/policy/apply` | `{"files", "expectedParentId", "planId"}` answers `200` `{"release": {"id"}}`; `202` `{"pending_apply_id", "url"}` when an approval is required; `409` `{"error": "policy_conflict"}` when the parent release changed (exit 41), `{"error": "policy_managed_in_git"}` (exit 42) |
+| `GET /api/policy/pending/{id}` | `{"pending": {"status": "pending\|approved\|applied\|denied\|expired", "releaseId"?}}` |
+| `GET /api/policy/status` | `{"status": {"management", "repo", "branch", "activeRelease": {"id", "source", "appliedAt", "commit"}, "drift": {"kind", "message"}\|null, "breakGlass": {"actor", "reason", "expiresAt"}\|null}}` |
+| `GET /api/policy/releases`, `GET .../{id}`, `GET .../{id}/diff?against={id}\|live` | `{"releases": [...]}`, `{"release": {"id", "source", "appliedAt", "actor", "commit", "classification", "provenance": {"pr", "approvers"}, "signed"}}`, `{"diff": {"changes": [CHANGE]}}` |
+| `POST /api/policy/releases/{id}/rollback` | `{}` answers `{"release": {"id"}, "revertPr"?, "hint"?}`; `401 step_up_required` |
+| `POST /api/policy/freeze` | `{}`; `401 step_up_required` |
+| `POST /api/policy/ci/token` | `{"provider": "github\|gitlab", "idToken"}` answers `{"token", "expiresIn"}`: a workload token that is sent as the bearer of the other policy routes |
+| `GET /api/admin/risk-policy/preview` | the decision also carries `"sourceRef": {"path", "file", "line"}` for a policy kept as files |
+
+```json
+DIAG   = {"code"?, "message", "file"?, "line"?}
+CHANGE = {"section", "op": "added|removed|changed", "path", "file"?, "line"?}
+PLAN   = {"planId", "parentId", "classification": "tightening|loosening|mixed|neutral",
+          "changes": [CHANGE], "impact": [{"service", "risk", "from", "to", "identities", "loosening"}],
+          "loosening": [text], "lifecycle": [text], "packs": [text], "errors": [DIAG], "url"?}
+```
+
+The JSON Schema of the document is `internal/policyfile/schema/policy-v1.json`;
+the gateway serves the same file at `/schemas/policy/v1.json`, and a test
+compares them when `ZUANO_CONTRACT_FIXTURES` holds the gateway's
+`policy-v1.json`. In a CI job, zuano exchanges the job's OIDC token (GitHub's
+Actions token, or the GitLab variable `ZUANO_ID_TOKEN`) for the workload token.
+
+Source: agent inventory and policy as code plan (file format, plan, apply, CI
+and CLI sections). The plan names the routes, the CLI commands and exit codes
+40 to 42; the response wrappers, `planId`, `parentId`, the pending status
+values and the `ci/token` request fields are this client's decisions. The
+embedded schema is this client's reading of the file format and is replaced by
+the gateway's when it publishes one.
+
 ## Chat approvals
 
 | Route | Request and response |

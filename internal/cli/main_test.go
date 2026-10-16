@@ -12,5 +12,6 @@ import (
 // real loader back on against their own server.
 func TestMain(m *testing.M) {
 	packSyncLoader = func(*cobra.Command, string) (*packSync, error) { return nil, nil }
+	deviceReporter = func(*cobra.Command, string, *string) {}
 	os.Exit(m.Run())
 }

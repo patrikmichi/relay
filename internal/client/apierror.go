@@ -38,6 +38,9 @@ const (
 	CodeOrgSuspended        = "org_suspended"
 	CodeVerificationNeeded  = "verification_required"
 	CodeSeatSuspended       = "seat_suspended"
+	CodeIdentitySuspended   = "identity_suspended"
+	CodeIdentityRevoked     = "identity_revoked"
+	CodeIdentityExpired     = "identity_expired"
 	codeStepUpRequired      = "step_up_required"
 	codeReauthRequired      = "reauth_required"
 	defaultEntitlementError = "the request is not covered by the organisation's plan"
@@ -69,7 +72,7 @@ func (e *EntitlementError) ExitCode() int {
 		return ExitUsageExhausted
 	case CodeBillingUnavailable:
 		return ExitBillingDown
-	case CodeOrgSuspended, CodeSeatSuspended:
+	case CodeOrgSuspended, CodeSeatSuspended, CodeIdentitySuspended, CodeIdentityRevoked, CodeIdentityExpired:
 		return ExitSuspended
 	}
 	return ExitPlanRequired
@@ -282,7 +285,10 @@ func isEntitlementCode(status int, code string) bool {
 			return true
 		}
 	case http.StatusForbidden:
-		return code == CodeOrgSuspended || code == CodeSeatSuspended
+		switch code {
+		case CodeOrgSuspended, CodeSeatSuspended, CodeIdentitySuspended, CodeIdentityRevoked, CodeIdentityExpired:
+			return true
+		}
 	case http.StatusServiceUnavailable:
 		return code == CodeBillingUnavailable
 	}

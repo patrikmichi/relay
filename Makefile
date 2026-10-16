@@ -21,4 +21,10 @@ vet:
 clean:
 	rm -f $(BINARY)
 
-.PHONY: build install test vet clean
+# Copies the policy JSON Schema from a gateway release into the CLI:
+# make gen-policy-schema GATEWAY_SCHEMA=/path/to/public/schemas/policy/v1.json
+gen-policy-schema:
+	@test -n "$(GATEWAY_SCHEMA)" || { echo "set GATEWAY_SCHEMA to the gateway's policy/v1.json" >&2; exit 2; }
+	cp "$(GATEWAY_SCHEMA)" internal/policyfile/schema/policy-v1.json
+
+.PHONY: build install test vet clean gen-policy-schema

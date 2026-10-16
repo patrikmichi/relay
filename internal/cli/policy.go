@@ -31,18 +31,14 @@ type policyPreview struct {
 		RuleID       *string `json:"ruleId"`
 		Predicate    *string `json:"predicate"`
 		ChangeableBy string  `json:"changeableBy"`
+		// SourceRef is where the deciding rule is written when the policy
+		// comes from files.
+		SourceRef *struct {
+			Path string `json:"path"`
+			File string `json:"file"`
+			Line int    `json:"line"`
+		} `json:"sourceRef"`
 	} `json:"decision"`
-}
-
-// PolicyCmd returns `zuano policy`: a read-only view of the organisation's
-// risk policy. Changing it is done in the dashboard, where it needs a passkey.
-func PolicyCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "policy",
-		Short: "Explain what the organisation's risk policy does with a tool call",
-	}
-	cmd.AddCommand(policyExplainCmd())
-	return cmd
 }
 
 func policyExplainCmd() *cobra.Command {
@@ -135,6 +131,9 @@ func printPolicy(out io.Writer, p policyPreview) {
 		detail += " when " + clean(*p.Decision.Predicate)
 	}
 	fmt.Fprintf(out, "  %s\n", detail)
+	if ref := p.Decision.SourceRef; ref != nil && ref.File != "" {
+		fmt.Fprintf(out, "  decided by %s (%s:%d)\n", clean(ref.Path), clean(ref.File), ref.Line)
+	}
 	owner, ok := policyOwners[p.Decision.ChangeableBy]
 	if !ok {
 		owner = clean(p.Decision.ChangeableBy)

@@ -1,0 +1,30 @@
+# Include this file and set the variable ZUANO_URL to the gateway's address.
+# Jobs sign in with GitLab's OIDC token: no secret is stored.
+variables:
+  ZUANO_POLICY_DIR: zuano
+
+.zuano-policy:
+  image: golang:latest
+  id_tokens:
+    ZUANO_ID_TOKEN:
+      aud: $ZUANO_URL
+  before_script:
+    - go install github.com/patrikmichi/zuano/cmd/zuano@latest
+    - export PATH="$PATH:$(go env GOPATH)/bin"
+
+zuano-policy-plan:
+  extends: .zuano-policy
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: ["zuano/**/*"]
+  script:
+    - zuano policy plan --dir "$ZUANO_POLICY_DIR" --format markdown --out plan.md
+    - cat plan.md
+
+zuano-policy-apply:
+  extends: .zuano-policy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: ["zuano/**/*"]
+  script:
+    - zuano policy apply --dir "$ZUANO_POLICY_DIR" --wait 600 --auto-approve

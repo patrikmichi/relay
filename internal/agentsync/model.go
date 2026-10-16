@@ -93,12 +93,15 @@ func (i Item) String() string {
 // MCPServer is the agent-neutral description of one MCP server. Remote
 // servers set URL; local stdio servers set Command.
 type MCPServer struct {
-	Name      string            `json:"name"`
-	URL       string            `json:"url,omitempty"`
-	BearerEnv string            `json:"bearerEnv,omitempty"`
-	Command   string            `json:"command,omitempty"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
+	Name      string `json:"name"`
+	URL       string `json:"url,omitempty"`
+	BearerEnv string `json:"bearerEnv,omitempty"`
+	// Headers are fixed, non-secret request headers of a remote server, for
+	// the agents whose config can carry them.
+	Headers map[string]string `json:"headers,omitempty"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 func (s MCPServer) remote() bool { return s.URL != "" }

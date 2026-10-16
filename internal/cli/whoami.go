@@ -9,6 +9,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/auth"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // profileLabel says which session a command ran as, and why.
@@ -57,6 +58,9 @@ func WhoamiCmd() *cobra.Command {
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Profile:  %s\n", profileLabel(c))
 			fmt.Fprintf(cmd.OutOrStdout(), "Email:    %s\n", info.Email)
+			if info.IdentityID != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Identity: %s (%s)\n", textsafe.Clean(info.IdentityID), orDash(textsafe.Clean(info.IdentityStatus)))
+			}
 			if info.GoogleSub != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "Sub:      %s\n", info.GoogleSub)
 			}

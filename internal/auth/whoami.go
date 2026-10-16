@@ -16,6 +16,10 @@ type WhoamiResponse struct {
 	Services  []string `json:"services"`
 	IssuedAt  string   `json:"issuedAt"`
 	Groups    []string `json:"groups,omitempty"`
+	// IdentityID and IdentityStatus name the credential's identity in the
+	// gateway's agent inventory.
+	IdentityID     string `json:"identityId,omitempty"`
+	IdentityStatus string `json:"identityStatus,omitempty"`
 }
 
 // Whoami calls /api/cli/whoami and returns the user info. If full is true,

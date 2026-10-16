@@ -133,8 +133,15 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 
 	// 1. Request device code
 	endpoint := fmt.Sprintf("%s/api/cli/device/code", origin)
-	codeBody := fmt.Sprintf(`{"principal":%q}`, principalFor(profile))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(codeBody))
+	codeFields := map[string]string{"principal": principalFor(profile)}
+	if id, err := config.InstallID(); err == nil {
+		codeFields["install_id"] = id
+	}
+	codeBody, err := json.Marshal(codeFields)
+	if err != nil {
+		return nil, fmt.Errorf("encode device code request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(codeBody)))
 	if err != nil {
 		return nil, fmt.Errorf("create device code request: %w", err)
 	}

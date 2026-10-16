@@ -39,6 +39,9 @@ func TestEntitlementRefusalsMapToTheDocumentedExitCodes(t *testing.T) {
 		{"billing unavailable", 503, `{"error":"billing_unavailable","message":"try again"}`, ExitBillingDown},
 		{"org suspended", 403, `{"error":"org_suspended","message":"suspended"}`, ExitSuspended},
 		{"seat suspended", 403, `{"error":"seat_suspended","message":"no seat"}`, ExitSuspended},
+		{"identity suspended", 403, `{"error":"identity_suspended","message":"this agent is suspended"}`, ExitSuspended},
+		{"identity revoked", 403, `{"error":"identity_revoked","message":"this agent was revoked"}`, ExitSuspended},
+		{"identity expired", 403, `{"error":"identity_expired","message":"this agent expired"}`, ExitSuspended},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := refusalServer(t, tc.status, map[string]string{"Retry-After": "30"}, tc.body)
