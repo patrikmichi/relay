@@ -134,14 +134,14 @@ func TestLoad_UnreadableConfigIsAnError(t *testing.T) {
 	}
 }
 
-func TestSave_TempFileUnwritable(t *testing.T) {
+func TestSave_UnopenableLockFileIsAnError(t *testing.T) {
 	home := withTempHome(t)
-	if err := os.MkdirAll(filepath.Join(home, ".config", "relay", "config.json.tmp"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".config", "relay", "config.lock"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	err := config.Save(config.Config{GatewayURL: "https://gw.example.com"})
-	if err == nil || !strings.Contains(err.Error(), "write config tmp file") {
-		t.Fatalf("expected a temp-file write error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "config lock") {
+		t.Fatalf("expected a lock error, got %v", err)
 	}
 }
 

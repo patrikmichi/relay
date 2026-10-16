@@ -42,12 +42,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			cfg, err := config.Load()
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			cfg.GatewayURL = url
-			if err := config.Save(cfg); err != nil {
+			if err := config.SetGatewayURL(url); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Gateway URL set to: %s\n", url)

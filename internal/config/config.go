@@ -51,15 +51,12 @@ func PinnedSigningKeys(origin string) ([]SigningKey, error) {
 
 // PinSigningKeys replaces the keys pinned for a gateway origin.
 func PinSigningKeys(origin string, keys []SigningKey) error {
-	cfg, err := Load()
-	if err != nil {
-		return err
-	}
-	if cfg.SigningKeys == nil {
-		cfg.SigningKeys = map[string][]SigningKey{}
-	}
-	cfg.SigningKeys[origin] = keys
-	return Save(cfg)
+	return modify(func(cfg *Config) {
+		if cfg.SigningKeys == nil {
+			cfg.SigningKeys = map[string][]SigningKey{}
+		}
+		cfg.SigningKeys[origin] = keys
+	}, true)
 }
 
 // AgentMode reports whether RELAY_AGENT selects the agent profile, the
@@ -123,27 +120,70 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// Save writes the config to disk atomically (write temp file, rename).
+// Save replaces the config file. Prefer a setter: Save overwrites whatever
+// another process wrote since the config was loaded.
 func Save(cfg Config) error {
-	path, err := configPath()
+	return modify(func(c *Config) { *c = cfg }, false)
+}
+
+// modify applies fn to the stored config under the config lock, so two relay
+// processes changing different fields never lose each other's update. load
+// reads the current file first; Save skips it because it replaces everything.
+func modify(fn func(*Config), load bool) error {
+	dir, err := configDir()
 	if err != nil {
 		return err
 	}
+	unlock, err := lockConfig(dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
+	var cfg Config
+	if load {
+		if cfg, err = Load(); err != nil {
+			return err
+		}
+	}
+	fn(&cfg)
+	return writeConfig(filepath.Join(dir, "config.json"), cfg)
+}
+
+// writeConfig writes the file through a synced temp file and a rename, so a
+// crash leaves either the old or the new config, never a torn one.
+func writeConfig(path string, cfg Config) error {
 	raw, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	raw = append(raw, '\n')
 
-	// Write to a temp file alongside the target for atomic rename.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return fmt.Errorf("write config tmp file: %w", err)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "config-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create config tmp file: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	fail := func(step string, err error) error {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return fmt.Errorf("%s: %w", step, err)
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		return fail("write config tmp file", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fail("sync config tmp file", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fail("close config tmp file", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
 		return fmt.Errorf("rename config file: %w", err)
+	}
+	if d, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
 	}
 	return nil
 }
@@ -254,23 +294,18 @@ func isLoopbackHost(host string) bool {
 // `relay login --device` on success so later commands don't require
 // RELAY_EMAIL to be set.
 func SetEmail(email string) error {
-	cfg, err := Load()
-	if err != nil {
-		return err
-	}
-	cfg.Email = email
-	return Save(cfg)
+	return modify(func(cfg *Config) { cfg.Email = email }, true)
+}
+
+// SetGatewayURL persists the (already normalized) gateway URL.
+func SetGatewayURL(url string) error {
+	return modify(func(cfg *Config) { cfg.GatewayURL = url }, true)
 }
 
 // SetAgentEmail persists the identity of the agent profile, leaving Email
 // alone.
 func SetAgentEmail(email string) error {
-	cfg, err := Load()
-	if err != nil {
-		return err
-	}
-	cfg.AgentEmail = email
-	return Save(cfg)
+	return modify(func(cfg *Config) { cfg.AgentEmail = email }, true)
 }
 
 // ResolveAgentEmail resolves the identity of the agent profile: RELAY_EMAIL,
