@@ -112,6 +112,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		add("recovery", pending == 0, fmt.Sprintf("%d transactions need recovery", pending))
 	}
 	doctorSyncChecks(add)
+	pluginLedger := doctorPlugins(add)
 	if email, err := config.ResolveEmail(); err == nil && keychain.HasUnboundToken(email) {
 		add("stray-session", false, "an email-only keychain entry exists that no gateway session can use; `"+brand.Cmd("login")+"` removes it")
 	}
@@ -156,6 +157,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		return checks
 	}
 	add("gateway", true, "gateway reachable and session authenticated")
+	doctorPluginFeed(ctx, c, pluginLedger, add)
 	doctorPasskeys(ctx, c, add)
 	if os.Getenv("ZUANO_API_KEY") != "" {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
