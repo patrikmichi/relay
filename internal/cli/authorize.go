@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/textsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -85,22 +86,36 @@ func AuthorizeCmd() *cobra.Command {
 		if account != "" {
 			query.Set("account", account)
 		}
+		failures := 0
 		for result.State != "authorized" {
-			timer := time.NewTimer(authorizationPollInterval)
+			// Approval and account linking take a person's time, so a
+			// passing network error, 429 or 5xx must not end the wait: back
+			// off and ask again.
+			delay := authorizationPollInterval << min(failures, 5)
+			timer := time.NewTimer(min(delay, maxAuthorizationBackoff))
 			select {
 			case <-ctx.Done():
 				timer.Stop()
 				return fmt.Errorf("service authorization not completed: %w", ctx.Err())
 			case <-timer.C:
 			}
+			var pollErr error
 			response, err = c.GetContext(ctx, serviceAuthorizationPath+"?"+query.Encode())
 			if err != nil {
-				return fmt.Errorf("verify service authorization: %w", err)
+				pollErr = fmt.Errorf("verify service authorization: %w", err)
+			} else {
+				var next serviceAuthorizationResult
+				if next, pollErr = readServiceAuthorization(response, request); pollErr == nil {
+					result, failures = next, 0
+					continue
+				}
 			}
-			result, err = readServiceAuthorization(response, request)
-			if err != nil {
-				return err
+			var transient *transientAuthorizationError
+			if ctx.Err() != nil || failures >= maxAuthorizationFailures || (err == nil && !errors.As(pollErr, &transient)) {
+				return pollErr
 			}
+			failures++
+			fmt.Fprintf(cmd.ErrOrStderr(), "%v; retrying (%d/%d)\n", pollErr, failures, maxAuthorizationFailures)
 		}
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Authorized gateway tools for %s: %s (account connection verified)\n", request.Service, strings.Join(request.Scopes, ", "))
 		return err
@@ -124,17 +139,41 @@ func uniqueSorted(values []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+const (
+	maxAuthorizationFailures = 5
+	maxAuthorizationBackoff  = 30 * time.Second
+)
+
+// transientAuthorizationError is a 429 or 5xx: the request may succeed when asked again.
+type transientAuthorizationError struct{ status int }
+
+func (e *transientAuthorizationError) Error() string {
+	return fmt.Sprintf("service authorization temporarily unavailable (HTTP %d)", e.status)
+}
+
 func readServiceAuthorization(response *http.Response, request serviceAuthorizationRequest) (serviceAuthorizationResult, error) {
 	defer response.Body.Close()
 	var result serviceAuthorizationResult
-	switch response.StatusCode {
-	case 404, 405:
+	switch status := response.StatusCode; {
+	case status == 404 || status == 405:
 		return result, ErrServiceAuthorizationUnsupported
-	case 401, 403:
-		return result, fmt.Errorf("service authorization denied (HTTP %d)", response.StatusCode)
-	case 200:
+	case status == 401:
+		return result, errTokenRevoked
+	case status == 403:
+		return result, fmt.Errorf("service authorization denied (HTTP 403): the account may not request %s access", request.Service)
+	case status == 429 || status >= 500:
+		return result, &transientAuthorizationError{status}
+	case status == 400 || status == 409 || status == 422:
+		body, _ := readLimitedResponse(response.Body, 1<<16)
+		msg := gatewayMessage(body)
+		if msg == "" {
+			msg = "the gateway refused the request"
+		}
+		return result, fmt.Errorf("service authorization rejected (HTTP %d): %s", status, textsafe.Clean(msg))
+	case status == 200:
 	default:
-		return result, fmt.Errorf("service authorization unavailable (HTTP %d)", response.StatusCode)
+		return result, fmt.Errorf("service authorization unavailable (HTTP %d)", status)
 	}
 	body, err := readLimitedResponse(response.Body, 1<<20)
 	if err != nil {

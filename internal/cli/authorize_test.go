@@ -91,6 +91,72 @@ func TestAuthorizeRejectsFalseConfirmationAndDenial(t *testing.T) {
 	}
 }
 
+func authorizeServer(t *testing.T, pollStatuses []int) (*httptest.Server, *int) {
+	t.Helper()
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state, linked, missing := "pending", false, []string{"read"}
+		if r.Method == http.MethodGet {
+			i := polls
+			polls++
+			if i < len(pollStatuses) && pollStatuses[i] != 200 {
+				w.WriteHeader(pollStatuses[i])
+				_, _ = w.Write([]byte(`{"error":"try later"}`))
+				return
+			}
+			state, linked, missing = "authorized", true, []string{}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"service": "sample", "account": nil, "scopes": []string{"read"}, "state": state, "accountLinked": linked, "missingScopes": missing, "authorizationPath": "/admin", "scopeKind": "gateway_tool"})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &polls
+}
+
+func runAuthorize(t *testing.T, srv *httptest.Server) (string, error) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GATEWAY_API_KEY", "test-token")
+	previous := authorizationPollInterval
+	authorizationPollInterval = time.Millisecond
+	t.Cleanup(func() { authorizationPollInterval = previous })
+	cmd := AuthorizeCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"sample", "--scope", "read", "--gateway-url", srv.URL})
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+func TestAuthorizeRetriesTransientPollFailures(t *testing.T) {
+	srv, polls := authorizeServer(t, []int{503, 429, 502})
+	out, err := runAuthorize(t, srv)
+	if err != nil || !strings.Contains(out, "Authorized gateway tools") || *polls != 4 {
+		t.Fatalf("err = %v, polls = %d\n%s", err, *polls, out)
+	}
+
+	srv, polls = authorizeServer(t, []int{503, 503, 503, 503, 503, 503, 503})
+	if _, err = runAuthorize(t, srv); err == nil || !strings.Contains(err.Error(), "temporarily unavailable") {
+		t.Fatalf("endless 503s = %v, want the transient error after the retries", err)
+	}
+	if *polls != maxAuthorizationFailures+1 {
+		t.Errorf("polled %d times, want %d", *polls, maxAuthorizationFailures+1)
+	}
+}
+
+func TestAuthorizeMapsRefusalsAndDoesNotRetryThem(t *testing.T) {
+	for status, want := range map[int]string{401: "relay login", 403: "denied (HTTP 403)", 404: "does not support", 422: "rejected (HTTP 422)"} {
+		srv, polls := authorizeServer(t, []int{status})
+		_, err := runAuthorize(t, srv)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("poll status %d = %v, want %q", status, err, want)
+		}
+		if *polls != 1 {
+			t.Errorf("status %d was polled %d times; a refusal is final", status, *polls)
+		}
+	}
+}
+
 func TestAuthorizeCancellation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("GATEWAY_API_KEY", "test-token")
