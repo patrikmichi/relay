@@ -158,6 +158,10 @@ func publishCmdWithDoer(doer gatewayDoer, aliasKind agentport.ArtifactKind) *cob
 <path> can be a single manifest file (SKILL.md / agent.md) or a directory.
 The resource type is detected from the manifest frontmatter; use --type to override.
 
+--type plugin publishes a bundle described by a plugin.yaml in <path> (or <path>
+itself): pinned skills and MCP servers, commands, rules and hooks. It is
+validated here and sent as components; see docs/reference/plugins.md.
+
 When publishing a directory, all files are bundled into a tar.gz.
 The bundle is validated client-side before upload: symlinks that escape the root,
 absolute paths, and ".." path components are refused.
@@ -481,6 +485,9 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
+	}
+	if opts.resourceType == "plugin" {
+		return runPublishPlugin(d, absPath, opts, ch)
 	}
 
 	fi, err := os.Stat(absPath)
