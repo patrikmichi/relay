@@ -107,6 +107,20 @@ func TestDiffRedactsAFlagValueOnTheNextLine(t *testing.T) {
 	}
 }
 
+func TestEmptyFrontmatterIsAccepted(t *testing.T) {
+	fm, body, err := splitFrontmatter("---\n---\nBe terse.\n")
+	if err != nil || body != "Be terse.\n" || fm.Description != "" {
+		t.Fatalf("source: fm=%+v body=%q err=%v", fm, body, err)
+	}
+	_, body, err = splitMarkdown("---\n---\nBe terse.\n")
+	if err != nil || body != "Be terse." {
+		t.Fatalf("reader: body=%q err=%v", body, err)
+	}
+	if _, _, err = splitFrontmatter("---\ndescription: x\n"); err == nil {
+		t.Error("an unterminated block was accepted")
+	}
+}
+
 func TestLoadBundleParsesSourcesAndWarns(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "rules", "style.md"), "---\ndescription: Style\n---\nBe terse.\n")

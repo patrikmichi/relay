@@ -162,6 +162,9 @@ func splitMarkdown(text string) (readFrontmatter, string, error) {
 		return fm, strings.TrimSpace(text), nil
 	}
 	rest := text[4:]
+	if strings.HasPrefix(rest, "---") {
+		return fm, strings.TrimSpace(afterLine(rest[3:])), nil
+	}
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
 		return fm, "", errors.New("unterminated frontmatter")
@@ -169,13 +172,7 @@ func splitMarkdown(text string) (readFrontmatter, string, error) {
 	if err := yaml.Unmarshal([]byte(rest[:end]), &fm); err != nil {
 		return fm, "", fmt.Errorf("invalid frontmatter: %w", err)
 	}
-	body := rest[end+4:]
-	if i := strings.Index(body, "\n"); i >= 0 {
-		body = body[i+1:]
-	} else {
-		body = ""
-	}
-	return fm, strings.TrimSpace(body), nil
+	return fm, strings.TrimSpace(afterLine(rest[end+4:])), nil
 }
 
 // ---- rules ----

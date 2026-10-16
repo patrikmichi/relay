@@ -98,10 +98,15 @@ func LoadMCPSource(env Env, scope Scope) (MCPSource, error) {
 	if err := json.Unmarshal(raw, &src); err != nil {
 		return src, fmt.Errorf("parse %s: %w", MCPSourcePath(env, scope), err)
 	}
+	seen := map[string]bool{}
 	for _, s := range src.Servers {
 		if err := s.Validate(); err != nil {
 			return src, fmt.Errorf("%s: %w", MCPSourcePath(env, scope), err)
 		}
+		if seen[s.Name] {
+			return src, fmt.Errorf("%s: MCP server %q is listed twice", MCPSourcePath(env, scope), s.Name)
+		}
+		seen[s.Name] = true
 	}
 	return src, nil
 }
@@ -278,6 +283,10 @@ func splitFrontmatter(s string) (frontmatter, string, error) {
 		return fm, s, nil
 	}
 	rest := s[strings.Index(s, "\n")+1:]
+	if strings.HasPrefix(rest, "---") {
+		// An empty block, "---" directly followed by "---".
+		return fm, afterLine(rest[3:]), nil
+	}
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
 		return fm, "", errors.New("unterminated frontmatter")
@@ -285,13 +294,15 @@ func splitFrontmatter(s string) (frontmatter, string, error) {
 	if err := yaml.Unmarshal([]byte(rest[:end]), &fm); err != nil {
 		return fm, "", fmt.Errorf("invalid frontmatter: %w", err)
 	}
-	body := rest[end+len("\n---"):]
-	if i := strings.Index(body, "\n"); i >= 0 {
-		body = body[i+1:]
-	} else {
-		body = ""
+	return fm, afterLine(rest[end+len("\n---"):]), nil
+}
+
+// afterLine drops the rest of the current line, the end of a "---" fence.
+func afterLine(s string) string {
+	if i := strings.Index(s, "\n"); i >= 0 {
+		return s[i+1:]
 	}
-	return fm, body, nil
+	return ""
 }
 
 func loadHooks(path string, check PathCheck) ([]Hook, []string, error) {

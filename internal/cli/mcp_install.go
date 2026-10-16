@@ -163,6 +163,9 @@ func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 	case f.url != "" && f.command != "":
 		return errors.New("use either --url or --command, not both")
 	default:
+		if name == gatewayServerName {
+			return fmt.Errorf("%q is the gateway's own MCP server; pick another name", gatewayServerName)
+		}
 		server := agentsync.MCPServer{Name: name, URL: f.url, BearerEnv: f.bearerEnv, Command: f.command, Args: f.args}
 		if server.Env, err = parseEnvPairs(f.env); err != nil {
 			return err
