@@ -24,12 +24,11 @@ const (
 	exitEvalRegression = 21 // --fail-on-regression and a score dropped
 )
 
-// evalRequestTimeout bounds one gateway request; waiting for a run is bounded
-// separately by --wait-timeout. Variables so tests can shorten them.
+// One request is bounded by --timeout; waiting for a run is bounded separately
+// by --wait-timeout. Variables so tests can shorten them.
 var (
-	evalRequestTimeout = 60 * time.Second
-	evalPollInterval   = 3 * time.Second
-	evalSettleDelay    = 2 * time.Second
+	evalPollInterval = 3 * time.Second
+	evalSettleDelay  = 2 * time.Second
 )
 
 const evalMaxResponse = 16 << 20
@@ -78,7 +77,12 @@ func (a *evalAPI) request(ctx context.Context, method, path string, body any) ([
 		}
 		rd = bytes.NewReader(b)
 	}
-	ctx, cancel := context.WithTimeout(ctx, evalRequestTimeout)
+	// One request is bounded like any other control request: --timeout and
+	// RELAY_TIMEOUT apply, 0 meaning no limit.
+	ctx, cancel, err := requestContext(ctx, controlRequest)
+	if err != nil {
+		return nil, err
+	}
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, a.c.GatewayURL+path, rd)
 	if err != nil {
@@ -89,12 +93,12 @@ func (a *evalAPI) request(ctx context.Context, method, path string, body any) ([
 	}
 	resp, err := a.c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%s %s: %w", method, path, err)
+		return nil, timeoutCause(ctx, fmt.Errorf("%s %s: %w", method, path, err))
 	}
 	defer resp.Body.Close()
 	raw, err := readLimitedResponse(resp.Body, evalMaxResponse)
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return nil, timeoutCause(ctx, fmt.Errorf("read response: %w", err))
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return raw, nil
@@ -313,11 +317,14 @@ func (a *evalAPI) resolveVersion(ctx context.Context, ref string) (skillVersion,
 
 // detail reads GET /api/catalog/{id}, which lists the skill's versions.
 func (a *evalAPI) detail(ctx context.Context, out any) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, evalRequestTimeout)
+	ctx, cancel, err := requestContext(ctx, controlRequest)
+	if err != nil {
+		return nil, err
+	}
 	defer cancel()
 	resp, err := a.c.GetContext(ctx, "/api/catalog/"+url.PathEscape(a.skill.ID))
 	if err != nil {
-		return nil, fmt.Errorf("skill versions: %w", err)
+		return nil, timeoutCause(ctx, fmt.Errorf("skill versions: %w", err))
 	}
 	defer resp.Body.Close()
 	raw, err := readLimitedResponse(resp.Body, evalMaxResponse)

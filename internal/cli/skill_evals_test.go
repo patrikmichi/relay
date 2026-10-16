@@ -36,6 +36,8 @@ type evalGateway struct {
 	jobResult string
 
 	refuse map[string]int // "METHOD suffix" -> forced status
+	flaky  map[string]int // "METHOD suffix" -> how many more requests fail with 503
+	slow   time.Duration  // delay before every answer
 }
 
 const triggerSummary = `{"total":6,"completed":6,"variants":[{"label":"1.1.0","versionId":"rev_2",
@@ -81,6 +83,9 @@ func (g *evalGateway) called(key string) bool {
 func (g *evalGateway) serve(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if g.slow > 0 {
+		time.Sleep(g.slow)
+	}
 	reply := func(status int, body any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -102,6 +107,11 @@ func (g *evalGateway) serve(w http.ResponseWriter, r *http.Request) {
 		var doc map[string]any
 		_ = json.Unmarshal(data, &doc)
 		g.bodies[key] = doc
+	}
+	if g.flaky[key] > 0 {
+		g.flaky[key]--
+		reply(http.StatusServiceUnavailable, map[string]string{"error": "try again"})
+		return
 	}
 	if status, ok := g.refuse[key]; ok {
 		reply(status, map[string]string{"error": "Forbidden: Agent credentials cannot change this"})
@@ -468,6 +478,65 @@ func TestEval_FailOnRegressionFailsWhenNothingWasVerified(t *testing.T) {
 			t.Errorf("%s: without --fail-on-regression the run still reports success: %v", name, err)
 		}
 	}
+}
+
+func TestEval_WaitRetriesTransientPollFailures(t *testing.T) {
+	g := newEvalGateway(t)
+	g.flaky = map[string]int{"GET /evals/runs/evr_1": 2}
+	out, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--run", "evr_1", "--wait")
+	if err != nil || !strings.Contains(out, "succeeded") {
+		t.Fatalf("a passing 503 ended the wait: %v\n%s", err, out)
+	}
+
+	g = newEvalGateway(t)
+	g.flaky = map[string]int{"GET /evals/runs/evr_1": evalMaxPollFailures + 3}
+	if _, err = evalCmd(t, g, SkillEvalCmd(), "evskill", "--run", "evr_1", "--wait"); err == nil {
+		t.Fatal("endless 503s should end the wait")
+	}
+
+	g = newEvalGateway(t)
+	g.refuse = map[string]int{"GET /evals/runs/evr_1": http.StatusNotFound}
+	if _, err = evalCmd(t, g, SkillEvalCmd(), "evskill", "--run", "evr_1", "--wait"); err == nil {
+		t.Fatal("a 404 should not be retried")
+	}
+	if n := countOf(g, "GET /evals/runs/evr_1"); n != 1 {
+		t.Errorf("a final refusal was polled %d times", n)
+	}
+}
+
+func TestEval_CancelNeedsARunID(t *testing.T) {
+	g := newEvalGateway(t)
+	if _, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--cancel"); err == nil || !strings.Contains(err.Error(), "--run") {
+		t.Fatalf("--cancel without --run = %v, want an error naming --run", err)
+	}
+	if g.called("POST /evals/runs") {
+		t.Error("--cancel without a run id started a new run")
+	}
+}
+
+func TestEval_RequestsHonourTheTimeoutFlag(t *testing.T) {
+	g := newEvalGateway(t)
+	g.slow = 300 * time.Millisecond
+	if err := SetTimeoutFlag(50 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(resetTimeoutFlag)
+	_, err := evalCmd(t, g, SkillEvalsCmd(), "sets", "list", "evskill")
+	if err == nil || ExitCode(err) != 4 {
+		t.Fatalf("err = %v (exit %d), want the timeout exit status 4", err, ExitCode(err))
+	}
+}
+
+func countOf(g *evalGateway, key string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	n := 0
+	for _, r := range g.requests {
+		if r == key {
+			n++
+		}
+	}
+	return n
 }
 
 func TestEval_WaitTimeoutExitsWithTheTimeoutStatus(t *testing.T) {

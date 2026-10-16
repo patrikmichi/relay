@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -119,13 +120,22 @@ func terminalStatus(s string) bool { return s == "succeeded" || s == "failed" ||
 func waitFor(ctx context.Context, timeout time.Duration, progress io.Writer, quiet bool, resume string, check func() (done bool, status string, err error)) error {
 	deadline := time.Now().Add(timeout)
 	last := ""
+	failures := 0
 	for {
 		done, status, err := check()
-		if err != nil {
-			return err
-		}
-		if done {
+		switch {
+		case err != nil:
+			// A run keeps going on the gateway while a poll fails, so a
+			// passing network error or 429/5xx is retried, not fatal.
+			if ctx.Err() != nil || failures >= evalMaxPollFailures || !transientPollError(err) {
+				return err
+			}
+			failures++
+			status = fmt.Sprintf("poll failed (%s); retrying %d/%d", firstLineOf(err.Error()), failures, evalMaxPollFailures)
+		case done:
 			return nil
+		default:
+			failures = 0
 		}
 		if !quiet && status != last {
 			fmt.Fprintln(progress, status)
@@ -140,6 +150,32 @@ func waitFor(ctx context.Context, timeout time.Duration, progress io.Writer, qui
 		case <-time.After(evalPollInterval):
 		}
 	}
+}
+
+// evalMaxPollFailures is how many polls in a row may fail transiently before
+// waiting gives up.
+const evalMaxPollFailures = 5
+
+// transientPollError reports a failure worth retrying: no answer from the
+// gateway, or a 429 or 5xx. A refusal such as 401, 403 or 404 is final.
+func transientPollError(err error) bool {
+	var api *apiError
+	switch {
+	case errors.As(err, &api):
+		return api.Status == http.StatusTooManyRequests || api.Status >= http.StatusInternalServerError
+	case errors.Is(err, errTokenRevoked), errors.Is(err, context.Canceled):
+		return false
+	}
+	var te *TimeoutError
+	if errors.As(err, &te) {
+		return false
+	}
+	return !strings.Contains(err.Error(), "unexpected response")
+}
+
+func firstLineOf(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
 }
 
 type runOptions struct {
@@ -301,6 +337,9 @@ func runEval(cmd *cobra.Command, f evalFlags, skillRef string, o runOptions, com
 	}
 	ctx, out := cmd.Context(), cmd.OutOrStdout()
 	waiting := o.wait || o.failOnRegression
+	if o.cancel && o.runID == "" {
+		return fmt.Errorf("--cancel needs --run <id> to say which run to cancel")
+	}
 
 	runID := o.runID
 	if runID != "" && o.cancel {
