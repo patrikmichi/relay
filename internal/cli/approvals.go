@@ -178,7 +178,7 @@ func approvalError(status int, raw []byte) error {
 	case http.StatusForbidden:
 		return fmt.Errorf("%s (HTTP 403): approvals are for an org owner, admin or listed approver using their own session, not the agent profile", msg)
 	}
-	return fmt.Errorf("%s (HTTP %d)", msg, status)
+	return fmt.Errorf("%s (HTTP %d)%s", msg, status, client.RequestIDNote())
 }
 
 func printRaw(out io.Writer, raw []byte) {

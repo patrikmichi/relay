@@ -48,5 +48,5 @@ func gatewayStatusError(status int, raw []byte) error {
 	if status == http.StatusUnauthorized {
 		return errTokenRevoked
 	}
-	return fmt.Errorf("%s (HTTP %d)", textsafe.Clean(msg), status)
+	return fmt.Errorf("%s (HTTP %d)%s", textsafe.Clean(msg), status, client.RequestIDNote())
 }

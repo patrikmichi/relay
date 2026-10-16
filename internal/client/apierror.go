@@ -32,6 +32,7 @@ const (
 	CodePlanRequired        = "plan_required"
 	CodeLimitReached        = "limit_reached"
 	CodeQuotaExceeded       = "quota_exceeded"
+	CodeRateLimited         = "rate_limited"
 	CodeSpendCapReached     = "spend_cap_reached"
 	CodeBillingUnavailable  = "billing_unavailable"
 	CodeOrgSuspended        = "org_suspended"
@@ -58,6 +59,7 @@ type EntitlementError struct {
 	UpgradeURL   string
 	ResetsAt     string
 	RetryAfter   string
+	RequestID    string
 }
 
 // ExitCode is the process exit status for the refusal.
@@ -97,16 +99,41 @@ func (e *EntitlementError) Error() string {
 	if e.UpgradeURL != "" {
 		fmt.Fprintf(&b, "\nUpgrade: %s", textsafe.Clean(e.UpgradeURL))
 	}
+	b.WriteString(requestIDSuffix(textsafe.Clean(e.RequestID)))
 	return b.String()
 }
 
 // QuotaExceededError is the 429 a gateway answers with when an organisation
 // used up a metered quota.
 type QuotaExceededError struct {
-	Metric   string
-	Limit    string
-	Message  string
-	ResetsAt string
+	Metric    string
+	Limit     string
+	Message   string
+	ResetsAt  string
+	RequestID string
+}
+
+// RateLimitedError is the 429 a gateway answers with when a caller sends
+// requests faster than the rate limit allows. It clears by waiting; a quota
+// does not.
+type RateLimitedError struct {
+	Message    string
+	RetryAfter string
+	RequestID  string
+}
+
+// ExitCode is the process exit status for the refusal.
+func (e *RateLimitedError) ExitCode() int { return ExitQuotaExceeded }
+
+func (e *RateLimitedError) Error() string {
+	msg := textsafe.Clean(e.Message)
+	if msg == "" {
+		msg = "rate limited"
+	}
+	if e.RetryAfter != "" {
+		msg += "; retry after " + textsafe.Clean(e.RetryAfter) + "s"
+	}
+	return msg + requestIDSuffix(textsafe.Clean(e.RequestID))
 }
 
 // ExitCode is the process exit status for the refusal.
@@ -127,17 +154,18 @@ func (e *QuotaExceededError) Error() string {
 	if e.ResetsAt != "" {
 		detail = append(detail, "resets "+textsafe.Clean(e.ResetsAt))
 	}
-	if len(detail) == 0 {
-		return msg
+	if len(detail) > 0 {
+		msg += " (" + strings.Join(detail, ", ") + ")"
 	}
-	return msg + " (" + strings.Join(detail, ", ") + ")"
+	return msg + requestIDSuffix(textsafe.Clean(e.RequestID))
 }
 
 // StepUpRequiredError is the 401 a gateway answers with when an action needs
 // a passkey confirmation from a person first.
 type StepUpRequiredError struct {
-	ID  string
-	URL string
+	ID        string
+	URL       string
+	RequestID string
 }
 
 // ExitCode is the process exit status for the refusal.
@@ -148,7 +176,7 @@ func (e *StepUpRequiredError) Error() string {
 	if e.URL != "" {
 		msg += ": open " + textsafe.Clean(e.URL)
 	}
-	return msg
+	return msg + requestIDSuffix(textsafe.Clean(e.RequestID))
 }
 
 // ReauthRequiredError is the 401 a gateway answers with when it no longer
@@ -225,19 +253,22 @@ func refusalOf(resp *http.Response) error {
 	if json.Unmarshal(head, &b) != nil {
 		return nil
 	}
+	id := resp.Header.Get(RequestIDHeader)
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized && b.Error == codeStepUpRequired:
-		return &StepUpRequiredError{ID: b.StepUpID, URL: b.StepUpURL}
+		return &StepUpRequiredError{ID: b.StepUpID, URL: b.StepUpURL, RequestID: id}
 	case resp.StatusCode == http.StatusUnauthorized && b.Error == codeReauthRequired:
 		return &ReauthRequiredError{}
 	case resp.StatusCode == http.StatusTooManyRequests && b.Error == CodeQuotaExceeded:
-		return &QuotaExceededError{Metric: firstNonEmpty(b.Metric, b.Meter), Limit: rawText(b.Limit), Message: b.Message, ResetsAt: b.ResetsAt}
+		return &QuotaExceededError{Metric: firstNonEmpty(b.Metric, b.Meter), Limit: rawText(b.Limit), Message: b.Message, ResetsAt: b.ResetsAt, RequestID: id}
+	case resp.StatusCode == http.StatusTooManyRequests && b.Error == CodeRateLimited:
+		return &RateLimitedError{Message: b.Message, RetryAfter: resp.Header.Get("Retry-After"), RequestID: id}
 	case isEntitlementCode(resp.StatusCode, b.Error):
 		return &EntitlementError{
 			Status: resp.StatusCode, Code: b.Error, Message: b.Message, Feature: b.Feature,
 			Limit: rawText(b.Limit), Meter: b.Meter, Current: rawText(b.Current), Max: rawText(b.Max),
 			CurrentPlan: b.CurrentPlan, RequiredPlan: b.RequiredPlan, UpgradeURL: b.UpgradeURL,
-			ResetsAt: b.ResetsAt, RetryAfter: resp.Header.Get("Retry-After"),
+			ResetsAt: b.ResetsAt, RetryAfter: resp.Header.Get("Retry-After"), RequestID: id,
 		}
 	}
 	return nil

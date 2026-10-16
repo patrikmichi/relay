@@ -41,6 +41,7 @@ its HTTP client, so no route needs to handle them separately.
 | `402` with CODE `quota_exceeded` or `spend_cap_reached` | same | 31 |
 | `503` `{"error": "billing_unavailable", "message"}` with `Retry-After` | prints the message and the wait | 32 |
 | `403` `{"error": "org_suspended" \| "seat_suspended", "message"}` | prints the message | 33 |
+| `429` `{"error": "rate_limited", "message"}` with `Retry-After` | prints the message and the wait | 13 |
 | `429` `{"error": "quota_exceeded", "message", "metric", "limit", "resets_at"}` | prints metric, limit and reset | 13 |
 | `401` `{"error": "step_up_required", "step_up_id", "step_up_url"}` | completes the step-up, see below | 14 when nobody can |
 | `401` `{"error": "reauth_required"}` | treated like an expired token: `zuano login` | 1 |
@@ -49,10 +50,15 @@ its HTTP client, so no route needs to handle them separately.
 Source: billing plan section 5.8 (codes, statuses, JSON, exit 30 to 33),
 scalability plan sections 5.9 and 8 (`429` quota, exit 13), risk policy plan
 sections 5.2 and 5.14 (`policy_off`, exit 10; `step_up_required`, exit 14).
-The billing and scalability plans disagree on the status of `quota_exceeded`
-(`402` and exit 31 against `429` and exit 13); zuano accepts both and keeps
-the exit statuses apart. `limit` is a limit key (text) in a plan refusal and a
-number in a quota refusal; zuano reads either.
+A plan quota is `402` `quota_exceeded` (exit 31); a rate limit is `429`
+`rate_limited` (exit 13). A metered `429` `quota_exceeded` is also accepted and
+exits 13. `limit` is a limit key (text) in a plan refusal and a number in a
+quota refusal; zuano reads either.
+
+Every response may carry `X-Request-Id: req_<ulid>`. zuano sends its own
+`X-Request-Id: cli_<ulid>` on every request as client correlation, and adds the
+gateway's id to each refusal and failed-call message as `request id: req_...`.
+`--debug` prints the id of every response.
 
 ## Login
 

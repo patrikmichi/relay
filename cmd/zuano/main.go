@@ -184,6 +184,7 @@ func newRootCmd() *cobra.Command {
 	// otherwise resolve. Offline-only verbs (skill migrate, local skill
 	// install) never consult it.
 	root.PersistentFlags().Bool("offline", false, "Refuse any command that would dial the gateway, even if one is configured")
+	root.PersistentFlags().Bool("debug", false, "Print the gateway's request id for every request, to quote to support or pass to '"+brand.Name+" trace'")
 	root.PersistentFlags().Duration("timeout", 0, "Limit for each gateway request, e.g. 90s or 10m; 0 means no limit (default: 30s, 150s for tool calls and uploads; env ZUANO_TIMEOUT)")
 
 	// Register static commands.
@@ -229,6 +230,9 @@ func newRootCmd() *cobra.Command {
 			return err
 		}
 		cli.SetOffline(offline)
+		if debug, _ := cmd.Flags().GetBool("debug"); debug {
+			client.SetDebug(os.Stderr)
+		}
 		if f := cmd.Root().PersistentFlags().Lookup("timeout"); f != nil && f.Changed {
 			d, err := cmd.Root().PersistentFlags().GetDuration("timeout")
 			if err != nil {

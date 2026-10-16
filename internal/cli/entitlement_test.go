@@ -77,8 +77,16 @@ func TestEntitlementRefusals_AnAgentSessionGetsTheSameMapping(t *testing.T) {
 	}
 }
 
-func TestPlainRateLimitAndForbiddenAreNotEntitlementErrors(t *testing.T) {
+func TestRateLimitIsExit13AndNamesTheWait(t *testing.T) {
 	refusingGateway(t, 429, map[string]string{"Retry-After": "3"}, `{"error":"rate_limited"}`)
+	_, err := runCommand(t, ApprovalsCmd(), "list")
+	if got := exitCodeOf(err); got != 13 || !strings.Contains(err.Error(), "retry after 3s") {
+		t.Fatalf("exit %d (%v), want 13 naming the wait", got, err)
+	}
+}
+
+func TestAnUnrecognisedForbiddenIsNotAnEntitlementError(t *testing.T) {
+	refusingGateway(t, 403, nil, `{"error":"approval_required"}`)
 	_, err := runCommand(t, ApprovalsCmd(), "list")
 	if got := exitCodeOf(err); got != 1 {
 		t.Fatalf("exit %d (%v), want 1", got, err)

@@ -318,13 +318,13 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 
 	if env.Error != nil {
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-			return nil, fmt.Errorf("call failed (%d, code %d): %s — retry after %ss", resp.StatusCode, env.Error.Code, env.Error.Message, retryAfter)
+			return nil, fmt.Errorf("call failed (%d, code %d): %s — retry after %ss%s", resp.StatusCode, env.Error.Code, env.Error.Message, retryAfter, client.RequestIDNote())
 		}
-		return nil, fmt.Errorf("call failed (%d, code %d): %s", resp.StatusCode, env.Error.Code, env.Error.Message)
+		return nil, fmt.Errorf("call failed (%d, code %d): %s%s", resp.StatusCode, env.Error.Code, env.Error.Message, client.RequestIDNote())
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("call failed (%d): %s%s", resp.StatusCode, string(respBody), client.RequestIDNote())
 	}
 
 	if env.Result.IsError {

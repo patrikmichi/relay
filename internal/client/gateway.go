@@ -129,18 +129,26 @@ func userAgent() string {
 	return brand.Name + "/" + clientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
 }
 
-// versionTransport adds the zuano version headers to every request. These
-// two headers are the only client details zuano sends.
+// versionTransport adds the zuano version headers and a correlation id to
+// every request. These are the only client details zuano sends.
 type versionTransport struct{ base http.RoundTripper }
 
 func (t versionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	r := req.Clone(req.Context())
 	r.Header.Set("User-Agent", userAgent())
 	r.Header.Set(brand.Product+"-Client-Version", clientVersion)
-	if t.base == nil {
-		return http.DefaultTransport.RoundTrip(r)
+	if r.Header.Get(RequestIDHeader) == "" {
+		r.Header.Set(RequestIDHeader, NewCorrelationID())
 	}
-	return t.base.RoundTrip(r)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(r)
+	if err == nil {
+		recordRequestID(r, resp)
+	}
+	return resp, err
 }
 
 // New creates a gateway client with a fixed bearer token and NO refresh

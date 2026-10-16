@@ -104,7 +104,7 @@ func TestOtherResponsesPassThroughWithTheirBodies(t *testing.T) {
 		status int
 		body   string
 	}{
-		{"rate limit", 429, `{"error":"rate_limited"}`},
+		{"unknown 429 code", 429, `{"error":"something_else"}`},
 		{"unknown 402 code", 402, `{"error":"something_else"}`},
 		{"403 approval", 403, `{"error":"approval_required"}`},
 		{"non-JSON 503", 503, `upstream down`},
