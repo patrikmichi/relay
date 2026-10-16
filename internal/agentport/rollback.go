@@ -130,18 +130,21 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return tx.Discard(err)
 	}
 
-	return tx.Commit(func() error {
-		// Only skills get their per-artifact subdirectory pruned when empty
-		// — dir for a KindAgent entry is the provider's SHARED agents
-		// directory (e.g. ~/.claude/agents), not a per-agent subdirectory,
-		// so it must never be recursively removed as a side effect of
-		// rolling back one agent. Best-effort and only removes directories
-		// actually left empty, so it never touches a restored file.
-		if entry.Kind != KindAgent {
-			removeEmptyDirsRecursive(dir)
-		}
-		return RemoveEntry(entry.ID)
-	})
+	if err := tx.Commit(func() error { return RemoveEntry(entry.ID) }); err != nil {
+		return err
+	}
+	// Only skills get their per-artifact subdirectory pruned when empty
+	// — dir for a KindAgent entry is the provider's SHARED agents
+	// directory (e.g. ~/.claude/agents), not a per-agent subdirectory,
+	// so it must never be recursively removed as a side effect of
+	// rolling back one agent. Pruning waits until the ledger update has
+	// succeeded, so a failed update can still restore into these
+	// directories. Best-effort and only removes directories actually left
+	// empty, so it never touches a restored file.
+	if entry.Kind != KindAgent {
+		removeEmptyDirsRecursive(dir)
+	}
+	return nil
 }
 
 // restore is the prior content a rollback writes back to one file.

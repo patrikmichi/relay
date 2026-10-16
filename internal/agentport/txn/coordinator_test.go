@@ -88,6 +88,41 @@ func TestBegin_InterruptedJournalStillBlocksANewRun(t *testing.T) {
 	}
 }
 
+func TestCompensate_RecreatesAParentDirectoryThatWasPruned(t *testing.T) {
+	isolate(t)
+	root := t.TempDir()
+	dest := filepath.Join(root, "sub", "f.txt")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := Begin(context.Background(), "remove", []string{"k:prune"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.StageRemoval(root, "sub/f.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Apply(noopVerify); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Dir(dest)); err != nil { // the emptied directory is pruned
+		t.Fatal(err)
+	}
+	if err := tx.Commit(func() error { return errors.New("ledger down") }); err == nil {
+		t.Fatal("Commit should report the ledger failure")
+	}
+	if got := mustRead(t, dest); string(got) != "original" {
+		t.Fatalf("restored content = %q", got)
+	}
+}
+
 func TestApply_HappyPath(t *testing.T) {
 	isolate(t)
 	root := t.TempDir()

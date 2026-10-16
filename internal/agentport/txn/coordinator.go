@@ -421,6 +421,11 @@ func restoreOne(dir string, fstate *FileState, verify func(root, rel string) err
 	if sha256Hex(backup) != fstate.OldHash {
 		return fmt.Errorf("backup for %s is corrupt (hash mismatch)", fstate.Dest)
 	}
+	// The directory may be gone: a removal that emptied it can have been
+	// followed by pruning it.
+	if err := os.MkdirAll(filepath.Dir(fstate.Dest), 0o755); err != nil {
+		return fmt.Errorf("recreate dir for %s: %w", fstate.Dest, err)
+	}
 	if err := atomicWrite(fstate.Dest, backup, fstate.OldMode); err != nil {
 		return fmt.Errorf("restore %s: %w", fstate.Dest, err)
 	}
