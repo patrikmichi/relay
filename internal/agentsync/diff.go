@@ -12,18 +12,71 @@ const diffContext = 2
 // is normally tiny, and a pathological rewrite degrades to replace-all.
 const maxDiffCells = 4_000_000
 
-var secretLine = regexp.MustCompile(`(?i)("[^"]*(token|secret|password|api[_-]?key|authorization|bearer|credential)[^"]*"\s*:\s*)"[^"]*"`)
+var (
+	jsonPair = regexp.MustCompile(`("([^"\\]+)"\s*:\s*)"((?:[^"\\]|\\.)*)"`)
+	tomlPair = regexp.MustCompile(`^(\s*"?([A-Za-z0-9_.\-]+)"?\s*=\s*)"((?:[^"\\]|\\.)*)"`)
+	// secretFlag is a command-line option whose next argument is a secret.
+	secretFlagLine = regexp.MustCompile(`(?i)"--?(?:token|auth-?token|api-?key|key|password|passwd|secret|bearer)"\s*,?\s*$`)
+	flagWithValue  = regexp.MustCompile(`(?i)("--?(?:token|auth-?token|api-?key|key|password|passwd|secret|bearer)(?:=|"\s*,\s*"))((?:[^"\\]|\\.)*)"`)
+	quotedValue    = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
+	// secretToken matches the shape of common credentials wherever they appear.
+	secretToken = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_\-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9\-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,})`)
+)
+
+func isEnvRef(s string) bool { return strings.Contains(s, "${") || strings.Contains(s, "{env:") }
+
+// secretName reports whether a key names a credential: a token, secret,
+// password or key (also as one part of KEY_NAME or key-name).
+func secretName(key string) bool {
+	k := strings.ToLower(key)
+	for _, w := range []string{"token", "secret", "password", "passwd", "pwd", "credential", "bearer", "authorization", "apikey", "api_key", "api-key", "private"} {
+		if strings.Contains(k, w) {
+			return true
+		}
+	}
+	for _, part := range strings.FieldsFunc(k, func(r rune) bool { return r == '_' || r == '-' || r == '.' }) {
+		if part == "key" || part == "pass" {
+			return true
+		}
+	}
+	return false
+}
+
+// redactor masks credentials in a stream of diff lines. It keeps one line of
+// state: a "--token" argument on its own line makes the next line's string a
+// secret, as in an args array printed one element per line.
+type redactor struct{ afterFlag bool }
 
 // redactLine masks values of secret-looking keys unless the value is an
 // environment reference, which is what relay itself writes.
-func redactLine(line string) string {
-	return secretLine.ReplaceAllStringFunc(line, func(m string) string {
-		if strings.Contains(m, "${") || strings.Contains(m, "{env:") {
+func redactLine(line string) string { return (&redactor{}).line(line) }
+
+func (r *redactor) line(line string) string {
+	flagged := r.afterFlag
+	r.afterFlag = false
+	if flagged && !isEnvRef(line) {
+		line = quotedValue.ReplaceAllString(line, `"***"`)
+	}
+	if secretFlagLine.MatchString(line) {
+		r.afterFlag = true
+	}
+	line = flagWithValue.ReplaceAllStringFunc(line, func(m string) string {
+		if isEnvRef(m) {
 			return m
 		}
-		idx := secretLine.FindStringSubmatchIndex(m)
-		return m[:idx[3]] + `"***"`
+		i := flagWithValue.FindStringSubmatchIndex(m)
+		return m[:i[3]] + `***"`
 	})
+	for _, re := range []*regexp.Regexp{jsonPair, tomlPair} {
+		line = re.ReplaceAllStringFunc(line, func(m string) string {
+			sub := re.FindStringSubmatch(m)
+			if !secretName(sub[2]) || isEnvRef(sub[3]) {
+				return m
+			}
+			return sub[1] + `"***"`
+		})
+	}
+	return secretToken.ReplaceAllString(line, "***")
 }
 
 // Diff renders a unified diff of the edit for --dry-run output.
@@ -102,13 +155,29 @@ func unifiedDiff(from, to string, a, b []string) string {
 		}
 	}
 
+	// Redact in file order, one stream per side, before choosing hunks, so a
+	// secret flag and its value are linked even when a hunk starts between them.
+	oldSide, newSide := &redactor{}, &redactor{}
+	masked := make([]string, len(ops))
+	for i, op := range ops {
+		switch op.tag {
+		case ' ':
+			masked[i] = oldSide.line(op.line)
+			newSide.line(op.line)
+		case '-':
+			masked[i] = oldSide.line(op.line)
+		default:
+			masked[i] = newSide.line(op.line)
+		}
+	}
+
 	var out strings.Builder
 	fmt.Fprintf(&out, "--- %s\n+++ %s\n", from, to)
 	for _, h := range hunks {
 		fmt.Fprintf(&out, "@@ -%d,%d +%d,%d @@\n", aPos[h[0]]+1, aPos[h[1]]-aPos[h[0]], bPos[h[0]]+1, bPos[h[1]]-bPos[h[0]])
-		for _, op := range ops[h[0]:h[1]] {
-			out.WriteByte(op.tag)
-			out.WriteString(redactLine(op.line))
+		for i := h[0]; i < h[1]; i++ {
+			out.WriteByte(ops[i].tag)
+			out.WriteString(masked[i])
 			out.WriteByte('\n')
 		}
 	}

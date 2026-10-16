@@ -66,6 +66,47 @@ func TestDiffRedactsSecretLookingValues(t *testing.T) {
 	}
 }
 
+func TestDiffRedactsTOMLEnvNamesArgvAndTokenShapes(t *testing.T) {
+	secrets := map[string]string{
+		"toml key":          `API_KEY = "supersecretvalue"`,
+		"toml dotted key":   `DB_PASSWORD = "supersecretvalue"`,
+		"json env name":     `      "MY_KEY": "supersecretvalue"`,
+		"flag equals":       `args = ["--token=supersecretvalue"]`,
+		"flag pair":         `args = ["--password", "supersecretvalue"]`,
+		"json flag pair":    `"args": ["-y", "tool", "--api-key", "supersecretvalue"]`,
+		"sk token":          `"note": "use sk-` + "abcdefghijklmnop1234" + ` here"`,
+		"github token":      `command = "curl -H gh` + "p_abcdefghijklmnopqrstuvwx" + `"`,
+		"jwt":               `"x": "ey` + "JhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkw.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV" + `"`,
+		"mixed case secret": `  Authorization = "Bearer supersecretvalue"`,
+	}
+	for name, line := range secrets {
+		if got := redactLine(line); strings.Contains(got, "supersecretvalue") || strings.Contains(got, "abcdefghijklmnop") || strings.Contains(got, "SflKxw") {
+			t.Errorf("%s not redacted: %s", name, got)
+		}
+	}
+	for name, line := range map[string]string{
+		"plain toml":          `command = "npx"`,
+		"keyboard":            `layout = "keyboard"`,
+		"env reference":       `API_KEY = "${GATEWAY_API_KEY}"`,
+		"flag reference":      `args = ["--token", "${DOCS_TOKEN}"]`,
+		"ordinary arg":        `args = ["-y", "@acme/tool"]`,
+		"monkey is not a key": `monkey = "banana"`,
+	} {
+		if got := redactLine(line); got != line {
+			t.Errorf("%s was changed: %s", name, got)
+		}
+	}
+}
+
+func TestDiffRedactsAFlagValueOnTheNextLine(t *testing.T) {
+	a := []string{`"args": [`, `  "--token",`, `  "old-secret-value"`, `]`}
+	b := []string{`"args": [`, `  "--token",`, `  "new-secret-value"`, `]`}
+	got := unifiedDiff("a/f", "b/f", a, b)
+	if strings.Contains(got, "secret-value") || !strings.Contains(got, `"***"`) {
+		t.Fatalf("the value after --token leaked:\n%s", got)
+	}
+}
+
 func TestLoadBundleParsesSourcesAndWarns(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "rules", "style.md"), "---\ndescription: Style\n---\nBe terse.\n")
