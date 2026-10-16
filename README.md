@@ -444,7 +444,7 @@ a gateway.
 | `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only) |
 | `relay mcp inspect <catalog-id> [--json]` | gateway | Show the permitted metadata of one catalog MCP server (read-only) |
 | `relay skill search [query]` | gateway | Search the catalog for installable skills |
-| `relay skill info <catalog-id\|slug>` | gateway | Show a catalog skill, the connectors it requires and whether you have connected them |
+| `relay skill info <catalog-id\|slug> [--json]` | gateway | Show a catalog skill, the connectors it requires and whether you have connected them; `--json` prints one document, the text goes to stderr |
 
 ### Skills
 
@@ -453,9 +453,9 @@ a gateway.
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
 | `relay skill install <catalog-id> [--yes\|--no-connect] [--ignore-requirements]` | gateway | Install a skill by catalog id/slug into one or more providers, after checking the connectors it needs |
 | `relay skill migrate <name> --from <p> [--to <p>...]` | local | Project an installed skill from one provider to another |
-| `relay skill list` | local | List installed skills across providers |
-| `relay skill diff <name>` | local | Diff a skill's projection across providers |
-| `relay skill scan <name>` / `relay skill score <name>` | local | Inspect a skill's manifest/fidelity |
+| `relay skill list [--json]` | local | List installed skills across providers |
+| `relay skill diff <name> [--json]` | local | Diff a skill's projection across providers |
+| `relay skill scan <name> [--json]` / `relay skill score <name>` | local | Inspect a skill's manifest/fidelity; `--json` prints one document, as for `skill install` and `skill migrate` |
 | `relay skill uninstall <name>` | local | Remove an installed skill |
 | `relay skill rollback [manifest-entry-id]` | local | Revert to a prior manifest entry |
 | `relay skill evals sets list\|show\|create\|import\|export\|delete` | gateway | Manage a skill's eval sets |

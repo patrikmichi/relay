@@ -283,23 +283,37 @@ func TestSkillInfo_ShowsRequirementsAndStatus(t *testing.T) {
 
 func TestSkillInfo_JSON(t *testing.T) {
 	g := newRequirementsGateway(t, "clockify")
-	out, err := runCommand(t, SkillInfoCmd(), "weekly-timesheet", "--json", "--gateway-url", g.URL)
+	stdout, stderr, err := runSplit(t, SkillInfoCmd(), "weekly-timesheet", "--json", "--gateway-url", g.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var doc struct {
-		ID           string `json:"id"`
+		Command string `json:"command"`
+		Skill   struct {
+			ID string `json:"id"`
+		} `json:"skill"`
 		Requirements struct {
 			Satisfied bool     `json:"satisfied"`
 			Missing   []string `json:"missing"`
 		} `json:"requirements"`
 		Installed []installedSkill `json:"installed"`
 	}
-	if err := json.Unmarshal([]byte(out), &doc); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, out)
-	}
-	if doc.ID != "res_req" || doc.Requirements.Satisfied || len(doc.Requirements.Missing) != 1 {
+	decodeOne(t, stdout, &doc)
+	if doc.Command != "skill info" || doc.Skill.ID != "res_req" || doc.Requirements.Satisfied || len(doc.Requirements.Missing) != 1 || doc.Installed == nil {
 		t.Errorf("doc = %+v", doc)
+	}
+	if !strings.Contains(stderr, "Requires:") {
+		t.Errorf("the text view belongs on stderr, got %q", stderr)
+	}
+
+	stdout, _, err = runSplit(t, SkillInfoCmd(), "no-such-skill", "--json", "--gateway-url", g.URL)
+	if err == nil {
+		t.Fatal("an unknown skill succeeded")
+	}
+	var failed map[string]any
+	decodeOne(t, stdout, &failed)
+	if failed["command"] != "skill info" || failed["error"] == nil {
+		t.Errorf("a failed info must say why in the document: %v", failed)
 	}
 }
 

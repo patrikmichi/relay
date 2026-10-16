@@ -210,7 +210,7 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print raw JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document on stdout; the text goes to stderr")
 	return cmd
 }
 
@@ -236,6 +236,11 @@ func installedCopies(catalogID string) []installedSkill {
 }
 
 func runSkillInfo(cmd *cobra.Command, ref, gatewayURL string, jsonOut bool) error {
+	doc, finish := beginAction(cmd, jsonOut, "skill info")
+	return finish(doSkillInfo(cmd, ref, gatewayURL, doc))
+}
+
+func doSkillInfo(cmd *cobra.Command, ref, gatewayURL string, doc actionDoc) error {
 	gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 	if err != nil {
 		return err
@@ -256,19 +261,14 @@ func runSkillInfo(cmd *cobra.Command, ref, gatewayURL string, jsonOut bool) erro
 		return err
 	}
 	installed := installedCopies(entry.ID)
+	if installed == nil {
+		installed = []installedSkill{}
+	}
+	doc.put("skill", entry)
+	doc.put("requirements", req)
+	doc.put("installed", installed)
 
 	out := cmd.OutOrStdout()
-	if jsonOut {
-		doc := struct {
-			skillSearchEntry
-			Requirements *skillRequirements `json:"requirements"`
-			Installed    []installedSkill   `json:"installed"`
-		}{entry, req, installed}
-		enc := json.NewEncoder(out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(doc)
-	}
-
 	fmt.Fprintf(out, "ID:          %s\n", entry.ID)
 	if entry.Slug != "" {
 		fmt.Fprintf(out, "Slug:        %s\n", entry.Slug)

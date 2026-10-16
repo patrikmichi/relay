@@ -112,6 +112,74 @@ func TestSkillMigrateJSONDryRunAndRefusal(t *testing.T) {
 	}
 }
 
+func TestSkillReadCommandsJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeClaudeUserSkill(t, home)
+	writeSkillFiles(t, filepath.Join(home, ".claude", "skills", "plain"), map[string][]byte{"SKILL.md": []byte("---\nname: plain\ndescription: d\n---\n\nbody\n")})
+
+	stdout, stderr, err := runSplit(t, SkillListCmd(), "--json")
+	if err != nil {
+		t.Fatalf("list: %v\n%s", err, stderr)
+	}
+	var list struct {
+		Command string `json:"command"`
+		Skills  []struct {
+			Provider string `json:"provider"`
+			Name     string `json:"name"`
+			Scope    string `json:"scope"`
+			Path     string `json:"path"`
+		} `json:"skills"`
+	}
+	decodeOne(t, stdout, &list)
+	if list.Command != "skill list" || len(list.Skills) < 2 || list.Skills[0].Path == "" {
+		t.Errorf("list = %+v", list)
+	}
+	if !strings.Contains(stderr, "plain") || strings.Contains(stdout, "plain  ") {
+		t.Errorf("the text listing belongs on stderr:\nstderr %q\nstdout %q", stderr, stdout)
+	}
+
+	stdout, _, err = runSplit(t, SkillListCmd(), "--provider", "cline", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var empty map[string]any
+	decodeOne(t, stdout, &empty)
+	if skills, ok := empty["skills"].([]any); !ok || len(skills) != 0 {
+		t.Errorf("an empty listing must be an empty array, got %v", empty["skills"])
+	}
+
+	stdout, _, err = runSplit(t, SkillDiffCmd(), "plain", "--from", "claude", "--to", "codex", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var diff map[string]any
+	decodeOne(t, stdout, &diff)
+	if diff["command"] != "skill diff" || diff["from"] != "claude" || diff["to"] != "codex" || diff["fidelity"] == nil || diff["fieldDiff"] == nil || diff["wouldWrite"] == nil {
+		t.Errorf("diff = %v", diff)
+	}
+
+	stdout, _, err = runSplit(t, SkillScanCmd(), "plain", "--from", "claude", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scan map[string]any
+	decodeOne(t, stdout, &scan)
+	if scan["command"] != "skill scan" || scan["result"] == nil {
+		t.Errorf("scan = %v", scan)
+	}
+
+	stdout, _, err = runSplit(t, SkillScanCmd(), "does-not-exist", "--from", "claude", "--json")
+	if err == nil {
+		t.Fatal("a missing skill scanned")
+	}
+	var failed map[string]any
+	decodeOne(t, stdout, &failed)
+	if failed["command"] != "skill scan" || failed["error"] == nil {
+		t.Errorf("a failed scan must say why in the document: %v", failed)
+	}
+}
+
 func TestAgentCommandsJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

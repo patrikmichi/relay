@@ -15,6 +15,7 @@ func SkillScanCmd() *cobra.Command {
 	var (
 		fromFlag  string
 		scopeFlag string
+		jsonFlag  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "scan <name>",
@@ -28,9 +29,10 @@ files), and a heuristic quality score — not an execution-safety
 certification. Exits non-zero if any finding has "high" severity.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSkillScan(cmd, args[0], fromFlag, scopeFlag)
+			return runSkillScan(cmd, args[0], fromFlag, scopeFlag, jsonFlag)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout")
 	cmd.Flags().StringVar(&fromFlag, "from", "", "Provider to load from (required)")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search: user or project")
 	return cmd
@@ -85,12 +87,18 @@ func loadSkillFromProvider(from, scopeStr, name string) (*agentport.Skill, error
 	return a.Load(skillPath)
 }
 
-func runSkillScan(cmd *cobra.Command, name, from, scopeStr string) error {
+func runSkillScan(cmd *cobra.Command, name, from, scopeStr string, jsonOut bool) error {
+	doc, finish := beginAction(cmd, jsonOut, "skill scan")
+	return finish(doSkillScan(cmd, name, from, scopeStr, doc))
+}
+
+func doSkillScan(cmd *cobra.Command, name, from, scopeStr string, doc actionDoc) error {
 	s, err := loadSkillFromProvider(from, scopeStr, name)
 	if err != nil {
 		return err
 	}
 	result := agentport.Scan(s)
+	doc.put("result", result)
 	out := cmd.OutOrStdout()
 
 	if len(result.Findings) == 0 {
