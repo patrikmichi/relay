@@ -63,13 +63,16 @@ const (
 
 // Item is the outcome for one managed entry of one agent.
 type Item struct {
-	Agent  AgentID `json:"agent"`
-	Kind   Kind    `json:"kind"`
-	Scope  Scope   `json:"scope"`
-	Name   string  `json:"name"`
-	Path   string  `json:"path,omitempty"`
-	Status string  `json:"status"`
-	Detail string  `json:"detail,omitempty"`
+	Agent AgentID `json:"agent"`
+	Kind  Kind    `json:"kind"`
+	Scope Scope   `json:"scope"`
+	Name  string  `json:"name"`
+	// Server is the MCP server name an entry belongs to, as the user named
+	// it; Name is the display key, which a writer may quote or prefix.
+	Server string `json:"server,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
 }
 
 func (i Item) String() string {

@@ -263,7 +263,7 @@ func codexMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 				}
 			}
 		}
-		tables = append(tables, tomlTable{header: header, path: []string{"mcp_servers", s.Name}, body: b.String()})
+		tables = append(tables, tomlTable{header: header, path: []string{"mcp_servers", s.Name}, body: b.String(), server: s.Name})
 	}
 	return []Op{&tomlBlockOp{meta: m, path: path, id: "mcp", tables: tables}}, ""
 }

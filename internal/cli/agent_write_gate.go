@@ -36,11 +36,9 @@ func (r *agentSyncRun) execItems() []agentsync.Item {
 		case agentsync.KindHooks:
 			out = append(out, it)
 		case agentsync.KindMCP:
-			for name := range r.stdio {
-				if it.Name == name || strings.HasPrefix(it.Name, "mcp_servers."+name) {
-					out = append(out, it)
-					break
-				}
+			// An entry without a server name cannot be shown to be remote, so it is gated.
+			if it.Server == "" || r.stdio[it.Server] {
+				out = append(out, it)
 			}
 		}
 	}

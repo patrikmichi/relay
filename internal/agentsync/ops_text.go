@@ -85,6 +85,8 @@ type tomlTable struct {
 	header string
 	path   []string
 	body   string
+	// server is the MCP server name the table configures, empty otherwise.
+	server string
 }
 
 // tomlBlockOp keeps a marked block of tables inside a TOML file. TOML has no
@@ -137,21 +139,26 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	var items []Item
 	var bodies []string
 	newHeaders := map[string]bool{}
+	tableItem := func(t tomlTable, status, detail string) Item {
+		it := o.item(t.header, real, status, detail)
+		it.Server = t.server
+		return it
+	}
 	for _, t := range o.tables {
 		// Even under --force: a second definition of the same table makes the file invalid TOML.
 		if definedAt(parsed, t.path) {
-			items = append(items, o.item(t.header, real, StatusConflict, "already defined and not managed by relay; --force is not supported for TOML tables, remove the existing table first"))
+			items = append(items, tableItem(t, StatusConflict, "already defined and not managed by relay; --force is not supported for TOML tables, remove the existing table first"))
 			continue
 		}
 		bodies = append(bodies, strings.TrimRight(t.body, "\n"))
 		newHeaders[t.header] = true
 		switch {
 		case strings.Contains(oldBlock, strings.TrimRight(t.body, "\n")):
-			items = append(items, o.item(t.header, real, StatusUnchanged, ""))
+			items = append(items, tableItem(t, StatusUnchanged, ""))
 		case oldHeaders[t.header]:
-			items = append(items, o.item(t.header, real, StatusUpdated, ""))
+			items = append(items, tableItem(t, StatusUpdated, ""))
 		default:
-			items = append(items, o.item(t.header, real, StatusAdded, ""))
+			items = append(items, tableItem(t, StatusAdded, ""))
 		}
 	}
 	var gone []string

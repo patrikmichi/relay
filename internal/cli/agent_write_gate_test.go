@@ -55,6 +55,26 @@ func TestAgentModeRefusesAgentConfigWrites(t *testing.T) {
 	}
 }
 
+func TestDottedServerNameStillReachesTheExecGate(t *testing.T) {
+	home := syncHome(t)
+	t.Setenv("HOME", home)
+	run := &agentSyncRun{stdio: map[string]bool{"a.b": true, "plain": true}}
+	run.items = []agentsync.Item{
+		{Kind: agentsync.KindMCP, Status: agentsync.StatusAdded, Name: `mcp_servers."a.b"`, Server: "a.b"},
+		{Kind: agentsync.KindMCP, Status: agentsync.StatusUpdated, Name: "plain", Server: "plain"},
+		{Kind: agentsync.KindMCP, Status: agentsync.StatusAdded, Name: "remote", Server: "remote"},
+		{Kind: agentsync.KindMCP, Status: agentsync.StatusAdded, Name: "unnamed"},
+	}
+	var got []string
+	for _, it := range run.execItems() {
+		got = append(got, it.Name)
+	}
+	want := []string{`mcp_servers."a.b"`, "plain", "unnamed"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("gated = %q, want %q", got, want)
+	}
+}
+
 func TestHookWriteNeedsConfirmationWithFullDiff(t *testing.T) {
 	home := syncHome(t)
 	settings := filepath.Join(home, ".claude", "settings.json")

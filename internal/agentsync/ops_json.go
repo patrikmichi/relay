@@ -166,6 +166,13 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 			return nil, err
 		}
 	}
+	if o.kind == KindMCP {
+		for i := range items {
+			if items[i].Name != "*" {
+				items[i].Server = items[i].Name
+			}
+		}
+	}
 	return items, nil
 }
 

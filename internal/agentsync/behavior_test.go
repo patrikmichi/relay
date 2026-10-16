@@ -208,6 +208,26 @@ func TestTOMLTableDefinedByUserIsNotDuplicated(t *testing.T) {
 	}
 }
 
+func TestMCPItemsCarryTheServerNameForQuotedKeys(t *testing.T) {
+	b := Bundle{MCP: []MCPServer{{Name: "a.b", Command: "npx", Args: []string{"x"}}}}
+	for _, agent := range []AgentID{Codex, Claude} {
+		env := newEnv(t)
+		plan := syncAll(t, env, userBundle(b), Options{Agents: []AgentID{agent}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
+		var found bool
+		for _, it := range plan.Items {
+			if it.Kind == KindMCP && it.Status == StatusAdded {
+				found = true
+				if it.Server != "a.b" {
+					t.Errorf("%s: item %q has server %q, want a.b", agent, it.Name, it.Server)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no added MCP item in %v", agent, plan.Items)
+		}
+	}
+}
+
 func TestMarkdownBlockPreservesSurroundingText(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".gemini", "GEMINI.md")
