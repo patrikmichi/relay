@@ -277,6 +277,7 @@ func (t *Tx) Apply(verify func(root, rel string) error) error {
 			if err := os.Remove(fstate.Dest); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("remove %s: %w", fstate.Dest, err)
 			}
+			syncDir(filepath.Dir(fstate.Dest))
 			fstate.Applied = true
 			if err := t.j.save(); err != nil {
 				return err
@@ -384,10 +385,18 @@ func (t *Tx) compensate() error {
 // reconcileApplied reports whether dest's current content already matches
 // the staged write's NewHash despite Applied being false — the crash
 // window between atomicWrite completing and the following journal save
-// landing. Removal entries have no "new content" to compare against, so
-// they're left to the ordinary Applied bookkeeping.
+// landing.
 func reconcileApplied(fstate *FileState) bool {
-	if fstate.Remove || fstate.NewHash == "" {
+	if fstate.Remove {
+		// A removal has no new content to compare, but a file that existed
+		// before and is gone now was removed by this transaction.
+		if !fstate.Existed {
+			return false
+		}
+		_, err := os.Lstat(fstate.Dest)
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	if fstate.NewHash == "" {
 		return false
 	}
 	data, err := os.ReadFile(fstate.Dest)
@@ -550,6 +559,7 @@ func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
 		return fmt.Errorf("rename %s -> %s: %w", name, dest, err)
 	}
 	cleanup = false
+	syncDir(dir)
 	return nil
 }
 
@@ -574,7 +584,11 @@ func writeFileDurable(path string, data []byte, mode fs.FileMode) error {
 		_ = f.Close()
 		return fmt.Errorf("sync %s: %w", path, err)
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	syncDir(filepath.Dir(path))
+	return nil
 }
 
 func newID() (string, error) {

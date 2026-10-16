@@ -47,7 +47,7 @@ func TestList_SortsAndKeepsUnreadableJournalsVisible(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("List returned %d journals, want 3: %+v", len(got), got)
 	}
-	if !strings.HasPrefix(got[0].Op, "(unreadable:") || got[0].ID != "3-cccccccccccccccc" {
+	if !strings.HasPrefix(got[0].Op, "(moved aside as") || got[0].ID != "3-cccccccccccccccc" {
 		t.Fatalf("first entry = %+v, want the unreadable journal (zero CreatedAt sorts first)", got[0])
 	}
 	if got[1].Op != "older" || got[2].Op != "newer" {

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -46,6 +47,9 @@ const schemaVersion = 1
 
 // ErrFutureSchema means the journal was written by a newer relay version.
 var ErrFutureSchema = errors.New("transaction journal uses a newer schema than this relay build supports")
+
+// ErrCorruptJournal means a journal file is not valid JSON.
+var ErrCorruptJournal = errors.New("transaction journal is corrupt")
 
 // ErrInvalidID means a transaction id doesn't match newID()'s own output
 // format. Every id-taking entry point in this package rejects anything
@@ -191,7 +195,18 @@ func (j *Journal) save() error {
 		_ = os.Remove(name)
 		return fmt.Errorf("rename journal file: %w", err)
 	}
+	syncDir(dir)
 	return nil
+}
+
+// syncDir flushes a directory so a rename or removal inside it survives a
+// crash, not just the file contents. Best effort: some platforms cannot sync
+// a directory.
+func syncDir(dir string) {
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
 }
 
 // Load reads one journal by id and refuses to interpret an unknown future
@@ -207,7 +222,7 @@ func Load(id string) (*Journal, error) {
 	}
 	var j Journal
 	if err := json.Unmarshal(raw, &j); err != nil {
-		return nil, fmt.Errorf("parse journal %s: %w", id, err)
+		return nil, fmt.Errorf("%w: parse journal %s: %v", ErrCorruptJournal, id, err)
 	}
 	if j.Schema > schemaVersion {
 		return nil, fmt.Errorf("%w: journal %s has schema %d, this build supports up to %d", ErrFutureSchema, id, j.Schema, schemaVersion)
@@ -237,7 +252,16 @@ func List() ([]Journal, error) {
 		id := e.Name()[:len(e.Name())-len(".json")]
 		j, err := Load(id)
 		if err != nil {
-			out = append(out, Journal{ID: id, Op: fmt.Sprintf("(unreadable: %v)", err)})
+			note := fmt.Sprintf("(unreadable: %v)", err)
+			// A corrupt journal can never be recovered; set it aside so it
+			// stops being reported on every command. One written by a newer
+			// relay stays put for that version to recover.
+			if errors.Is(err, ErrCorruptJournal) {
+				if os.Rename(filepath.Join(base, e.Name()), filepath.Join(base, e.Name()+".corrupt")) == nil {
+					note = fmt.Sprintf("(moved aside as %s.corrupt: %v)", e.Name(), err)
+				}
+			}
+			out = append(out, Journal{ID: id, Op: note})
 			continue
 		}
 		out = append(out, *j)
@@ -339,7 +363,42 @@ func PruneFinished(r Retention, now time.Time) (int, error) {
 		}
 		removed++
 	}
+	pruneOrphans(now)
 	return removed, errors.Join(errs...)
+}
+
+// orphanAge is how long a transaction directory or temp journal may sit
+// without a journal before it is treated as left over from a crash. Begin
+// creates the directory before the first Persist, so the margin keeps a
+// transaction that is still being staged.
+const orphanAge = time.Hour
+
+// pruneOrphans removes backup and staged directories whose journal was never
+// written, and temp journals a crash left behind.
+func pruneOrphans(now time.Time) {
+	base, err := baseDir()
+	if err != nil {
+		return
+	}
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || now.Sub(info.ModTime()) < orphanAge {
+			continue
+		}
+		path := filepath.Join(base, e.Name())
+		switch {
+		case e.IsDir() && idPattern.MatchString(e.Name()):
+			if _, err := os.Stat(path + ".json"); errors.Is(err, fs.ErrNotExist) {
+				_ = os.RemoveAll(path)
+			}
+		case !e.IsDir() && strings.HasPrefix(e.Name(), "journal-") && strings.HasSuffix(e.Name(), ".json.tmp"):
+			_ = os.Remove(path)
+		}
+	}
 }
 
 func sha256Hex(b []byte) string {
