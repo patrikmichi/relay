@@ -10,6 +10,7 @@ permissions:
 
 env:
   GOVULNCHECK_VERSION: "v1.8.0"
+  GITLEAKS_VERSION: "v8.28.0"
   GOLANGCI_LINT_VERSION: "v2.13.1"
   GORELEASER_VERSION: "v2.18.2"
 
@@ -64,6 +65,11 @@ jobs:
 
       - name: Vulnerability scan
         run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
+
+      # Fixtures and tests must never hold anything shaped like a real
+      # credential, so GitHub's secret scanning has nothing to flag.
+      - name: Secret scan
+        run: go run "github.com/gitleaks/gitleaks/v8@${GITLEAKS_VERSION}" dir . --redact --no-banner
 
   # Runs the contract tests against the documents the gateway's own route
   # tests write on its main branch, so a gateway change that the client does

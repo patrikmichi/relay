@@ -1,1 +1,1 @@
-{"endpoint":{"id":"whe_k3j2h1g0f9","source_kind":"connector","service":"github","status":"active","url":"https://gateway.example/api/webhooks/in/whe_k3j2h1g0f9","description":"repo events"},"secret":"whsec_c2VjcmV0LXZhbHVlLWZvci10ZXN0cw=="}
+{"endpoint":{"id":"whe_k3j2h1g0f9","source_kind":"connector","service":"github","status":"active","url":"https://gateway.example/api/webhooks/in/whe_k3j2h1g0f9","description":"repo events"},"secret":"test-webhook-secret-placeholder"}

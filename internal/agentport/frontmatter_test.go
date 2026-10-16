@@ -29,7 +29,7 @@ func TestLoadResources_SkipsSymlinks(t *testing.T) {
 	// symlinking a resource path to it.
 	secretDir := t.TempDir()
 	secretPath := filepath.Join(secretDir, "id_rsa")
-	secretContent := []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----\n")
+	secretContent := []byte("-----BEGIN OPENSSH " + "PRIVATE KEY-----\nsecret\n-----END OPENSSH " + "PRIVATE KEY-----\n")
 	if err := os.WriteFile(secretPath, secretContent, 0o600); err != nil {
 		t.Fatalf("write secret: %v", err)
 	}

@@ -130,7 +130,7 @@ write by an agent session may answer `202` with the held-call document (exit
 | Route | Request and response |
 |---|---|
 | `GET endpoints`, `GET triggers`, `GET subscriptions` | `{"endpoints": [ROW]}`, `{"triggers": [ROW]}`, `{"subscriptions": [ROW]}` |
-| `POST endpoints` | `{"source_kind": "connector", "service", "description"}` or `{"source_kind": "generic", "signature": {"scheme": "hmac", "algorithm", "header", "encoding", "timestampHeader"?, "timestampFormat"?}, "description"}` answers `{"endpoint": ROW with "url", "secret": "whsec_..."}` |
+| `POST endpoints` | `{"source_kind": "connector", "service", "description"}` or `{"source_kind": "generic", "signature": {"scheme": "hmac", "algorithm", "header", "encoding", "timestampHeader"?, "timestampFormat"?}, "description"}` answers `{"endpoint": ROW with "url", "secret": "<signing secret>"}` |
 | `POST subscriptions` | `{"url", "event_types": [text], "description"}` answers `{"subscription": ROW, "secret"}` |
 | `POST triggers` | the definition file as given (source, filter, action, run-as) answers `{"trigger": ROW}` |
 | `POST endpoints/{id}/test`, `POST subscriptions/{id}/test` | `{}`; any `2xx` JSON |
