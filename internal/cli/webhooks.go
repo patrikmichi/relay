@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
@@ -65,30 +64,6 @@ func webhookPath(id string) string {
 		return "/api/webhooks/subscriptions/" + url.PathEscape(id)
 	}
 	return "/api/webhooks/endpoints/" + url.PathEscape(id)
-}
-
-// webhookWrite sends a change. An agent session's write may be held for
-// approval; that is reported like a held call and exits 12.
-func webhookWrite(cmd *cobra.Command, c *client.Client, jsonOut bool, method, path string, body, out any) ([]byte, error) {
-	status, raw, err := approvalsDo(cmd.Context(), c, controlRequest, method, path, body)
-	if err != nil {
-		return nil, err
-	}
-	if held := pendingFromREST(status, raw); held != nil {
-		if jsonOut {
-			printRaw(cmd.OutOrStdout(), raw)
-		}
-		return nil, handlePending(cmd.Context(), c, held, jsonOut, callOpts{}, cmd.OutOrStdout())
-	}
-	if status < 200 || status > 299 {
-		return nil, gatewayStatusError(status, raw)
-	}
-	if out != nil && len(raw) > 0 {
-		if err := json.Unmarshal(raw, out); err != nil {
-			return nil, fmt.Errorf("decode %s: %w", path, err)
-		}
-	}
-	return raw, nil
 }
 
 func webhooksListCmd() *cobra.Command {
@@ -236,7 +211,7 @@ func createEndpointCmd() *cobra.Command {
 				Endpoint webhookRow `json:"endpoint"`
 				Secret   string     `json:"secret"`
 			}
-			raw, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/endpoints", body, &res)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/endpoints", body, &res)
 			if err != nil {
 				return err
 			}
@@ -288,7 +263,7 @@ func createSubscriptionCmd() *cobra.Command {
 				Subscription webhookRow `json:"subscription"`
 				Secret       string     `json:"secret"`
 			}
-			raw, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/subscriptions", map[string]any{"url": target, "event_types": events, "description": description}, &res)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/subscriptions", map[string]any{"url": target, "event_types": events, "description": description}, &res)
 			if err != nil {
 				return err
 			}
@@ -350,7 +325,7 @@ gateway validates them. Use - to read the definition from standard input.`,
 			var res struct {
 				Trigger webhookRow `json:"trigger"`
 			}
-			resp, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/triggers", body, &res)
+			resp, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/triggers", body, &res)
 			if err != nil {
 				return err
 			}
@@ -382,7 +357,7 @@ func webhooksTestCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			raw, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, webhookPath(id)+"/test", map[string]any{}, nil)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhookPath(id)+"/test", map[string]any{}, nil)
 			if err != nil {
 				return err
 			}
@@ -475,7 +450,7 @@ func webhooksRedeliverCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			raw, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/deliveries/"+url.PathEscape(id)+"/redeliver", map[string]any{}, nil)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/deliveries/"+url.PathEscape(id)+"/redeliver", map[string]any{}, nil)
 			if err != nil {
 				return err
 			}
@@ -514,7 +489,7 @@ grace period (24 hours for subscriptions), so the receiver can switch over.`,
 			var res struct {
 				Secret string `json:"secret"`
 			}
-			raw, err := webhookWrite(cmd, c, f.jsonOut, http.MethodPost, webhookPath(id)+"/rotate-secret", map[string]any{}, &res)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhookPath(id)+"/rotate-secret", map[string]any{}, &res)
 			if err != nil {
 				return err
 			}

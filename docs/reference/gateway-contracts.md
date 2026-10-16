@@ -153,6 +153,49 @@ Source: file store and webhooks plan, "API" and "relay CLI changes (E)". The
 plan names the routes and ids; the wrapper keys, the `snake_case` row fields
 and the request bodies of the two create routes are this client's decisions.
 
+## Artifact pages
+
+Under `/api/artifacts/`, bearer auth, organisation from the credential. A write
+by an agent session may answer `202` with the held-call document (exit 12).
+Fixtures: `artifact-upload-create.json`, `artifact-release-ready.json`,
+`artifact-release-entry-required.json`, `artifact-sites.json`,
+`artifact-site-detail.json`, `artifact-releases.json`,
+`artifact-share-proposal.json`. Path rules: `internal/drop/testdata/paths.json`,
+to be replaced by the gateway's own vectors file.
+
+| Route | Request and response |
+|---|---|
+| `POST uploads` | `{"site": {"slug", "title"?, "routing"?: "spa"}, "files": [{"path", "size", "sha256"}], "entry"?, "idempotency_key": "cli_..."}` answers `{"upload_id": "aup_...", "files": [SLOT]}` |
+| `PUT {slot.upload.url}` | the object store: the bytes, the listed headers, no credential |
+| `POST uploads/{id}/finalize` | `{"activate": bool}` answers `{"release_id", "status": "preparing"}` |
+| `GET releases/{id}` | `{"release": RELEASE, "site": SITE}`; `state` is `preparing`, `ready`, `failed` or `deleted` |
+| `GET sites[?status=deleted]` | `{"sites": [SITE]}` |
+| `GET sites/{id}` | `{"site": SITE, "grants": [GRANT]}` |
+| `GET sites/{id}/releases` | `{"releases": [RELEASE]}` |
+| `POST sites/{id}/activate` | `{"release_id", "expected_content_revision"}`; `412 revision_conflict`, `409 audience_changed` |
+| `PUT sites/{id}/sharing?mode=propose` | `{"grants": [GRANT], "public": {"enabled", "expires_at"?}, "source_download", "expected_policy_revision"}` answers `{"diff": {"gain": [GRANT], "lose": [GRANT], "public": {"before", "after"}}, "policy_revision"}` |
+| `PUT sites/{id}/sharing?mode=apply` | the same body with the revision from the proposal; `412` when the sharing changed meanwhile |
+| `DELETE sites/{id}`, `POST sites/{id}/restore` | `200` or `204` |
+
+```json
+SLOT    = {"path", "file_key", "status": "present"}  or  {"path", "file_key", "upload": {"url", "method": "PUT", "headers": {}, "expires_at"}}
+RELEASE = {"id": "arl_...", "site_id", "state", "entry_path", "total_bytes", "file_count", "created_at", "ready_at",
+           "preview_url", "warnings": [{"kind", "path", "line"?, "message"}],
+           "failure": null | {"code", "message", "candidates": [text], "files": [{"path", "error"}]}}
+SITE    = {"id": "ast_...", "slug", "title", "url", "routing", "status", "audience", "active_release_id": null|text,
+           "active_release_at", "total_bytes", "content_revision", "policy_revision", "public_read",
+           "public_expires_at": null|text, "source_download"}
+GRANT   = {"principal_type": "user|group|org", "principal_id", "principal_label", "role": "viewer|editor|owner", "expires_at": null|text}
+```
+
+A new user grant in a sharing request names the person by `principal_email`
+instead of `principal_id`. Source: artifact pages plan, "Publish flow",
+"Sharing" and "relay CLI changes". The plan names the routes, the upload and
+sharing bodies and the typed errors; the response wrappers, the `SLOT` shape
+(the plan says `{file_key, ...}` per file; zuano also reads `path` to match it
+to a file), the proposal diff and the `GRANT`/`SITE` fields are this client's
+decisions.
+
 ## Approvals
 
 | Route | Use |
