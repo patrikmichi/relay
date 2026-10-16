@@ -340,7 +340,7 @@ Examples:
 		},
 	}
 	addConnectorsFlags(search, &sf)
-	cmd.AddCommand(search)
+	cmd.AddCommand(search, connectorsProfileCmd())
 	return cmd
 }
 

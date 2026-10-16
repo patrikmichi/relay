@@ -25,6 +25,19 @@ type gatewayReply struct {
 // gatewayExchange sends one control request. Refusals the client recognises
 // (billing, quota, step-up) come back as their own typed errors.
 func gatewayExchange(parent context.Context, c *client.Client, method, path string, body any, headers map[string]string) (gatewayReply, error) {
+	if body == nil {
+		return gatewayExchangeRaw(parent, c, method, path, "", nil, headers)
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return gatewayReply{}, fmt.Errorf("marshal request body: %w", err)
+	}
+	return gatewayExchangeRaw(parent, c, method, path, "application/json", raw, headers)
+}
+
+// gatewayExchangeRaw is gatewayExchange for a body that is not JSON, such as a
+// YAML document.
+func gatewayExchangeRaw(parent context.Context, c *client.Client, method, path, contentType string, body []byte, headers map[string]string) (gatewayReply, error) {
 	ctx, cancel, err := requestContext(parent, controlRequest)
 	if err != nil {
 		return gatewayReply{}, err
@@ -32,18 +45,14 @@ func gatewayExchange(parent context.Context, c *client.Client, method, path stri
 	defer cancel()
 	var payload io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return gatewayReply{}, fmt.Errorf("marshal request body: %w", err)
-		}
-		payload = bytes.NewReader(raw)
+		payload = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.GatewayURL+path, payload)
 	if err != nil {
 		return gatewayReply{}, fmt.Errorf("create request: %w", err)
 	}
 	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)

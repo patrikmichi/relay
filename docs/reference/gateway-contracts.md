@@ -489,6 +489,59 @@ extraction document are this client's decisions. The shape of each agent's
 session file is read from the formats as currently documented and may need
 adjusting against real files from newer agent versions.
 
+## Data loss prevention
+
+| Route | Request and response |
+|---|---|
+| `GET /api/admin/dlp/policy[?format=yaml]` | `{"policy": {"version", "spec": {"mode", "rules": []}}}`, or the YAML document as it is |
+| `PUT /api/admin/dlp/policy[?dryRun=true]` | the document as `application/yaml` or `application/json`; answers `{"version"}`, or with `dryRun` `{"diff": {"changes": [CHANGE]}, "impact": {"days", "wouldBlock", "wouldHold", "wouldMask", "wouldTokenize", "byRule": [{"rule", "count"}]}}`; `422` `{"error": "policy_invalid", "errors": [DIAG]}` (exit 40); `401 step_up_required` |
+| `GET /api/admin/dlp/policy/versions` | `{"versions": [{"version", "createdAt", "actor", "mode", "source"}]}` |
+| `POST /api/admin/dlp/test` | `{"text" \| "json", "service"?, "tool"?, "direction": "inbound\|outbound"}` answers `{"findings": [{"class", "detector", "confidence", "count", "masked"}], "decision": {"action", "rule"}}`; nothing is logged |
+| `GET /api/admin/dlp/findings?from=&class=&service=` | `{"findings": [{"id", "at", "class", "detector", "service", "tool", "outcome", "enforced", "count"}]}`; never a value |
+| `GET /api/admin/dlp/stats?from=&groupBy=` | `{"stats": [{"key", "count"}]}` |
+| `POST /api/dlp/findings/{id}/feedback` | `{"verdict": "false_positive\|true_positive", "scope": "value\|tool\|path"}` |
+| `POST /api/admin/dlp/hash` | `{"detector", "value"}` answers `{"key": "vk1_..."}`; the value is not stored |
+| `GET /api/admin/connectors/data-profiles`, `PUT .../{slug}/data-profile` | `{"profiles": [{"service", "category", "residency", "basis"}]}`; `{"residency", "basis"}` |
+
+Source: DLP and compliance packs plan (Part 1 APIs and CLI). The plan names the
+routes and commands; the wrappers, `dryRun`, the impact fields and the
+`direction` spellings are this client's decisions.
+
+## Compliance packs
+
+| Route | Request and response |
+|---|---|
+| `GET /api/compliance/packs?from=&to=` | `{"packs": [{"id", "name", "version", "coverage": {"covered", "partial", "gaps", "total"}}]}` |
+| `GET /api/compliance/packs/{pack}/controls?from=&to=` | `{"controls": [{"id", "title", "status": "covered\|partial\|gap\|manual", "sources", "records", "gapNote"?}]}` |
+| `POST /api/compliance/exports` | `{"pack", "from", "to"}` answers `202` `{"export_id", "job_id"}` |
+| `GET /api/compliance/exports`, `.../{id}`, `DELETE .../{id}` | `{"exports": [...]}`, `{"export": {...}}` |
+| `GET /api/compliance/exports/{id}/download` | `{"url", "fileName", "sha256"?}`: a short-lived address, https or on the gateway |
+| `GET\|POST /api/compliance/schedules`, `DELETE .../{id}` | `{"schedules": [...]}`; `{"pack", "frequency": "weekly\|monthly\|quarterly", "rangeDays", "recipients"}` answers `{"schedule": {"id"}}` |
+| `POST /api/compliance/exports/{id}/shares` | `{"to", "expiresInDays"}` answers `{"share": {"url", "expiresAt"}}` |
+| `GET\|POST /api/compliance/incidents`, `GET .../{id}` | `{"incidents": [...]}`, `{"incident": {...}}`; create `{"title", "severity", "detectedAt", "description"}` answers `{"incident": {"id"}}` |
+| `GET\|POST /api/compliance/dsr`, `POST .../{id}/execute` | `{"requests": [...]}`; create `{"kind", "subject"}` answers `{"request": {"id"}}` |
+| `POST /api/compliance/access-reviews`, `GET .../{id}`, `POST .../{id}/apply` | `{"scope", "dueDays"}` answers `{"review": {"id"}}`; `{"review": {...}}` |
+| `GET /.well-known/zuano-evidence-keys`, `GET /.well-known/zuano-audit-keys` | `{"keys": [{"kid", "alg": "ed25519", "publicKey"}]}` |
+
+A bundle is a zip holding `manifest.json`, `manifest.sig` (base64 ed25519 over
+the bytes of `manifest.json`), the files the manifest lists and
+`chain/checkpoints.jsonl`. The manifest has `{"pack", "packVersion",
+"mappingVersion", "orgId", "orgSlug", "range": {"from", "to"}, "generatedAt",
+"requestedBy", "evidenceKeyId", "files": [{"path", "sha256", "size"}]}`.
+`evidence/audit_chain*.jsonl` holds one event per line with `seq`, `prev_hash`
+and `hash` (hex) next to the event's own fields; `hash` is
+`sha256(prev_hash bytes || canonical JSON of the line without hash and prev_hash)`.
+A checkpoint line is `{"org_id", "date", "last_seq", "head_hash", "kid",
+"signature"}` with the signature (base64 ed25519) over the canonical JSON of
+`org_id`, `date`, `last_seq` and `head_hash`. `chain/verification.json`
+(`{"ok", "to_seq", "recomputed_head"}`) is the gateway's own result and is
+checked against the recomputed one.
+
+Source: DLP and compliance packs plan (export bundle, API and CLI sections). The
+plan names the routes, the bundle layout and exit codes 40 and 41 for `verify`;
+the exact manifest and checkpoint fields, the event hash input and the response
+wrappers are this client's reading and must match what the gateway writes.
+
 ## Agent inventory and access reviews
 
 | Route | Request and response |

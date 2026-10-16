@@ -39,6 +39,9 @@ func must2[A, B any](a A, b B, err error) (A, B) {
 	return a, b
 }
 
+// SignMessage signs msg as it is.
+func (s *Signer) SignMessage(msg []byte) []byte { return ed25519.Sign(s.priv, msg) }
+
 // Sign sets the content signature headers for body on h.
 func (s *Signer) Sign(h http.Header, body []byte) {
 	dec := json.NewDecoder(bytes.NewReader(body))

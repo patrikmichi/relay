@@ -17,6 +17,13 @@ func TestSignedBodyVerifies(t *testing.T) {
 	}
 }
 
+func TestSignMessageVerifies(t *testing.T) {
+	s := New("k")
+	if err := signing.VerifyMessage([]signing.Key{s.Key}, "k", []byte("m"), s.SignMessage([]byte("m"))); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSignPanicsOnABodyThatIsNotJSON(t *testing.T) {
 	defer func() {
 		if recover() == nil {

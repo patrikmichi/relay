@@ -126,7 +126,13 @@ func decodePublicKey(k Key) (ed25519.PublicKey, error) {
 // FetchKeys reads the gateway's published signing keys. The request carries no
 // credentials.
 func FetchKeys(ctx context.Context, origin string) ([]Key, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(origin, "/")+KeysPath, nil)
+	return FetchKeysAt(ctx, origin, KeysPath)
+}
+
+// FetchKeysAt reads a key document published at path, such as the keys that
+// sign audit checkpoints or compliance evidence.
+func FetchKeysAt(ctx context.Context, origin, path string) ([]Key, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(origin, "/")+path, nil)
 	if err != nil {
 		return nil, err
 	}
