@@ -1,0 +1,15 @@
+### Zuano Evals: pdf
+
+**Failed**
+
+- anthropic/m passes 75.0% of cases, below the required 90.0% (exit 24)
+
+| Model | Cases | Pass rate (95% CI) | Mean score | Errors | Cost |
+|---|---|---|---|---|---|
+| anthropic/m | 4 | 75.0% (30.1% to 95.4%) | 0.750 | 2 | $0.0090 |
+
+anthropic/m trigger: precision 1.00, recall 1.00, F1 1.00
+
+anthropic/m flaky cases (over 30% of repeats disagree): c1
+
+Seed 1, 2 repeat(s), harness offline/1, run locally.

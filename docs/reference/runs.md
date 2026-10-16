@@ -1,6 +1,6 @@
 # Background runs
 
-Agent and prompt runs, code runs, skill evals and optimisations, webhook
+Agent and prompt runs, code runs, evaluation runs and optimisations, webhook
 deliveries and host builds run on the gateway as durable jobs. A job survives
 a crash or a deploy, keeps a status, and can be cancelled or, once it failed
 every retry, started again.
@@ -47,8 +47,8 @@ Members see their own jobs; admins see all of the organisation's, metadata
 only. `zuano usage` shows the quotas that bound how many jobs may start; a
 start refused by a quota exits 31 (see [billing.md](billing.md#exit-statuses)).
 
-## Skill evals
+## Evaluations
 
-`zuano skill eval --wait` and `zuano skill optimize --wait` follow `queued` and
+`zuano eval run` and `zuano eval optimize` wait for the job and follow `queued` and
 `retrying` and stop at `succeeded`, `failed`, `cancelled` or `dead`; the last
 three exit with the eval failure status.

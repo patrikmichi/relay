@@ -127,6 +127,15 @@ func New(terms []string) *Redactor {
 	return r
 }
 
+// Counts is how many values of each class the redactor has replaced so far.
+func (r *Redactor) Counts() map[string]int {
+	out := make(map[string]int, len(r.counts))
+	for k, v := range r.counts {
+		out[k] = v
+	}
+	return out
+}
+
 // RulesVersion is the version of the embedded rule file.
 func RulesVersion() string { return rule.version }
 

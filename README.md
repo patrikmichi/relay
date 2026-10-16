@@ -300,22 +300,21 @@ and fails while any are unmet unless `--ignore-requirements`. `zuano skill info`
 shows the requirements and whether you can use the skill, and `zuano sync`
 warns about local skills whose `SKILL.md` declares `requires.connectors`.
 
-### Skill evals
+### Evaluations
 
 ```bash
-zuano skill evals sets create pr-triage --name smoke
-zuano skill evals case add pr-triage smoke --kind trigger --name "asks for a review" \
-  --input "Can you review this PR?" --should-trigger
-zuano skill eval pr-triage --wait                          # score the current version
-zuano skill compare pr-triage --versions 1.1.0,1.2.0 --wait
-zuano skill optimize pr-triage --kind description --wait   # leaves a draft
-zuano skill drafts promote pr-triage sdr_123               # through the publish pipeline
-zuano skill quality pr-triage
+zuano eval init --target skill                    # zuano.evals.yaml and a sample dataset
+zuano eval run --offline                          # on this machine, with your own provider keys
+zuano eval baseline set main                      # commit .zuano/evals/baselines/main.json
+zuano eval run --offline --ci                     # exits 21 on a regression, 24 under the pass-rate threshold
+zuano eval run --target skill:pr-triage           # on the gateway
+zuano eval compare before.json after.json         # paired statistics, corrected p-values
+zuano eval optimize --target skill:pr-triage --slot description --test-split
 ```
 
-`--json` works on every one of them, a failed run exits 20 and
-`--fail-on-regression` exits 21 when a score dropped, for CI. See
-[docs/reference/skill-evals.md](docs/reference/skill-evals.md).
+Replaces `zuano skill evals|eval|compare|optimize|drafts|quality`. Datasets from
+promptfoo, OpenAI Evals, skill-creator, CSV and JSONL import with
+`zuano eval datasets import`. See [docs/reference/evals.md](docs/reference/evals.md).
 
 ### Plugin bundles
 
@@ -350,7 +349,7 @@ value goes in the device-code request body), and the token requests carry no
 flag. A session the gateway no longer accepts (for instance one issued before
 every credential carried a principal) is reported as such and needs a new
 `zuano login`. An agent session reads connections, connectors and the marketplace but
-cannot change them: `zuano connect`, `zuano publish` and the skill eval,
+cannot change them: `zuano connect`, `zuano publish` and the gateway evaluation commands,
 optimize and promote commands print the gateway's reason and tell you to use
 your personal profile (unset `ZUANO_AGENT`) or the MCP tools.
 
@@ -374,7 +373,7 @@ Every `zuano` command falls into exactly one of two buckets:
 |---|---|---|
 | Touches | Only files on this machine (`~/.claude/`, `~/.claude.json`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, `~/.codeium/windsurf/`, `~/.cline/`, project config in the current directory, and zuano's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `zuano login` or `ZUANO_API_KEY` |
-| Examples | `zuano sync`, `zuano mcp install`/`remove`, `zuano skill migrate`, `zuano skill install <path>`, `zuano skill list`, `zuano skill diff`, `zuano skill scan`, `zuano skill uninstall`, `zuano skill rollback`, `zuano agent migrate`, `zuano agent list`, `zuano agent diff`, `zuano agent scan`, `zuano agent uninstall`, `zuano agent rollback`, `zuano providers`, `zuano doctor` | `zuano skill install <catalog-id>`, `zuano skill search`, `zuano skill info`, `zuano skill eval`/`compare`/`optimize`/`drafts`/`quality`/`evals`, `zuano agent install <catalog-id>`, `zuano mcp list`, `zuano connectors`, `zuano connect`, `zuano publish`, `zuano sync --marketplace`, `zuano services`, `zuano call`, `zuano help-tools`, `zuano approvals`, `zuano billing`, `zuano usage`, `zuano runs`, `zuano sessions`, `zuano audit`, `zuano policy`, `zuano login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `zuano sync`, `zuano mcp install`/`remove`, `zuano skill migrate`, `zuano skill install <path>`, `zuano skill list`, `zuano skill diff`, `zuano skill scan`, `zuano skill uninstall`, `zuano skill rollback`, `zuano agent migrate`, `zuano agent list`, `zuano agent diff`, `zuano agent scan`, `zuano agent uninstall`, `zuano agent rollback`, `zuano providers`, `zuano doctor` | `zuano skill install <catalog-id>`, `zuano skill search`, `zuano skill info`, `zuano eval run`/`optimize`/`review`/`leaderboard`/`datasets push`/`datasets pull` without `--offline`, `zuano agent install <catalog-id>`, `zuano mcp list`, `zuano connectors`, `zuano connect`, `zuano publish`, `zuano sync --marketplace`, `zuano services`, `zuano call`, `zuano help-tools`, `zuano approvals`, `zuano billing`, `zuano usage`, `zuano runs`, `zuano sessions`, `zuano audit`, `zuano policy`, `zuano login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -471,9 +470,15 @@ a gateway.
 | `zuano skill scan <name> [--json]` / `zuano skill score <name>` | local | Inspect a skill's manifest/fidelity; `--json` prints one document, as for `skill install` and `skill migrate` |
 | `zuano skill uninstall <name>` | local | Remove an installed skill |
 | `zuano skill rollback [manifest-entry-id]` | local | Revert to a prior manifest entry |
-| `zuano skill evals sets list\|show\|create\|import\|export\|delete` | gateway | Manage a skill's eval sets |
-| `zuano skill evals case add\|remove` | gateway | Add or remove a trigger or task case |
-| `zuano skill eval <skill> [--set] [--version\|--draft] [--repeats] [--wait] [--fail-on-regression]` | gateway | Score a version or draft against an eval set (exit 20 failed run or nothing verified, 21 regression) |
+| `zuano eval init [--target]` | local | Write `zuano.evals.yaml`, a sample dataset and a `.gitignore` line |
+| `zuano eval run [--offline] [--suite\|--target] [--models] [--repeats] [--ci] [--out]` | local with `--offline`, else gateway | Run a suite and apply its gates (exit 20 failed run, 21 regression, 23 inconclusive, 24 threshold) |
+| `zuano eval compare <a> [<b>] [--against baseline:<ref>] [--pairwise]` | local files or gateway run ids | Paired comparison with corrected p-values |
+| `zuano eval report [results\|run] [--format md\|html\|json]` | local or gateway | Render results |
+| `zuano eval baseline set\|show <ref>` | local, or gateway with `--cloud` | Record and show the baseline runs are compared with |
+| `zuano eval datasets import <file> --from jsonl\|csv\|promptfoo\|openai\|skill-creator` | local | Convert a file to cases and list what could not be converted |
+| `zuano eval datasets push\|pull` | gateway | Upload or download a dataset version |
+| `zuano eval optimize --slot S [--suite\|--target] [--apply]` | gateway | Propose better text, guarded against overfitting |
+| `zuano eval review`, `zuano eval leaderboard` | gateway | Open the review queue; rank models and versions |
 | `zuano skill compare <skill> --versions a,b` | gateway | Score several versions or drafts side by side with significance tests |
 | `zuano skill optimize <skill> --kind description\|instructions [--wait]` | gateway | Rewrite the description or instructions into a scored draft |
 | `zuano skill drafts list\|show\|promote\|discard` | gateway | Review optimization drafts and publish one through the publish pipeline |

@@ -14,6 +14,19 @@ const (
 	Company = "Loopmatic"
 )
 
+const (
+	// EvalsProduct is the name of the evaluation product in prose.
+	EvalsProduct = Product + " Evals"
+	// EvalsConfigFile is the evaluation config a repository carries.
+	EvalsConfigFile = Name + ".evals.yaml"
+	// EvalsFormat names the case and result documents the evaluation commands
+	// read and write.
+	EvalsFormat = Name + ".evals"
+	// SignatureHeader carries the HMAC of a request to an application's
+	// evaluation hook.
+	SignatureHeader = Product + "-Signature"
+)
+
 // InstallHeader is the non-secret header zuano writes into an agent's gateway
 // entry so the gateway can show which machine a session came from.
 const InstallHeader = "X-" + Product + "-Install"

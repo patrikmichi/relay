@@ -888,3 +888,44 @@ Pages the CLI opens (no API call): `/firewall/changes/{id}` and
 Source: MCP firewall plan (routes, settings, decisions, exit codes). The
 `/api/firewall/*` wrappers, the session request fields and the page paths are
 this client's decisions.
+
+## Evaluations
+
+Bearer auth. Routes are the plan's; where it leaves the body open the shape is
+this client's decision, and the gateway should produce the same field names for
+statistics as the conformance vectors do (`internal/evals/testdata/conformance`).
+Refusals follow the billing contract (402 `plan_required` and `limit_reached`
+exit 30, `quota_exceeded` and `spend_cap_reached` exit 31, 429 `rate_limited`
+exit 13). An agent principal's spending mutation is refused unless the
+organisation allows it.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/evals/settings` | `{"agents_may_run": bool}`; read before `run` and `optimize` when `ZUANO_AGENT` is set |
+| `GET /api/evals/suites?target=skill:slug` | `{"suites": [{"id", "slug"}]}` |
+| `POST /api/evals/runs` | `{"suiteId", "cells"?: [{"provider", "model"}], "repeats"?, "cache", "trigger": "manual\|ci", "ci"?: {"provider", "repo", "sha", "ref", "pr"}}`; `202` `{"runId", "estimate": {"units", "cost_nano"}}` |
+| `GET /api/evals/runs/{id}` | `{"run": {"id", "status": "queued\|running\|succeeded\|failed\|cancelled", "error"?, "url"?, "summary": {"cells": [CELL]}, "totals": {"units", "cached", "cost_nano"}, "gate_result": {"passed", "failures": [{"code": "run_failed\|regression\|threshold\|inconclusive", "message", "exit"?}]}}}` |
+| `GET /api/evals/runs/{id}/compare?baseline=<run\|ref>` | `{"comparison": [COMPARISON]}` |
+| `GET/PUT /api/evals/baselines/{suite}/{ref}` | `PUT {"runId"}`; `GET` `{"baseline": {"ref", "run_id", "set_by", "set_at"}}`; moving a protected ref needs an administrator |
+| `POST /api/evals/datasets` | `{"name", "sensitivity"}`; `201` `{"dataset": {"id"}}` |
+| `GET /api/evals/datasets/{id}/versions` | `{"versions": [{"seq"}]}` |
+| `POST /api/evals/datasets/{id}/versions` | `{"cases": [CASE]}`; `201` `{"version": {"seq", "case_count"}}` |
+| `GET /api/evals/datasets/{id}/versions/{seq}/cases` | `{"cases": [CASE]}` |
+| `POST /api/evals/optimize` | `{"suiteId", "slot", "candidates", "repeats", "overfitThreshold", "useTestSplit", "models"?}`; `202` `{"optimizeId", "estimate": {"units"}}` |
+| `GET /api/evals/optimize/{id}` | `{"optimize": {"id", "status", "error"?, "result": {"winner", "base": {"train", "validation"}, "candidates": [{"id", "train", "validation", "test"?, "has_test"?, "overfit", "leakage", "diff"}]}}}` |
+| `POST /api/evals/optimize/{id}/apply` | `{"candidate", "sink"?}` |
+| `GET /api/evals/review-queues?suite=` | `{"queues": [{"id", "name", "status", "open_items"}]}` |
+| `GET /api/evals/leaderboards/{suite}?split=&tag=` | `{"entries": [{"entry_key", "metric", "value", "ci_low"?, "ci_high"?, "rating"?, "n", "cost_per_pass_nano"?}]}` |
+
+```json
+CASE = {"kind", "key"?, "name", "input", "should_trigger"?, "expected_choice"?, "fixtures"?, "expected"?: {"assertions", "rubric", "reference"},
+        "split"?, "tags"?, "weight"?}                    // the zuano.evals/v2 line format
+CELL = {"cell", "split", "n", "errors", "mean", "stddev", "pass_rate", "pass_low", "pass_high", "pass_at_k", "pass_pow_k",
+        "flaky"?, "trigger"?: {"precision", "recall", "f1", "tp", "fp", "fn", "tn"}, "input_tokens", "output_tokens", "cost_nano", "mean_latency_ms"}
+COMPARISON = {"a", "b", "split", "pairs", "mean_delta", "ci_low", "ci_high", "p_value", "adjusted_p", "wins", "losses", "ties",
+              "mcnemar_p", "only_a", "only_b", "significant", "regression", "inconclusive", "need_pairs"}
+```
+
+Pages the CLI opens (no API call): `/evals/review/{queue id}`. The gateway
+removes the `/api/marketplace/skills/{id}/evals` routes and the skill eval
+tables; the CLI no longer calls them.

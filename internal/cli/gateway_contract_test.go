@@ -93,33 +93,6 @@ func TestContract_Requirements(t *testing.T) {
 	}
 }
 
-func TestContract_EvalRunAndSet(t *testing.T) {
-	var d runDoc
-	if err := json.Unmarshal([]byte(contractFixture(t, "eval-run.json")), &d); err != nil {
-		t.Fatal(err)
-	}
-	s := d.Run.Summary
-	if d.Run.Status != "succeeded" || s == nil || s.Completed != 30 || d.Progress.Total != 30 || d.Run.errorText() != "" {
-		t.Fatalf("run = %+v", d)
-	}
-	if got := s.Variants[0].Trigger["validation"].F1.Mean; got != 0.8 {
-		t.Errorf("validation f1 = %v", got)
-	}
-	if regs := findRegressions(d.Run); len(regs) != 2 {
-		t.Errorf("regressions = %v, want the stored alert and the significant comparison", regs)
-	}
-
-	var set struct {
-		Set evalSet `json:"set"`
-	}
-	if err := json.Unmarshal([]byte(contractFixture(t, "eval-set.json")), &set); err != nil {
-		t.Fatal(err)
-	}
-	if set.Set.Counts.Trigger != 8 || set.Set.Cases[0].ShouldTrigger == nil || !*set.Set.Cases[0].ShouldTrigger {
-		t.Errorf("set = %+v", set.Set)
-	}
-}
-
 func TestContract_SigningKeysDocument(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {

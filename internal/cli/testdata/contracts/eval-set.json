@@ -1,1 +1,0 @@
-{"set":{"id":"evs_1","skillId":"res_1","name":"smoke","description":"","versionId":"rev_1","trainPercent":70,"counts":{"trigger":8,"task":0,"train":5,"validation":3},"cases":[{"id":"evc_1","kind":"trigger","name":"asks","input":"invoice Acme","shouldTrigger":true,"split":"train","requiredConnectors":[]}]}}

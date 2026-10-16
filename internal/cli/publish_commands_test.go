@@ -46,7 +46,7 @@ func TestParentCommands_ExposeExpectedSubcommands(t *testing.T) {
 		cmd  *cobra.Command
 		want []string
 	}{
-		{SkillCmd(), []string{"compare", "diff", "drafts", "eval", "evals", "from-session", "info", "install", "list", "migrate", "optimize", "publish", "quality", "rollback", "scan", "score", "search", "uninstall"}},
+		{SkillCmd(), []string{"diff", "from-session", "info", "install", "list", "migrate", "publish", "rollback", "scan", "score", "search", "uninstall"}},
 		{AgentCmd(), []string{"diff", "install", "list", "migrate", "publish", "rollback", "scan", "uninstall"}},
 		{MCPCmd(), []string{"changes", "inspect", "install", "link", "list", "pins", "publish", "remove", "wrap"}},
 		{PublishCmd(), []string{"status"}},

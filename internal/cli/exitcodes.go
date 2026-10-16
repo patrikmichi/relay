@@ -12,6 +12,7 @@ const (
 	exitInvalidManifest  = 16
 	exitWaitTimeout      = 17
 	exitRunFailed        = 20
+	exitEvalRegression   = 21
 	exitEvalInconclusive = 23
 	exitEvalThreshold    = 24
 	exitNetworkOffline   = 34
