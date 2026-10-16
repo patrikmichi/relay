@@ -16,6 +16,91 @@ func jsonMCP(m meta, path string, objPath []string, seed obj, servers []MCPServe
 	return []Op{&jsonKeysOp{meta: m, path: path, mode: 0o600, objPath: objPath, entries: entries, seed: seed}}
 }
 
+// envRef is the neutral spelling of an environment reference in a server's
+// url, args and env values.
+var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// refSyntax is how an agent spells an environment reference it expands;
+// ok is false for agents that read the value literally.
+func refSyntax(a AgentID) (prefix, suffix string, ok bool) {
+	switch a {
+	case Claude, Gemini:
+		return "${", "}", true
+	case Cursor, Windsurf:
+		return "${env:", "}", true
+	case OpenCode:
+		return "{env:", "}", true
+	}
+	return "", "", false
+}
+
+func hasRef(s MCPServer) bool {
+	if envRef.MatchString(s.URL) || envRef.MatchString(s.Command) {
+		return true
+	}
+	for _, a := range s.Args {
+		if envRef.MatchString(a) {
+			return true
+		}
+	}
+	for _, v := range s.Env {
+		if envRef.MatchString(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// translateRefs rewrites ${NAME} references into the syntax the agent
+// expands. A server whose references the agent would write out literally is
+// returned in skipped instead, since a literal "${HOME}" is a wrong value.
+func translateRefs(a AgentID, servers []MCPServer) (keep, skipped []MCPServer) {
+	prefix, suffix, ok := refSyntax(a)
+	rewrite := func(s string) string {
+		return envRef.ReplaceAllStringFunc(s, func(m string) string { return prefix + m[2:len(m)-1] + suffix })
+	}
+	for _, s := range servers {
+		switch {
+		case !hasRef(s):
+			keep = append(keep, s)
+		case !ok:
+			skipped = append(skipped, s)
+		case prefix == "${" && suffix == "}":
+			keep = append(keep, s)
+		default:
+			t := s
+			t.URL, t.Command = rewrite(s.URL), rewrite(s.Command)
+			t.Args = make([]string, len(s.Args))
+			for i, arg := range s.Args {
+				t.Args[i] = rewrite(arg)
+			}
+			if s.Env != nil {
+				t.Env = make(map[string]string, len(s.Env))
+				for k, v := range s.Env {
+					t.Env[k] = rewrite(v)
+				}
+			}
+			keep = append(keep, t)
+		}
+	}
+	return keep, skipped
+}
+
+// refAware makes an agent's MCP builder translate environment references and
+// report the servers it cannot express.
+func refAware(id AgentID, b builder[MCPServer]) builder[MCPServer] {
+	return func(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
+		keep, skipped := translateRefs(id, servers)
+		ops, reason := b(env, scope, keep)
+		for _, s := range skipped {
+			it := Item{Agent: id, Kind: KindMCP, Scope: scope, Name: s.Name, Server: s.Name, Status: StatusSkipped,
+				Detail: string(id) + " does not expand environment references in MCP settings, so ${NAME} would be written literally; set the value in the agent's own config"}
+			ops = append(ops, noteOp{it})
+		}
+		return ops, reason
+	}
+}
+
 func bearer(prefix, env, suffix string) map[string]string {
 	if env == "" {
 		return nil

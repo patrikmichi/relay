@@ -45,8 +45,12 @@ With --url or --command the server is registered directly:
   relay mcp install files --command npx --arg -y --arg @acme/files-mcp --env ROOT='${HOME}'
 
 Credentials are never written: --bearer-env and ${VAR} references name an
-environment variable the agent reads itself. Without --to, every detected
-agent is updated.`,
+environment variable the agent reads itself. Write a reference as ${VAR};
+relay translates it to the agent's own syntax (Claude Code and Gemini CLI
+${VAR}, Cursor and Windsurf ${env:VAR}, OpenCode {env:VAR}). Codex, Cline and
+GitHub Copilot do not expand references in MCP settings, so a server that uses
+one is skipped for them and reported. Without --to, every detected agent is
+updated.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMcpInstall(cmd, args[0], f)
@@ -57,7 +61,7 @@ agent is updated.`,
 	fl.StringVar(&f.url, "url", "", "Remote MCP server URL (streamable HTTP)")
 	fl.StringVar(&f.command, "command", "", "Local stdio server command")
 	fl.StringArrayVar(&f.args, "arg", nil, "Argument for --command (repeatable)")
-	fl.StringArrayVar(&f.env, "env", nil, "Environment for --command as KEY=VALUE (repeatable; prefer ${VAR} references)")
+	fl.StringArrayVar(&f.env, "env", nil, "Environment for --command as KEY=VALUE (repeatable; a ${VAR} reference is translated per agent)")
 	fl.StringVar(&f.bearerEnv, "bearer-env", "", "Environment variable holding a bearer token for --url")
 	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	return cmd

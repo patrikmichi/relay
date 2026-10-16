@@ -38,48 +38,48 @@ func Agents() []Agent {
 			Detect: func(e Env) bool {
 				return dirExists(filepath.Join(e.Home, ".claude")) || fileExists(filepath.Join(e.Home, ".claude.json"))
 			},
-			MCP: claudeMCP, Env: claudeEnv, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
+			MCP: refAware(Claude, claudeMCP), Env: claudeEnv, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
 		},
 		{
 			ID: Codex, Name: "Codex",
 			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".codex")) },
-			MCP:    codexMCP, Env: codexEnv, Hooks: codexHooks, Rules: codexRules, Commands: codexCommands,
+			MCP:    refAware(Codex, codexMCP), Env: codexEnv, Hooks: codexHooks, Rules: codexRules, Commands: codexCommands,
 		},
 		{
 			ID: Cursor, Name: "Cursor",
 			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".cursor")) },
-			MCP:    cursorMCP, Hooks: cursorHooks, Rules: cursorRules, Commands: cursorCommands,
+			MCP:    refAware(Cursor, cursorMCP), Hooks: cursorHooks, Rules: cursorRules, Commands: cursorCommands,
 		},
 		{
 			ID: OpenCode, Name: "OpenCode",
 			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".config", "opencode")) },
-			MCP:    opencodeMCP, Hooks: opencodeHooks, Rules: opencodeRules, Commands: opencodeCommands,
+			MCP:    refAware(OpenCode, opencodeMCP), Hooks: opencodeHooks, Rules: opencodeRules, Commands: opencodeCommands,
 		},
 		{
 			ID: Gemini, Name: "Gemini CLI",
 			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".gemini")) },
-			MCP:    geminiMCP, Hooks: geminiHooks, Rules: geminiRules, Commands: geminiCommands,
+			MCP:    refAware(Gemini, geminiMCP), Hooks: geminiHooks, Rules: geminiRules, Commands: geminiCommands,
 		},
 		{
 			ID: Windsurf, Name: "Windsurf",
 			Detect: func(e Env) bool {
 				return dirExists(filepath.Join(e.Home, ".codeium", "windsurf")) || dirExists(filepath.Join(e.Home, ".windsurf"))
 			},
-			MCP: windsurfMCP, Hooks: windsurfHooks, Rules: windsurfRules, Commands: windsurfCommands,
+			MCP: refAware(Windsurf, windsurfMCP), Hooks: windsurfHooks, Rules: windsurfRules, Commands: windsurfCommands,
 		},
 		{
 			ID: Cline, Name: "Cline",
 			Detect: func(e Env) bool {
 				return dirExists(filepath.Join(e.Home, ".cline")) || dirExists(filepath.Join(e.Home, "Documents", "Cline"))
 			},
-			MCP: clineMCP, Hooks: clineHooks, Rules: clineRules, Commands: clineCommands,
+			MCP: refAware(Cline, clineMCP), Hooks: clineHooks, Rules: clineRules, Commands: clineCommands,
 		},
 		{
 			ID: Copilot, Name: "GitHub Copilot",
 			Detect: func(e Env) bool {
 				return e.Project != "" && (fileExists(filepath.Join(e.Project, ".github", "copilot-instructions.md")) || fileExists(filepath.Join(e.Project, ".vscode", "mcp.json")))
 			},
-			MCP: copilotMCP, Hooks: copilotHooks, Rules: copilotRules, Commands: copilotCommands,
+			MCP: refAware(Copilot, copilotMCP), Hooks: copilotHooks, Rules: copilotRules, Commands: copilotCommands,
 		},
 	}
 }

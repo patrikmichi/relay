@@ -228,6 +228,50 @@ func TestMCPItemsCarryTheServerNameForQuotedKeys(t *testing.T) {
 	}
 }
 
+func TestEnvReferencesAreTranslatedPerAgent(t *testing.T) {
+	b := Bundle{MCP: []MCPServer{{Name: "files", Command: "npx", Args: []string{"--root=${HOME}/x"}, Env: map[string]string{"ROOT": "${HOME}"}}}}
+	cases := []struct {
+		agent AgentID
+		path  []string
+		want  string
+	}{
+		{Claude, []string{".claude.json"}, `"ROOT": "${HOME}"`},
+		{Gemini, []string{".gemini", "settings.json"}, `"ROOT": "${HOME}"`},
+		{Cursor, []string{".cursor", "mcp.json"}, `"ROOT": "${env:HOME}"`},
+		{OpenCode, []string{".config", "opencode", "opencode.json"}, `"ROOT": "{env:HOME}"`},
+	}
+	for _, c := range cases {
+		env := newEnv(t)
+		syncAll(t, env, userBundle(b), Options{Agents: []AgentID{c.agent}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
+		got := readFile(t, filepath.Join(append([]string{env.Home}, c.path...)...))
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: want %s in\n%s", c.agent, c.want, got)
+		}
+	}
+	argWant := map[AgentID]string{Cursor: `--root=${env:HOME}/x`, OpenCode: `--root={env:HOME}/x`}
+	for agent, want := range argWant {
+		env := newEnv(t)
+		syncAll(t, env, userBundle(b), Options{Agents: []AgentID{agent}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
+		path := map[AgentID][]string{Cursor: {".cursor", "mcp.json"}, OpenCode: {".config", "opencode", "opencode.json"}}[agent]
+		if got := readFile(t, filepath.Join(append([]string{env.Home}, path...)...)); !strings.Contains(got, want) {
+			t.Errorf("%s: args lack %s:\n%s", agent, want, got)
+		}
+	}
+
+	for _, agent := range []AgentID{Codex, Cline} {
+		env := newEnv(t)
+		plan := syncAll(t, env, userBundle(b), Options{Agents: []AgentID{agent}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
+		if got := statusOf(plan.Items, KindMCP, "files"); got != StatusSkipped {
+			t.Errorf("%s: status = %q, want skipped", agent, got)
+		}
+		for _, e := range plan.Edits {
+			if strings.Contains(string(e.After), "${HOME}") {
+				t.Errorf("%s: wrote a literal reference:\n%s", agent, e.After)
+			}
+		}
+	}
+}
+
 func TestMarkdownBlockPreservesSurroundingText(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".gemini", "GEMINI.md")
