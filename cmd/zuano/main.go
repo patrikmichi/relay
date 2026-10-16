@@ -223,6 +223,7 @@ func newRootCmd() *cobra.Command {
 		cli.WebhooksCmd(),
 		cli.DropCmd(),
 		cli.AuthCmd(),
+		cli.PluginCmd(),
 	)
 
 	// PersistentPreRunE only needs to record --offline for every catalog

@@ -34,6 +34,11 @@ type Install struct {
 	MCP    []string `json:"mcp,omitempty"`
 	// Package is the npm package name an OpenCode install added.
 	Package string `json:"package,omitempty"`
+	// CommandsSHA256 identifies the commands the bundle runs on this machine,
+	// so an update that changes them asks again.
+	CommandsSHA256 string `json:"commandsSha256,omitempty"`
+	// InstallID is the gateway's id for the install report.
+	InstallID string `json:"installId,omitempty"`
 }
 
 // Ledger maps plugin name to agent to install.

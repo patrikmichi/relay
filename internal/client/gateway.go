@@ -130,6 +130,9 @@ func SetVersion(v string) {
 	}
 }
 
+// Version is the zuano version reported to gateways.
+func Version() string { return clientVersion }
+
 func userAgent() string {
 	return brand.Name + "/" + clientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
 }

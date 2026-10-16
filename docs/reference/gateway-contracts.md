@@ -196,6 +196,37 @@ sharing bodies and the typed errors; the response wrappers, the `SLOT` shape
 to a file), the proposal diff and the `GRANT`/`SITE` fields are this client's
 decisions.
 
+## Plugin feeds
+
+Documents on `/m/{feed}/...` need `Authorization: Bearer <feed token>`; the
+other routes take the usual session bearer. Fixtures: none yet (the plugin tests
+build signed packages).
+
+| Route | Request and response |
+|---|---|
+| `GET /api/org/plugin-feeds` | `{"feed": {"slug", "base_url": "https://gateway/m/{slug}", "npm_scope", "git_mirror": bool, "channels": ["stable", "beta"]}}`; `base_url` must be on the gateway's own origin under `/m/` |
+| `POST /api/cli/feed-token` | `{}` answers `{"token", "expires_in"}` (`feeds:read`, an hour); `{"kind": "api_key", "name"}` answers `{"token"}`, a long-lived key shown under Settings, API keys. `402 plan_required` when the plan lacks private feeds |
+| `GET /m/{feed}/claude/{channel}/marketplace.json`, `GET /m/{feed}/agent-plugins/{channel}/marketplace.json` | `{"name", "owner": {"name", "email"?}, "plugins": [{"name", "version", "description"?, "displayName"?, "source": {"source": "url", "url", "sha256"}}]}`; `source.url` is on the gateway's origin |
+| `GET {source.url}` | the package: `.zip`, or `.tgz` for npm (members under `package/`), carrying `SIGNATURE.json` |
+| `GET /api/plugins/{name}/packages?version=` | `{"packages": [{"platform", "state", "sha256", "url"}]}` for the platforms the marketplaces do not list (`gemini`, `opencode_npm`, `cline`) |
+| `GET /api/plugins/{name}/requirements` | `{"missing": [connector slug]}`; warnings only |
+| `POST /api/plugins/installs` | `{"plugin", "version", "agent", "method", "cli_version"}` answers `{"install": {"id"}}` |
+| `DELETE /api/plugins/installs/{id}` | `200` or `204` |
+| `GET /m/{feed}/git/{channel}.git`, `GET /m/{feed}/git/{plugin}.git` | read-only smart HTTP; git authenticates with `username=zuano`, `password=<feed token>` |
+| `GET /m/{feed}/npm/` | the registry for the feed's npm scope |
+
+`SIGNATURE.json` is `{"schema": "plugin-signature/1", "plugin", "version",
+"platform", "files": {path: sha256 hex}, "kid", "alg": "ed25519",
+"signature": base64}`; the signature covers the canonical JSON of the document
+without `signature`, with the keys at `/.well-known/zuano-signing-keys`.
+
+Source: plugin bundles plan, "Builders", "Feeds", "Feed tokens" and "relay CLI
+changes". The plan names the feed routes, the signature document and the token
+endpoint. The `api/org/plugin-feeds` document, the long-lived key request, the
+package list route (the plan's package list is the dashboard's), the
+requirements route taking a name, the git path per plugin for Gemini, and the
+install report are this client's decisions.
+
 ## Approvals
 
 | Route | Use |

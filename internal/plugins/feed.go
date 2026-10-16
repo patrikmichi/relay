@@ -80,8 +80,12 @@ func (m Marketplace) Find(name, version string) (Entry, error) {
 		}
 		return p, nil
 	}
-	return Entry{}, fmt.Errorf("no plugin %q in marketplace %s", name, m.Name)
+	return Entry{}, fmt.Errorf("no plugin %q in marketplace %s: %w", name, m.Name, ErrNotListed)
 }
+
+// ErrNotListed means a marketplace does not list the plugin: it was never
+// published to the channel, or its version was revoked.
+var ErrNotListed = errors.New("not listed")
 
 // Ext is the archive type of the entry's package, from its URL.
 func (e Entry) Ext() string {
