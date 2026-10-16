@@ -116,9 +116,9 @@ func decodeJSONCapped(body io.Reader, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-// DeviceLogin performs the device-code flow. With the agent profile the
-// device-code request carries agent: true, like Login's agent=1; the token
-// poll carries no flag.
+// DeviceLogin performs the device-code flow. The device-code request carries
+// the principal, like Login's principal parameter; the token poll carries no
+// flag.
 func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var out io.Writer = os.Stdout
 	if len(writers) > 0 && writers[0] != nil {
@@ -131,10 +131,7 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 
 	// 1. Request device code
 	endpoint := fmt.Sprintf("%s/api/cli/device/code", origin)
-	codeBody := "{}"
-	if profile == keychain.ProfileAgent {
-		codeBody = `{"agent":true}`
-	}
+	codeBody := fmt.Sprintf(`{"principal":%q}`, principalFor(profile))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(codeBody))
 	if err != nil {
 		return nil, fmt.Errorf("create device code request: %w", err)

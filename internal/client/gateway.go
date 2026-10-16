@@ -489,8 +489,10 @@ func (c *Client) doAuthorized(req *http.Request) (*http.Response, error) {
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || !refreshable {
 		return resp, err
 	}
-	// A step-up is not an expired token: refreshing would only repeat it.
-	if _, wantsStepUp := refusalOf(resp).(*StepUpRequiredError); wantsStepUp {
+	// Neither a step-up nor a session the gateway rejects outright is an
+	// expired token: refreshing would only repeat the refusal.
+	switch refusalOf(resp).(type) {
+	case *StepUpRequiredError, *ReauthRequiredError:
 		return resp, nil
 	}
 

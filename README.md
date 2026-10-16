@@ -343,9 +343,12 @@ relay approvals approve apr_3f9c4e --no-browser # prints the link and a QR code 
 ```
 
 `relay login` says which kind of session it asked for, because the kind is
-fixed when the login starts: `--agent` puts `agent=1` on the authorize request
-(or `{"agent":true}` on the device-code request), and the token requests carry
-no flag. An agent session reads connections, connectors and the marketplace but
+fixed when the login starts: the authorize request carries
+`principal=cli_personal`, or `principal=cli_agent` with `--agent` (the same
+value goes in the device-code request body), and the token requests carry no
+flag. A session the gateway no longer accepts (for instance one issued before
+every credential carried a principal) is reported as such and needs a new
+`relay login`. An agent session reads connections, connectors and the marketplace but
 cannot change them: `relay connect`, `relay publish` and the skill eval,
 optimize and promote commands print the gateway's reason and tell you to use
 your personal profile (unset `RELAY_AGENT`) or the MCP tools.

@@ -35,6 +35,18 @@ The billing and scalability plans disagree on the status of `quota_exceeded`
 the exit statuses apart. `limit` is a limit key (text) in a plan refusal and a
 number in a quota refusal; relay reads either.
 
+## Login
+
+| Request | Carries |
+|---|---|
+| `GET /api/cli/authorize` | `principal=cli_personal` or `cli_agent`, with the existing PKCE parameters; no `agent` parameter |
+| `POST /api/cli/device/code` | `{"principal": "cli_personal" \| "cli_agent"}`; no `agent` field |
+| `POST /api/cli/token`, `POST /api/cli/device/token`, `POST /api/cli/refresh` | no principal: it is fixed at issue |
+
+Source: risk policy plan 5.1 and 5.14. A credential without a principal is
+answered `401 {"error": "reauth_required"}`; relay does not refresh such a
+session and tells the person to run `relay login`.
+
 ## Approvals
 
 | Route | Use |

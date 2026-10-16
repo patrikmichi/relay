@@ -61,10 +61,10 @@ type tokenResponse struct {
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
 //
-// With the agent profile the authorize request carries agent=1, so the gateway
-// marks the session as an agent's and holds its writes for approval; the
-// kind is fixed when the login starts and the token request carries no flag.
-// The session is stored apart from the human one.
+// The authorize request carries principal=cli_personal or cli_agent, so the
+// gateway issues the session to that principal; it is fixed when the login
+// starts and the token request carries no flag. Both are held to approvals.
+// The agent session is stored apart from the personal one.
 func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var diagnostic io.Writer = os.Stderr
 	if len(writers) > 0 && writers[0] != nil {
@@ -124,7 +124,7 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 		_ = server.Close()
 	}()
 
-	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge, profile == keychain.ProfileAgent)
+	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge, principalFor(profile))
 	fmt.Fprintln(diagnostic, sessionKindNotice(profile))
 	if err := openBrowser(authorizeURL); err != nil {
 		fmt.Fprintf(diagnostic, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
@@ -201,8 +201,22 @@ func randomHex(n int) (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
+// The principal a CLI login asks the gateway to issue the session to. The
+// gateway holds both to approvals; only a browser session is unrestricted.
+const (
+	principalPersonal = "cli_personal"
+	principalAgent    = "cli_agent"
+)
+
+func principalFor(profile keychain.Profile) string {
+	if profile == keychain.ProfileAgent {
+		return principalAgent
+	}
+	return principalPersonal
+}
+
 // buildAuthorizeURL constructs the /api/cli/authorize URL.
-func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge string, agent bool) string {
+func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge, principal string) string {
 	u := fmt.Sprintf("%s/api/cli/authorize", strings.TrimRight(gatewayURL, "/"))
 	params := url.Values{
 		"client_id":             {clientID},
@@ -211,9 +225,7 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge strin
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 		"response_type":         {"code"},
-	}
-	if agent {
-		params.Set("agent", "1")
+		"principal":             {principal},
 	}
 	return u + "?" + params.Encode()
 }

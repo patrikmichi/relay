@@ -61,8 +61,8 @@ func TestLogin_AgentProfileAsksForAgentAtAuthorizeAndKeepsHumanSession(t *testin
 		t.Fatalf("Login: %v", err)
 	}
 
-	if !strings.Contains(authorizeURL, "agent=1") {
-		t.Errorf("authorize URL %q lacks agent=1", authorizeURL)
+	if !strings.Contains(authorizeURL, "principal=cli_agent") || strings.Contains(authorizeURL, "agent=1") {
+		t.Errorf("authorize URL %q lacks principal=cli_agent or still carries agent=1", authorizeURL)
 	}
 	if sawAgent != "" {
 		t.Errorf("token request agent = %q, want none", sawAgent)
@@ -118,8 +118,8 @@ func TestLogin_HumanProfileSendsNoAgentFlag(t *testing.T) {
 	if _, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &diag); err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if strings.Contains(authorizeURL, "agent=") || sawAgent != "" {
-		t.Errorf("personal login sent an agent flag (authorize %q, token %q)", authorizeURL, sawAgent)
+	if !strings.Contains(authorizeURL, "principal=cli_personal") || strings.Contains(authorizeURL, "agent=") || sawAgent != "" {
+		t.Errorf("personal login must ask for principal=cli_personal and send no agent flag (authorize %q, token %q)", authorizeURL, sawAgent)
 	}
 	if !strings.Contains(diag.String(), "personal session") {
 		t.Errorf("diagnostic %q does not name the personal session", diag.String())
@@ -129,7 +129,7 @@ func TestLogin_HumanProfileSendsNoAgentFlag(t *testing.T) {
 	}
 }
 
-func TestDeviceLogin_AgentFlagGoesOnTheCodeRequestOnly(t *testing.T) {
+func TestDeviceLogin_PrincipalGoesOnTheCodeRequestOnly(t *testing.T) {
 	for _, tc := range []struct {
 		profile keychain.Profile
 		want    bool
@@ -157,12 +157,20 @@ func TestDeviceLogin_AgentFlagGoesOnTheCodeRequestOnly(t *testing.T) {
 			if _, err := DeviceLogin(context.Background(), srv.URL, tc.profile, &out); err != nil {
 				t.Fatalf("DeviceLogin: %v", err)
 			}
-			got, present := codeBody["agent"].(bool)
-			if present != tc.want || got != tc.want {
-				t.Errorf("agent in device-code body = %v (present %v), want %v", got, present, tc.want)
+			wantPrincipal := "cli_personal"
+			if tc.want {
+				wantPrincipal = "cli_agent"
 			}
-			if _, present := pollBody["agent"]; present {
-				t.Errorf("poll body carries agent: %v", pollBody)
+			if codeBody["principal"] != wantPrincipal {
+				t.Errorf("principal in device-code body = %v, want %v", codeBody["principal"], wantPrincipal)
+			}
+			if _, present := codeBody["agent"]; present {
+				t.Errorf("device-code body still carries the agent flag: %v", codeBody)
+			}
+			for _, key := range []string{"agent", "principal"} {
+				if _, present := pollBody[key]; present {
+					t.Errorf("poll body carries %s: %v", key, pollBody)
+				}
 			}
 			want := "personal session"
 			if tc.want {

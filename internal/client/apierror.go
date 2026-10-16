@@ -150,6 +150,15 @@ func (e *StepUpRequiredError) Error() string {
 	return msg
 }
 
+// ReauthRequiredError is the 401 a gateway answers with when it no longer
+// accepts a session at all, such as one issued before every credential
+// carried a principal. Refreshing it cannot help; a new login can.
+type ReauthRequiredError struct{}
+
+func (*ReauthRequiredError) Error() string {
+	return "the gateway no longer accepts this session: run `relay login` to sign in again"
+}
+
 // refusalBody is the union of the fields the gateway's refusals carry. Number
 // fields are raw because the gateway sends a limit key as text for a plan
 // limit and as a number for a quota.
@@ -218,6 +227,8 @@ func refusalOf(resp *http.Response) error {
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized && b.Error == codeStepUpRequired:
 		return &StepUpRequiredError{ID: b.StepUpID, URL: b.StepUpURL}
+	case resp.StatusCode == http.StatusUnauthorized && b.Error == codeReauthRequired:
+		return &ReauthRequiredError{}
 	case resp.StatusCode == http.StatusTooManyRequests && b.Error == CodeQuotaExceeded:
 		return &QuotaExceededError{Metric: firstNonEmpty(b.Metric, b.Meter), Limit: rawText(b.Limit), Message: b.Message, ResetsAt: b.ResetsAt}
 	case isEntitlementCode(resp.StatusCode, b.Error):

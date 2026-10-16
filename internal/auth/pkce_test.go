@@ -80,7 +80,7 @@ func TestRandomHex_LengthAndCharset(t *testing.T) {
 // ─── buildAuthorizeURL ──────────────────────────────────────────────────────
 
 func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
-	got := buildAuthorizeURL("https://gw.example.com/", "relay-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1", false)
+	got := buildAuthorizeURL("https://gw.example.com/", "relay-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1", "cli_personal")
 
 	u, err := url.Parse(got)
 	if err != nil {
@@ -98,6 +98,7 @@ func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
 		"code_challenge":        "challenge-1",
 		"code_challenge_method": "S256",
 		"response_type":         "code",
+		"principal":             "cli_personal",
 	}
 	for k, want := range cases {
 		if got := q.Get(k); got != want {

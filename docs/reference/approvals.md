@@ -12,7 +12,7 @@ approvals documentation.
 | | Human profile | Agent profile |
 |---|---|---|
 | Sign in | `relay login` | `relay login --agent`, or `RELAY_AGENT=1 relay login` |
-| Login request | no marker | `agent=1` on `GET /api/cli/authorize`, `{"agent":true}` in the `POST /api/cli/device/code` body; the token requests carry no flag |
+| Login request | `principal=cli_personal` on `GET /api/cli/authorize`, `{"principal":"cli_personal"}` in the `POST /api/cli/device/code` body | `principal=cli_agent`, `{"principal":"cli_agent"}`; the token requests carry no flag |
 | Keychain account | `oauth-refresh-token:<gateway>:<email>` | `oauth-refresh-token:agent:<gateway>:<email>` |
 | Config file field | `email` | `agentEmail` |
 | Used when | `RELAY_AGENT` is unset | `RELAY_AGENT` is `1`, `true`, `yes` or `on` |
