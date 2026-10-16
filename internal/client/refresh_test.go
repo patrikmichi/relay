@@ -43,6 +43,7 @@ func seedSession(t *testing.T, gatewayOrigin, email string, tok keychain.TokenDa
 func TestResolve_GatewayAPIKeyTakesPrecedence(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("GATEWAY_API_KEY", "static-bearer-key")
+	t.Setenv("RELAY_API_KEY_ORIGIN", "https://gw.example.com")
 	t.Setenv("RELAY_EMAIL", "someone@example.com") // present but must be ignored
 
 	c, err := client.Resolve("https://gw.example.com")

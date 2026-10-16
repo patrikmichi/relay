@@ -173,6 +173,25 @@ func New(gatewayURL, accessToken string) *Client {
 	}
 }
 
+// checkAPIKeyOrigin keeps GATEWAY_API_KEY from reaching a gateway that a flag
+// or environment variable redirected the CLI to. A local development gateway
+// is the one origin that needs no binding.
+func checkAPIKeyOrigin(origin string) error {
+	bound, err := config.APIKeyOrigin()
+	if err != nil {
+		return err
+	}
+	switch {
+	case bound == origin:
+		return nil
+	case bound == "" && config.IsLoopbackOrigin(origin):
+		return nil
+	case bound == "":
+		return fmt.Errorf("refusing to send GATEWAY_API_KEY to %s: the key is not bound to a gateway. Set RELAY_API_KEY_ORIGIN=%s, or save the gateway in the config file", origin, origin)
+	}
+	return fmt.Errorf("refusing to send GATEWAY_API_KEY to %s: the key is bound to %s (RELAY_API_KEY_ORIGIN or the saved gateway). Change RELAY_API_KEY_ORIGIN deliberately to use another gateway", origin, bound)
+}
+
 // Resolve builds an authenticated Client for gateway calls.
 func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 	origin, err := config.NormalizeGatewayURL(gatewayURL)
@@ -182,6 +201,9 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 
 	profile := ActiveProfile()
 	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
+		if err := checkAPIKeyOrigin(origin); err != nil {
+			return nil, err
+		}
 		c := New(origin, apiKey)
 		c.profile = profile
 		for _, opt := range opts {

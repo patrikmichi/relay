@@ -82,6 +82,7 @@ func TestResolve_AgentModeWithNoIdentityIsAgentNotLoggedIn(t *testing.T) {
 func TestResolve_APIKeyReportsTheActiveProfile(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("GATEWAY_API_KEY", "static-bearer-key")
+	t.Setenv("RELAY_API_KEY_ORIGIN", profileGateway)
 	t.Setenv("RELAY_AGENT", "1")
 
 	c, err := client.Resolve(profileGateway)

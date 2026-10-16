@@ -180,6 +180,31 @@ func NormalizeGatewayURL(raw string) (string, error) {
 	return u.Scheme + "://" + u.Host, nil
 }
 
+// IsLoopbackOrigin reports whether a normalized gateway origin is a local
+// development gateway.
+func IsLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	return err == nil && isLoopbackHost(u.Hostname())
+}
+
+// APIKeyOrigin is the one gateway GATEWAY_API_KEY may be sent to:
+// RELAY_API_KEY_ORIGIN when set, else the gateway saved in the config file.
+// It is "" when neither exists.
+func APIKeyOrigin() (string, error) {
+	raw := os.Getenv("RELAY_API_KEY_ORIGIN")
+	if raw == "" {
+		cfg, err := Load()
+		if err != nil {
+			return "", fmt.Errorf("load config: %w", err)
+		}
+		raw = cfg.GatewayURL
+	}
+	if raw == "" {
+		return "", nil
+	}
+	return NormalizeGatewayURL(raw)
+}
+
 // isLoopbackHost reports whether host (a URL's Hostname(), no port/brackets)
 // is a literal loopback address — the sole exception to the HTTPS-only
 // transport policy, intended for local gateway development only.
