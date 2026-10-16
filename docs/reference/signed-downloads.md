@@ -47,7 +47,7 @@ every depth, no whitespace.
 
 ## Public keys
 
-`GET /.well-known/relay-signing-keys`, public, no credentials sent:
+`GET /.well-known/zuano-signing-keys`, public, no credentials sent:
 
 ```json
 {"keys":[{"kid":"2026-10","alg":"ed25519","publicKey":"<base64 raw 32-byte key>"}]}

@@ -133,7 +133,7 @@ func (g *evalGateway) serve(w http.ResponseWriter, r *http.Request) {
 	case "DELETE /evals/sets/evs_1":
 		raw(200, `{"deleted":true}`)
 	case "GET /evals/sets/evs_1/export":
-		raw(200, `{"format":"relay.skill-evals/v1","set":{"name":"smoke"},"cases":[]}`)
+		raw(200, `{"format":"zuano.skill-evals/v1","set":{"name":"smoke"},"cases":[]}`)
 	case "POST /evals/import":
 		raw(201, `{"set":{"id":"evs_3","name":"smoke","counts":{"trigger":2,"task":0}}}`)
 	case "POST /evals/sets/evs_1/cases":
@@ -240,7 +240,7 @@ func TestEvalSets_ListShowCreateExportImportDelete(t *testing.T) {
 		t.Fatalf("export: %v\n%s", err, out)
 	}
 	data, err := os.ReadFile(file)
-	if err != nil || !strings.Contains(string(data), "relay.skill-evals/v1") {
+	if err != nil || !strings.Contains(string(data), "zuano.skill-evals/v1") {
 		t.Fatalf("export file: %v %s", err, data)
 	}
 	out, err = evalCmd(t, g, SkillEvalsCmd(), "sets", "import", "evskill", file, "--version", "1.1.0")
@@ -250,7 +250,7 @@ func TestEvalSets_ListShowCreateExportImportDelete(t *testing.T) {
 	if !g.called("POST /evals/import") {
 		t.Error("import was not posted")
 	}
-	if b := g.body("POST /evals/import"); b["format"] != "relay.skill-evals/v1" {
+	if b := g.body("POST /evals/import"); b["format"] != "zuano.skill-evals/v1" {
 		t.Errorf("import body = %v", b)
 	}
 

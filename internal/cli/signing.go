@@ -88,7 +88,7 @@ func configTrustKeyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust-key",
 		Short: "Review and pin the gateway's download-signing keys",
-		Long: `Fetch the signing keys the gateway publishes at /.well-known/relay-signing-keys,
+		Long: `Fetch the signing keys the gateway publishes at /.well-known/zuano-signing-keys,
 show their fingerprints and pin them, replacing the keys pinned before.
 
 zuano pins the keys the first time you log in. A later change is refused until

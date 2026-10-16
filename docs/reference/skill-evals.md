@@ -54,7 +54,7 @@ reach that connector; `--split train|validation` pins the case. `--file FILE`
 (or `-`) reads the whole case as JSON, which is how `json_path` and `structured`
 assertions are written. zuano checks the flags before sending anything.
 
-`sets export` writes a `relay.skill-evals/v1` document that `sets import` reads,
+`sets export` writes a `zuano.skill-evals/v1` document that `sets import` reads,
 so a set can move between skills and organizations.
 
 ## Running evals

@@ -210,7 +210,7 @@ func evalSetsImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import <skill> <file|->",
 		Short: "Create an eval set from an exported document",
-		Long:  "Create a set and its cases from a relay.skill-evals/v1 document, as written by 'zuano skill evals sets export'. Use - to read it from stdin.",
+		Long:  "Create a set and its cases from a zuano.skill-evals/v1 document, as written by 'zuano skill evals sets export'. Use - to read it from stdin.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, err := readDocument(cmd, args[1])

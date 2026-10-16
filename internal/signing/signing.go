@@ -27,7 +27,7 @@ const (
 
 	HeaderSignature = "X-Skill-Signature"
 	HeaderKeyID     = "X-Skill-Signing-Key-Id"
-	KeysPath        = "/.well-known/relay-signing-keys"
+	KeysPath        = "/.well-known/zuano-signing-keys"
 )
 
 // Key is one signing public key.

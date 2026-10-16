@@ -145,7 +145,7 @@ func TestContract_SigningKeysDocument(t *testing.T) {
 	}
 	doc := `{"keys":[{"kid":"2026-10","alg":"ed25519","publicKey":"` + base64.StdEncoding.EncodeToString(pub) + `"}]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/.well-known/relay-signing-keys" {
+		if r.URL.Path != "/.well-known/zuano-signing-keys" {
 			http.NotFound(w, r)
 			return
 		}
