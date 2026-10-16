@@ -531,6 +531,16 @@ The redaction rules are the file `internal/redact/redaction-rules.json`
 `ZUANO_CONTRACT_FIXTURES` set to the gateway's fixtures, a test fails when
 `redaction-rules.json` there differs.
 
+Personal skills (this client's decisions; the plan names the scope and the
+flags only): `POST /api/marketplace/publish` takes an optional multipart field
+`scope` (`personal` or `org`) and answers `scope` and, for a skill awaiting
+review, `reviewUrl`; `GET /api/marketplace/skills?scope=personal` answers
+`{"skills": [{"id", "slug", "name", "version", "sizeBytes", "createdAt",
+"promotion": {"state"}?}]}`; `POST /api/marketplace/resources/{id}/promote`
+answers `202` `{"versionId", "state", "reviewUrl"}`; and the signed assignments
+document gains `"personalSkills": [{"resourceId", "versionId", "name",
+"version"}]`, which `zuano sync` installs for the member's devices.
+
 Source: session-to-skill plan (normalized session, privacy, surfaces and CLI
 sections). The plan names the capture, extract, accept and list routes and the
 session shape; the `consent` route, the response wrappers, `turnRange` and the

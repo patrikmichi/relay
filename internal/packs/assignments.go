@@ -62,6 +62,9 @@ type Assignments struct {
 	Revision        int               `json:"revision"`
 	Profiles        []Profile         `json:"profiles"`
 	ConnectRequired []ConnectRequired `json:"connectRequired"`
+	// PersonalSkills are the member's own skills, which only this member's
+	// devices receive.
+	PersonalSkills []AssignmentSkill `json:"personalSkills"`
 }
 
 // State is the last assignments a member received, kept so an unchanged

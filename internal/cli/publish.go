@@ -20,8 +20,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/nofollow"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // artifactMaxBytes is the client-side size cap for a bundle (25 MiB).
@@ -43,6 +45,8 @@ type publishResponse struct {
 	Semver     string `json:"semver"`
 	State      string `json:"state"`
 	Channel    string `json:"channel,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	ReviewURL  string `json:"reviewUrl,omitempty"`
 }
 
 // publishErrorDetail is one field-level error entry from a 422 response.
@@ -143,6 +147,7 @@ func publishCmdWithDoer(doer gatewayDoer, aliasKind agentport.ArtifactKind) *cob
 		flagName       string
 		flagSlug       string
 		flagChannel    string
+		flagScope      string
 		flagDryRun     bool
 		flagWatch      bool
 		flagGatewayURL string
@@ -171,6 +176,9 @@ Flags:
   --name <name>                                  Override the resource display name
   --slug <slug>                                  Override the resource slug
   --channel <stable|beta>                        Publish channel (default: stable)
+  --scope <personal|org>                         Skills only. A personal skill is visible to you alone, needs no review and is
+                                                  installed by 'zuano sync' on your own devices; 'zuano skill promote' submits
+                                                  it to the organisation. The gateway picks personal for members and org for admins
   --dry-run                                      Validate + print what WOULD be sent; do not call the API
   --watch                                        After publishing, poll status until it reaches a
                                                   terminal state; exits non-zero on changes_requested`,
@@ -205,6 +213,7 @@ Flags:
 				name:              flagName,
 				slug:              flagSlug,
 				channel:           flagChannel,
+				scope:             flagScope,
 				dryRun:            flagDryRun,
 				watch:             flagWatch,
 				gatewayURL:        resolvedURL,
@@ -225,6 +234,7 @@ Flags:
 	cmd.Flags().StringVar(&flagName, "name", "", "Override resource display name")
 	cmd.Flags().StringVar(&flagSlug, "slug", "", "Override resource slug")
 	cmd.Flags().StringVar(&flagChannel, "channel", "stable", "Publish channel: stable or beta")
+	cmd.Flags().StringVar(&flagScope, "scope", "", "Skills only: personal (only you, no review) or org (the catalog, with review); default personal for members and org for admins")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Validate and print the payload without sending it")
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll publish status until terminal; exit non-zero on changes_requested")
 	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
@@ -313,6 +323,7 @@ func SkillCmd() *cobra.Command {
 	skill.AddCommand(SkillUninstallCmd())
 	skill.AddCommand(SkillRollbackCmd())
 	skill.AddCommand(skillFromSessionCmd())
+	skill.AddCommand(SkillPromoteCmd())
 	return skill
 }
 
@@ -399,7 +410,9 @@ type publishOpts struct {
 	name         string
 	slug         string
 	channel      string
-	dryRun       bool
+	// scope is personal or org for a skill; empty leaves the choice to the gateway.
+	scope  string
+	dryRun bool
 	// watch: after a successful publish, poll status until terminal (see
 	// watchPublishStatus). Exits non-zero on changes_requested.
 	watch             bool
@@ -558,6 +571,15 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		return fmt.Errorf("could not detect resource type from frontmatter — use --type to specify it")
 	}
 
+	if opts.scope != "" {
+		if opts.scope != "personal" && opts.scope != "org" {
+			return fmt.Errorf("--scope must be personal or org")
+		}
+		if resourceType != "skill" {
+			return fmt.Errorf("--scope applies to skills; a %s is always published to the organisation", resourceType)
+		}
+	}
+
 	// Apply flag overrides.
 	name := opts.name
 	if name == "" && descriptor != nil {
@@ -581,6 +603,9 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		fmt.Fprintf(out, "[dry-run] name:    %s\n", name)
 		fmt.Fprintf(out, "[dry-run] slug:    %s\n", slug)
 		fmt.Fprintf(out, "[dry-run] channel: %s\n", ch)
+		if opts.scope != "" {
+			fmt.Fprintf(out, "[dry-run] scope:   %s\n", opts.scope)
+		}
 		if isDir {
 			fmt.Fprintf(out, "[dry-run] bundle files (%d):\n", len(bundleFiles))
 			for _, f := range bundleFiles {
@@ -665,6 +690,12 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 	if opts.slug != "" {
 		if err := mw.WriteField("slug", opts.slug); err != nil {
 			return fmt.Errorf("write slug field: %w", err)
+		}
+	}
+
+	if opts.scope != "" {
+		if err := mw.WriteField("scope", opts.scope); err != nil {
+			return fmt.Errorf("write scope field: %w", err)
 		}
 	}
 
@@ -856,7 +887,16 @@ func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gate
 		}
 		fmt.Fprintf(out, "  Channel:     %s\n", ch)
 		fmt.Fprintf(out, "  State:       %s\n", pub.State)
+		if pub.Scope != "" {
+			fmt.Fprintf(out, "  Scope:       %s\n", pub.Scope)
+		}
 		fmt.Fprintf(out, "  Catalog URL: %s\n", catalogURL(pub.ResourceID, gatewayURL))
+		if pub.Scope == "personal" {
+			fmt.Fprintf(out, "\nOnly you can see this skill. Install it on your agents with `%s`; submit it to your organisation with `%s`.\n", brand.Cmd("sync"), brand.Cmd("skill promote "+pub.ResourceID))
+		}
+		if pub.State == "pending_review" && pub.ReviewURL != "" {
+			fmt.Fprintf(out, "\nAn administrator reviews it first: %s\n", textsafe.Clean(pub.ReviewURL))
+		}
 		if pub.State == "changes_requested" {
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, "The version needs changes before it can be published.")

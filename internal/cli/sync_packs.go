@@ -133,12 +133,32 @@ type packItem struct {
 	kind, name, version string
 	resourceID          string
 	channel             string
+	// personal marks a skill the member owns, as opposed to one a pack assigns.
+	personal bool
+}
+
+// label names the item for a message: "pack skill", "pack bundle" or "personal skill".
+func (it packItem) label() string {
+	if it.personal {
+		return "personal " + it.kind
+	}
+	return "pack " + it.kind
+}
+
+func (it packItem) source() string {
+	if it.personal {
+		return "your personal skills"
+	}
+	return "a pack"
 }
 
 // pending lists the skills and bundles that are new or changed since the last
 // sync, and the ones that are no longer assigned.
 func (ps *packSync) pending() (install []packItem, removed []string) {
 	have := map[string]bool{}
+	for _, s := range ps.state.Assignments.PersonalSkills {
+		have["skill|"+s.ResourceID+"|"+s.Version] = true
+	}
 	for _, p := range ps.state.Assignments.Profiles {
 		for _, s := range p.Skills {
 			have["skill|"+s.ResourceID+"|"+s.Version] = true
@@ -148,6 +168,12 @@ func (ps *packSync) pending() (install []packItem, removed []string) {
 		}
 	}
 	now := map[string]bool{}
+	for _, s := range ps.assigned.PersonalSkills {
+		now["skill|"+s.ResourceID] = true
+		if !have["skill|"+s.ResourceID+"|"+s.Version] {
+			install = append(install, packItem{kind: "skill", name: s.Name, version: s.Version, resourceID: s.ResourceID, personal: true})
+		}
+	}
 	for _, p := range ps.assigned.Profiles {
 		for _, s := range p.Skills {
 			now["skill|"+s.ResourceID] = true
@@ -160,6 +186,11 @@ func (ps *packSync) pending() (install []packItem, removed []string) {
 			if !have["bundle|"+b.Name+"|"+b.Version] {
 				install = append(install, packItem{kind: "bundle", name: b.Name, version: b.Version, channel: b.Channel})
 			}
+		}
+	}
+	for _, s := range ps.state.Assignments.PersonalSkills {
+		if !now["skill|"+s.ResourceID] {
+			removed = append(removed, fmt.Sprintf("personal skill %s is gone from your account: remove it with `%s`", textsafe.Clean(s.Name), brand.Cmd("skill uninstall "+s.Name)))
 		}
 	}
 	for _, p := range ps.state.Assignments.Profiles {
@@ -181,7 +212,7 @@ func (ps *packSync) pending() (install []packItem, removed []string) {
 func (ps *packSync) preview(out io.Writer) {
 	install, removed := ps.pending()
 	for _, it := range install {
-		fmt.Fprintf(out, "[dry-run] would install %s %s %s from a pack\n", it.kind, textsafe.Clean(it.name), textsafe.Clean(it.version))
+		fmt.Fprintf(out, "[dry-run] would install %s %s %s from %s\n", it.kind, textsafe.Clean(it.name), textsafe.Clean(it.version), it.source())
 	}
 	for _, r := range removed {
 		fmt.Fprintln(out, r)
@@ -195,7 +226,7 @@ func (ps *packSync) preview(out io.Writer) {
 func (ps *packSync) apply(cmd *cobra.Command) error {
 	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	install, removed := ps.pending()
-	failed := 0
+	failed, failedPersonal := 0, 0
 	for _, it := range install {
 		var err error
 		if it.kind == "skill" {
@@ -205,10 +236,13 @@ func (ps *packSync) apply(cmd *cobra.Command) error {
 		}
 		if err != nil {
 			failed++
-			fmt.Fprintf(errOut, "warning: pack %s %s was not installed: %v\n", it.kind, textsafe.Clean(it.name), err)
+			if it.personal {
+				failedPersonal++
+			}
+			fmt.Fprintf(errOut, "warning: %s %s was not installed: %v\n", it.label(), textsafe.Clean(it.name), err)
 			continue
 		}
-		fmt.Fprintf(out, "Installed pack %s %s %s\n", it.kind, textsafe.Clean(it.name), textsafe.Clean(it.version))
+		fmt.Fprintf(out, "Installed %s %s %s\n", it.label(), textsafe.Clean(it.name), textsafe.Clean(it.version))
 	}
 	for _, r := range removed {
 		fmt.Fprintln(out, r)
@@ -217,7 +251,11 @@ func (ps *packSync) apply(cmd *cobra.Command) error {
 		fmt.Fprintf(out, "Connect %s: `%s` (%s)\n", textsafe.Clean(cr.Slug), brand.Cmd("connect "+cr.Slug), textsafe.Clean(cr.Reason))
 	}
 	if failed > 0 {
-		return &ExitError{Code: 1, Msg: fmt.Sprintf("%d pack item(s) were not installed; sync again to retry", failed)}
+		what := "pack"
+		if failedPersonal > 0 {
+			what = "pack or personal"
+		}
+		return &ExitError{Code: 1, Msg: fmt.Sprintf("%d %s item(s) were not installed; sync again to retry", failed, what)}
 	}
 	if ps.unchanged {
 		return nil

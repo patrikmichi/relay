@@ -61,6 +61,25 @@ holds, so the gateway reads and redacts it itself.
 own data directory and never follow a link out of it. `zuano doctor` lists which
 of those directories exist, without reading any session.
 
+## Personal skills
+
+A skill you add yourself is personal by default if you are a member, and
+organisational if you are an administrator. A personal skill is visible to you
+alone (administrators see only its name, size and date), passes the secret and
+code checks but needs no review, and counts against your own limit rather than
+the organisation's.
+
+| Command | |
+|---|---|
+| `zuano skill publish <dir> --scope personal\|org` | publish a skill; without `--scope` the gateway picks by role and the answer shows which |
+| `zuano skill list --personal [--json]` | your personal skills on the gateway, and where each stands in the organisation |
+| `zuano skill promote <skill-id>` | send a copy through the organisation's publish pipeline; the personal skill stays until the organisation's version is approved |
+| `zuano sync` | installs your personal skills for your agents, with the starter packs' (only your devices receive them); `--no-packs` skips both |
+
+`--scope` is for skills; an agent, an MCP server or a plugin is always
+organisational. A plan without private publishing refuses `promote` (exit 30),
+and the personal limit is `limit_reached` (exit 30).
+
 ## Exit statuses
 
 | Status | Meaning |

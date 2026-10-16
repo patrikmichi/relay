@@ -17,6 +17,8 @@ func SkillListCmd() *cobra.Command {
 		scopeFlag    string
 		provenance   bool
 		jsonFlag     bool
+		personal     bool
+		gatewayURL   string
 	)
 
 	cmd := &cobra.Command{
@@ -26,9 +28,15 @@ func SkillListCmd() *cobra.Command {
 provider, and scope. With --provenance, joins the manifest ledger to show
 where each skill was installed/migrated from (when zuano recorded it).
 
+--personal lists the skills only you can see on the gateway, with where each
+stands in your organisation; 'zuano sync' installs them.
+
 Scope 'project' is resolved relative to the current working directory only
 (no parent-directory search, unlike 'zuano skill migrate --from').`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if personal {
+				return listPersonalSkills(cmd, approvalFlags{gatewayURL: gatewayURL, jsonOut: jsonFlag})
+			}
 			return runSkillList(cmd, skillListOpts{provider: providerFlag, scope: scopeFlag, provenance: provenance, jsonOut: jsonFlag})
 		},
 	}
@@ -37,6 +45,8 @@ Scope 'project' is resolved relative to the current working directory only
 	cmd.Flags().StringVar(&providerFlag, "provider", "", fmt.Sprintf("Restrict to one provider: %s (default: all)", providerIDsOxford()))
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to list: user or project")
 	cmd.Flags().BoolVar(&provenance, "provenance", false, "Show where each skill was installed/migrated from")
+	cmd.Flags().BoolVar(&personal, "personal", false, "List your personal skills on the gateway instead of the installed ones")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for --personal (default: $ZUANO_URL, then the config file)")
 
 	return cmd
 }
