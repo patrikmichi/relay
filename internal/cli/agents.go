@@ -42,7 +42,7 @@ person, refused while ZUANO_AGENT is set (exit 10), and resume and revoke ask
 for a passkey confirmation (exit 14 when nobody can give it). A suspended,
 revoked or expired identity's own requests end with exit 33.`,
 	}
-	cmd.AddCommand(agentsListCmd(), agentsShowCmd(), agentsActivityCmd(), agentsStateCmd("suspend"), agentsStateCmd("resume"), agentsStateCmd("revoke"), agentsDevicesCmd(), agentsShadowCmd())
+	cmd.AddCommand(agentsListCmd(), agentsShowCmd(), agentsActivityCmd(), agentsStateCmd("suspend"), agentsStateCmd("resume"), agentsStateCmd("revoke"), agentsDevicesCmd(), agentsShadowCmd(), agentsQuarantineCmd())
 	return cmd
 }
 

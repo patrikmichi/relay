@@ -17,6 +17,7 @@ func SyncCmd() *cobra.Command {
 		o             agentSyncOpts
 		matrix        bool
 		noPacks       bool
+		noQuarantine  bool
 		hostLabelFlag string
 		firewallMode  string
 		moveSecrets   bool
@@ -131,6 +132,9 @@ Examples:
 				if ps != nil && !o.jsonOut {
 					ps.preview(out)
 				}
+				if !noQuarantine && !o.jsonOut {
+					quarantineSync(cmd, o.gatewayURL, true)
+				}
 				return nil
 			}
 			if err := confirmAgentWrite(cmd, run, brand.Cmd("sync"), o.yes); err != nil {
@@ -147,6 +151,9 @@ Examples:
 				label = &hostLabelFlag
 			}
 			deviceReporter(cmd, o.gatewayURL, label)
+			if !noQuarantine {
+				quarantineSync(cmd, o.gatewayURL, false)
+			}
 			if ps != nil {
 				return ps.apply(cmd)
 			}
@@ -165,6 +172,7 @@ Examples:
 	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
+	f.BoolVar(&noQuarantine, "no-quarantine", false, "Do not take out the MCP servers your organisation chose to quarantine (see `zuano agents quarantine`)")
 	f.BoolVar(&noPacks, "no-packs", false, "Do not fetch or write the rules, skills and bundles your organisation's starter packs assign")
 	f.StringVar(&hostLabelFlag, "host-label", "", "Name this machine goes by in the gateway's device list (default: its host name; give an empty value to send none); remembered for later syncs")
 	f.StringVar(&firewallMode, "firewall", "", "on routes the MCP servers zuano syncs through the firewall (local ones under `mcp wrap`, remote ones through the gateway) and remembers it; off goes back to the servers as installed")

@@ -1072,3 +1072,29 @@ this client's decisions. The refusal codes `spec_invalid`, `spec_unsupported`,
 | `GET /api/connectors/custom/{slug}/versions`, `POST /api/connectors/custom/{slug}/disable`, `GET /api/connectors/custom/{slug}/export` | `{"items": [{"version", "status", "at", "by"?}]}`; `{}`; the connector JSON |
 
 Pages the CLI opens (no API call): `/catalog/federated/{id}`.
+
+## Session trusts
+
+Bearer auth. The routes are the plan's; the shape of a grant is this client's
+decision. Revoking only tightens, so a bearer token may do it.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/approvals/session-grants?scope=mine\|org` | `{"grants": [{"id", "client", "session", "tool"?, "class"?, "constraint"?, "createdBy", "createdAt", "expiresAt", "uses"}]}`; `org` needs an administrator (403 is exit 10) |
+| `DELETE /api/approvals/session-grants/{id}` | `200` |
+| `POST /api/approvals/session-grants/revoke-all[?scope=org]` | `{}`; answers `{"revoked": N}` |
+
+## Shadow MCP quarantine
+
+Bearer auth. The plan names the policy action (`shadow_mcp.action: report |
+quarantine`) and the audit requirement; the routes and shapes are this client's
+decisions.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/agents/shadow-mcp/quarantine` | `{"action": "report\|quarantine", "entries": [{"agent", "scope": "user\|project", "name", "hash"?}]}`; `entries` is what an administrator approved with a passkey |
+| `POST /api/agents/shadow-mcp/quarantine/actions` | `{"installId", "actions": [{"agent", "scope", "name", "path": "~/...", "hash", "result": "quarantined\|restored\|managed\|not_found\|changed\|skipped", "detail"?}]}` |
+
+`hash` is the first 8 bytes, in hex, of the SHA-256 of the entry as the CLI reads
+it: the server's JSON (keys sorted, no whitespace) for a JSON config, its TOML
+tables for Codex. A listed entry whose local hash differs is not touched.

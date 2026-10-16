@@ -134,7 +134,7 @@ or from the `/approvals/<id>` path of the link.
 |---|---|
 | 0 | approved and the call ran |
 | 1 | the call failed after approval, the approval is unknown to this session, or an error such as a failed request |
-| 4 | a request hit zuano's time limit |
+| 17 | a request hit zuano's time limit |
 | 10 | denied, or turned off by policy (`reason: "policy_off"`) |
 | 11 | expired (nobody decided in 15 minutes) |
 | 12 | still pending: the call was held and not waited for, or the timeout ended first |
@@ -237,3 +237,19 @@ shows and links your chat accounts. See [chat.md](chat.md).
 | Variable | Purpose |
 |---|---|
 | `ZUANO_AGENT` | `1` selects the agent profile for this process; `zuano login` then signs it in |
+
+## Session trusts
+
+When a person approves a call they can also trust the same kind of call for the
+rest of that session for a while ("only this call", "trust this for the session"
+or "all writes on the service for the session"). That is decided on the approval
+page with a passkey; there is no command that creates a trust. These list and
+end them:
+
+| Command | |
+|---|---|
+| `zuano approvals trusts list [--org]` | active trusts: the agent, the tool or class of tool, what the trust is limited to, who gave it, when it ends and how often it was used; `--org` lists the whole organisation and needs an administrator (a 403 is exit 10) |
+| `zuano approvals trusts revoke <id>` | end one now; the next call of that kind needs an approval again |
+| `zuano approvals trusts revoke-all [--org] [--yes]` | end all yours, or all the organisation's |
+
+Ending a trust only tightens things, so an agent session may do it.

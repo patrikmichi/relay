@@ -125,7 +125,7 @@ wait exit status
   11  expired
   12  still pending when the timeout ended`,
 	}
-	cmd.AddCommand(approvalsListCmd(), approvalsShowCmd(), approvalsDecideCmd(true), approvalsDecideCmd(false), approvalsWaitCmd(), approvalsRoutesCmd())
+	cmd.AddCommand(approvalsListCmd(), approvalsShowCmd(), approvalsDecideCmd(true), approvalsDecideCmd(false), approvalsWaitCmd(), approvalsRoutesCmd(), approvalsTrustsCmd())
 	return cmd
 }
 
