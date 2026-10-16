@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zalando/go-keyring"
 
+	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
@@ -273,13 +274,41 @@ func TestTokensList_PrintsSessionWithoutTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tokens list: %v", err)
 	}
-	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "stored in system keychain"} {
+	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "GATEWAY_API_KEY (not stored by relay)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "keychain") {
+		t.Errorf("an API key was described as stored in the keychain:\n%s", out)
+	}
 	if strings.Contains(out, os.Getenv("GATEWAY_API_KEY")) {
 		t.Fatal("tokens list must never print the bearer token")
+	}
+}
+
+func TestTokensList_ClaimsTheKeychainOnlyForALoginSession(t *testing.T) {
+	srv := whoamiServer(t, http.StatusOK, map[string]any{"email": "offline-test@example.com", "services": []string{}, "issuedAt": ""}, nil)
+	withNoGateway(t)
+	t.Setenv("GATEWAY_API_KEY", "")
+	withLoggedInSession(t, srv.URL)
+
+	out, err := runCommand(t, TokensCmd(), "list", "--gateway-url", srv.URL)
+	if err != nil {
+		t.Fatalf("tokens list: %v", err)
+	}
+	if !strings.Contains(out, "stored in system keychain") {
+		t.Errorf("a login session should say it is in the keychain:\n%s", out)
+	}
+	if strings.Contains(out, "Issued at:") {
+		t.Errorf("an unknown issue time was printed:\n%s", out)
+	}
+}
+
+func TestProfileLabelDoesNotClaimApprovalsForAnAPIKey(t *testing.T) {
+	c := client.New("https://gateway.example.com", "key")
+	if got := profileLabel(c); strings.Contains(got, "wait for approval") || !strings.Contains(got, "GATEWAY_API_KEY") {
+		t.Errorf("label = %q", got)
 	}
 }
 

@@ -13,14 +13,15 @@ import (
 
 // profileLabel says which session a command ran as, and why.
 func profileLabel(c *client.Client) string {
-	label := "human (your own session; set RELAY_AGENT=1 for the agent profile)"
-	if c.Profile() == keychain.ProfileAgent {
-		label = "agent (RELAY_AGENT=1; writes wait for approval)"
-	}
+	// A GATEWAY_API_KEY is not a login session: relay cannot say whether the
+	// gateway treats it as a person's or an agent's, so it claims nothing.
 	if c.Email() == "" {
-		label += ", API key from GATEWAY_API_KEY"
+		return "API key from GATEWAY_API_KEY (relay does not know whether the gateway holds its writes for approval)"
 	}
-	return label
+	if c.Profile() == keychain.ProfileAgent {
+		return "agent (RELAY_AGENT=1; the gateway holds the writes of a session issued as an agent's for approval)"
+	}
+	return "human (your own session; set RELAY_AGENT=1 for the agent profile)"
 }
 
 // WhoamiCmd returns the `relay whoami` cobra command.

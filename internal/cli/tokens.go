@@ -80,12 +80,19 @@ func tokensListCmd() *cobra.Command {
 			} else {
 				fmt.Fprintln(cmd.OutOrStdout(), "Services:  all")
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Issued at: %s\n", info.IssuedAt)
+			if info.IssuedAt != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Issued at: %s\n", info.IssuedAt)
+			}
 			if info.ExpiresAt != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "Expires:   %s\n", info.ExpiresAt)
 			}
-			// Indicate token is stored in keychain (not printed for security)
-			fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
+			// The token value is never printed. Only a login session lives in
+			// the keychain; a GATEWAY_API_KEY is read from the environment.
+			if c.Email() == "" {
+				fmt.Fprintln(cmd.OutOrStdout(), "Token:     GATEWAY_API_KEY (not stored by relay)")
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
+			}
 			return nil
 		},
 	}
