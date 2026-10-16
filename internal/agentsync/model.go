@@ -20,6 +20,7 @@ type Kind string
 
 const (
 	KindMCP       Kind = "mcp"
+	KindEnv       Kind = "env"
 	KindHooks     Kind = "hooks"
 	KindRules     Kind = "rules"
 	KindCommands  Kind = "commands"
@@ -29,7 +30,7 @@ const (
 
 // FileKinds are the kinds this package writes itself; skills and subagents
 // go through the agentport engine.
-var FileKinds = []Kind{KindMCP, KindHooks, KindRules, KindCommands}
+var FileKinds = []Kind{KindMCP, KindEnv, KindHooks, KindRules, KindCommands}
 
 type AgentID string
 
@@ -159,6 +160,7 @@ type Command struct {
 // Bundle is everything to sync for one scope.
 type Bundle struct {
 	MCP      []MCPServer
+	Env      []EnvVar
 	Hooks    []Hook
 	Rules    []Rule
 	Commands []Command
@@ -168,6 +170,8 @@ func (b Bundle) count(k Kind) int {
 	switch k {
 	case KindMCP:
 		return len(b.MCP)
+	case KindEnv:
+		return len(b.Env)
 	case KindHooks:
 		return len(b.Hooks)
 	case KindRules:

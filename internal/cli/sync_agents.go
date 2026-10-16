@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -55,14 +57,14 @@ func parseSyncKinds(values []string) (syncKinds, error) {
 		for _, v := range strings.Split(raw, ",") {
 			switch v = strings.TrimSpace(v); v {
 			case "":
-			case "mcp", "hooks", "rules", "commands":
+			case "mcp", "env", "hooks", "rules", "commands":
 				k.file = append(k.file, agentsync.Kind(v))
 			case "skills":
 				k.skills = true
 			case "subagents", "agents":
 				k.subagents = true
 			default:
-				return k, fmt.Errorf("unknown artifact kind %q (mcp, hooks, rules, commands, skills, subagents)", v)
+				return k, fmt.Errorf("unknown artifact kind %q (mcp, env, hooks, rules, commands, skills, subagents)", v)
 			}
 		}
 	}
@@ -138,6 +140,51 @@ func gatewayMCPServer(mode string) (*agentsync.MCPServer, error) {
 	return s, nil
 }
 
+// agentEnvVar selects the agent profile in relay itself: the CLI session
+// marked as an agent's, held to approvals, instead of the person's own.
+const agentEnvVar = "RELAY_AGENT"
+
+// markRelayServers returns servers with RELAY_AGENT=1 in the environment of
+// every stdio server that runs relay, so a relay started by an agent uses the
+// agent profile. The saved source is left as the user wrote it.
+func markRelayServers(servers []agentsync.MCPServer) []agentsync.MCPServer {
+	out := make([]agentsync.MCPServer, len(servers))
+	for i, s := range servers {
+		out[i] = s
+		name := strings.TrimSuffix(filepath.Base(s.Command), ".exe")
+		if s.Command == "" || (name != "relay" && name != "gw") {
+			continue
+		}
+		if _, set := s.Env[agentEnvVar]; set {
+			continue
+		}
+		env := map[string]string{agentEnvVar: "1"}
+		maps.Copy(env, s.Env)
+		out[i].Env = env
+	}
+	return out
+}
+
+// agentProfileWarnings names what would leave an agent outside the agent
+// profile: a gateway entry that sends an unmarked API key, and environment
+// settings that select an agent session which does not exist yet.
+func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
+	var warns []string
+	if slices.Contains(kinds.file, agentsync.KindMCP) {
+		for _, s := range user.MCP {
+			if s.Name == gatewayServerName && s.BearerEnv != "" {
+				warns = append(warns, fmt.Sprintf("the gateway MCP entry authenticates with $%s, which is not marked as an agent's, so its calls are not held for approval; use --mcp-auth oauth", s.BearerEnv))
+			}
+		}
+	}
+	if slices.Contains(kinds.file, agentsync.KindEnv) && len(user.Env) > 0 {
+		if cfg, err := config.Load(); err == nil && cfg.AgentEmail == "" {
+			warns = append(warns, "agents will run relay as the agent profile (RELAY_AGENT=1) but no agent session exists; run `relay login --agent`")
+		}
+	}
+	return warns
+}
+
 func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth string, override map[agentsync.Scope]agentsync.MCPSource) (map[agentsync.Scope]agentsync.Bundle, []string, error) {
 	bundles := map[agentsync.Scope]agentsync.Bundle{}
 	var warns []string
@@ -162,7 +209,10 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth string, ov
 				b.MCP = append(b.MCP, *gw)
 			}
 		}
-		b.MCP = append(b.MCP, src.Servers...)
+		b.MCP = append(b.MCP, markRelayServers(src.Servers)...)
+		if scope == agentsync.ScopeUser {
+			b.Env = []agentsync.EnvVar{{Name: agentEnvVar, Value: "1"}}
+		}
 		bundles[scope] = b
 	}
 	return bundles, warns, nil
@@ -210,6 +260,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns
 	if len(kinds.file) > 0 {
 		run.plan, err = agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force})
@@ -361,7 +412,7 @@ func printSyncMatrix(out io.Writer) error {
 			c.project = mark
 		}
 	}
-	kinds := []agentsync.Kind{agentsync.KindMCP, agentsync.KindHooks, agentsync.KindRules, agentsync.KindCommands, agentsync.KindSkills, agentsync.KindSubagents}
+	kinds := []agentsync.Kind{agentsync.KindMCP, agentsync.KindEnv, agentsync.KindHooks, agentsync.KindRules, agentsync.KindCommands, agentsync.KindSkills, agentsync.KindSubagents}
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 	header := "AGENT"
 	for _, k := range kinds {

@@ -91,6 +91,16 @@ Sources
                 the other agents through the same engine as 'relay skill
                 migrate' and 'relay agent migrate'
 
+Agent profile
+  The sync also sets RELAY_AGENT=1 where an agent has an environment setting
+  (Claude Code settings.json "env", Codex shell_environment_policy.set; the
+  user scope, kind env) and in the environment of stdio MCP servers that run
+  relay. A relay the agent starts then uses the agent profile, whose writes
+  wait for approval, instead of your own session. Sign it in with 'relay login
+  --agent'. A login without --agent on the same machine stays unrestricted for
+  anything that can run it: this narrows what agents do by default, it is not
+  a sandbox. Leave the env kind out (--kind mcp,rules) to keep the old behaviour.
+
 Entries relay writes are marked (a hash ledger for JSON, comment markers for
 TOML, Markdown and owned files) so a later sync can update or remove them.
 Entries you wrote are never replaced unless --force is given. Every write
@@ -145,7 +155,7 @@ Examples:
 	f := cmd.Flags()
 	f.StringSliceVar(&o.to, "to", nil, "Agents to sync: claude, codex, cursor, opencode, gemini-cli, windsurf, cline, copilot, or all (default: detected agents)")
 	f.StringSliceVar(&o.scopes, "scope", nil, "user, project or all (default: user; project uses the current directory)")
-	f.StringSliceVar(&o.kinds, "kind", nil, "Limit to mcp, hooks, rules, commands, skills, subagents (default: all)")
+	f.StringSliceVar(&o.kinds, "kind", nil, "Limit to mcp, env, hooks, rules, commands, skills, subagents (default: all)")
 	f.StringVar(&o.from, "from", "", "Provider whose skills and subagents are copied to the other agents (default: claude)")
 	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto (API key when $GATEWAY_API_KEY is set, else OAuth), oauth or api-key")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")

@@ -14,6 +14,7 @@ type Agent struct {
 	Name     string
 	Detect   func(Env) bool
 	MCP      builder[MCPServer]
+	Env      builder[EnvVar]
 	Hooks    builder[Hook]
 	Rules    builder[Rule]
 	Commands builder[Command]
@@ -37,12 +38,12 @@ func Agents() []Agent {
 			Detect: func(e Env) bool {
 				return dirExists(filepath.Join(e.Home, ".claude")) || fileExists(filepath.Join(e.Home, ".claude.json"))
 			},
-			MCP: claudeMCP, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
+			MCP: claudeMCP, Env: claudeEnv, Hooks: claudeHooks, Rules: claudeRules, Commands: claudeCommands,
 		},
 		{
 			ID: Codex, Name: "Codex",
 			Detect: func(e Env) bool { return dirExists(filepath.Join(e.Home, ".codex")) },
-			MCP:    codexMCP, Hooks: codexHooks, Rules: codexRules, Commands: codexCommands,
+			MCP:    codexMCP, Env: codexEnv, Hooks: codexHooks, Rules: codexRules, Commands: codexCommands,
 		},
 		{
 			ID: Cursor, Name: "Cursor",
@@ -114,6 +115,8 @@ func Support(env Env, id AgentID, kind Kind, scope Scope) string {
 	switch kind {
 	case KindMCP:
 		reason = probe(a.MCP, env, scope)
+	case KindEnv:
+		reason = probe(a.Env, env, scope)
 	case KindHooks:
 		reason = probe(a.Hooks, env, scope)
 	case KindRules:

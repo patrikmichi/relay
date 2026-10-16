@@ -15,3 +15,8 @@ args = ["-y", "@acme/docs-mcp"]
 [mcp_servers.docs.env]
 DOCS_REGION = "eu"
 # <<< relay-managed:end mcp <<<
+
+# >>> relay-managed:begin env >>>
+[shell_environment_policy.set]
+RELAY_AGENT = "1"
+# <<< relay-managed:end env <<<

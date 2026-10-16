@@ -52,6 +52,8 @@ func Build(env Env, bundles map[Scope]Bundle, opts Options) (*Plan, error) {
 				switch kind {
 				case KindMCP:
 					ops, why = runBuilder(a.MCP, env, scope, b.MCP)
+				case KindEnv:
+					ops, why = runBuilder(a.Env, env, scope, b.Env)
 				case KindHooks:
 					ops, why = runBuilder(a.Hooks, env, scope, b.Hooks)
 				case KindRules:
@@ -100,7 +102,7 @@ var (
 func Matrix(env Env) []MatrixRow {
 	var rows []MatrixRow
 	for _, a := range Agents() {
-		for _, kind := range []Kind{KindMCP, KindHooks, KindRules, KindCommands, KindSkills, KindSubagents} {
+		for _, kind := range []Kind{KindMCP, KindEnv, KindHooks, KindRules, KindCommands, KindSkills, KindSubagents} {
 			for _, scope := range []Scope{ScopeUser, ScopeProject} {
 				row := MatrixRow{Agent: a.ID, Kind: kind, Scope: scope, Supported: true}
 				switch kind {

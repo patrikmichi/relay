@@ -53,6 +53,7 @@ func fixtureBundle() Bundle {
 			{Name: "relay", URL: "https://gateway.example.com/api/mcp", BearerEnv: "GATEWAY_API_KEY"},
 			{Name: "docs", Command: "npx", Args: []string{"-y", "@acme/docs-mcp"}, Env: map[string]string{"DOCS_REGION": "eu"}},
 		},
+		Env: []EnvVar{{Name: "RELAY_AGENT", Value: "1"}},
 		Hooks: []Hook{
 			{Event: EventPreToolUse, Matcher: "Bash", Command: "/opt/relay/guard.sh", Timeout: 10},
 			{Event: EventSessionStart, Command: "/opt/relay/context.sh"},

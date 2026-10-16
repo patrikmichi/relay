@@ -83,7 +83,7 @@ func TestUnsupportedKindsAreReported(t *testing.T) {
 
 func TestMatrixCoversEveryAgentKindAndScope(t *testing.T) {
 	rows := Matrix(newEnv(t))
-	if want := len(Agents()) * 6 * 2; len(rows) != want {
+	if want := len(Agents()) * 7 * 2; len(rows) != want {
 		t.Fatalf("matrix has %d rows, want %d", len(rows), want)
 	}
 	byKey := map[string]MatrixRow{}
@@ -92,6 +92,10 @@ func TestMatrixCoversEveryAgentKindAndScope(t *testing.T) {
 	}
 	for key, supported := range map[string]bool{
 		"claude/hooks/user":       true,
+		"claude/env/user":         true,
+		"claude/env/project":      false,
+		"codex/env/user":          true,
+		"cursor/env/user":         false,
 		"cline/hooks/user":        false,
 		"cline/subagents/user":    false,
 		"windsurf/subagents/user": false,
