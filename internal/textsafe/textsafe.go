@@ -19,6 +19,18 @@ func Clean(s string) string {
 	}, s)
 }
 
+// Strict is Clean for text written by a party you do not trust, such as an
+// agent card: it also removes the format characters that rewrite what a line
+// seems to say (bidirectional overrides, zero-width and tag characters).
+func Strict(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // Block is Clean for multi-line text: it keeps newlines and tabs.
 func Block(s string) string {
 	return strings.Map(func(r rune) rune {

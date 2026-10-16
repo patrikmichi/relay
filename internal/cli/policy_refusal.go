@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 
+	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
@@ -21,6 +22,13 @@ var refusalCodes = map[string]int{
 	"tool_definition_changed":    exitToolChanged,
 	"upstream_quarantined":       exitQuarantined,
 	"registry_server_deleted":    exitQuarantined,
+	"agent_not_pinned":           exitDenied,
+	"a2a_dlp_blocked":            exitDenied,
+	"approval_denied":            exitDenied,
+	"approval_expired":           exitExpired,
+	"identity_suspended":         client.ExitSuspended,
+	"identity_revoked":           client.ExitSuspended,
+	"identity_expired":           client.ExitSuspended,
 	"a2a_loop":                   exitA2AChainRefused,
 	"a2a_depth_exceeded":         exitA2AChainRefused,
 	"a2a_chain_limit":            exitA2AChainRefused,
@@ -58,6 +66,10 @@ func policyRefusal(body []byte, env *mcpEnvelope) error {
 			continue
 		}
 		code, ok := refusalCodes[doc.Reason]
+		if !ok {
+			// A REST refusal may carry the reason as its error code.
+			code, ok = refusalCodes[doc.Error]
+		}
 		if !ok {
 			continue
 		}

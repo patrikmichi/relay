@@ -743,6 +743,43 @@ Source: private networking plan (8.2 routes, 8.3 commands, 6.5 errors). The
 response wrappers, the token and binding request fields and the bindings
 `DELETE` query are this client's decisions.
 
+## Agent-to-agent
+
+Bearer auth. The plan names the registry, chain, graph and explain routes; it
+does not name a route that sends a message (the A2A proxy endpoint needs the
+organisation slug), so `a2a call` uses the one below, which is this client's
+decision. A refusal is `{"error": REASON, "message"}` or a task with `reason`;
+the reasons that have exit statuses are in the exit-code table (50 to 53, 10, 11,
+33). A held call answers `202` with the held-call document (exit 12).
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/a2a/agents?kind=&external=1` | `{"agents": [{"id", "slug", "name", "kind": "hosted\|org_service\|external", "status", "card_state", "signature", "pending_changes", "exposure", "skills": [{"id", "risk", "classification_source", "description"}], "on_card_change", "endpoint", "residency", "dlp_categories"}]}` |
+| `GET /api/a2a/agents/{slug}`, `GET /api/a2a/agents/{slug}/changes` | `{"agent": {...}}`; `{"changes": [{"id", "severity", "status", "at", "summary"}]}` |
+| `POST /api/a2a/agents` | `{"kind": "external\|org_service", "cardUrl", "auth": "none\|stored\|per_user"}`; `201` `{"agent": {"slug"}, "review_url"}` (a path or an address on the gateway) |
+| `GET /api/a2a/agents/{slug}/card?version=pinned\|live` | `{"card": {...}}` |
+| `POST /api/a2a/agents/{slug}/messages` | `{"skill", "message", "context_id"?, "wait_seconds"?, "files"?: [{"param", "file_id"}]}`; answers `{"task": TASK}`; with `Accept: text/event-stream` a stream of `data: {"task": TASK, "final": bool}` events |
+| `GET /api/a2a/chains?origin=me&status=&agent=` | `{"chains": [CHAIN]}` |
+| `GET /api/a2a/chains/{id}` | `{"chain": CHAIN}` |
+| `POST /api/a2a/chains/{id}/kill` | `{"reason"}`; `200`. Allowed for the origin, an administrator and an agent on its own chain |
+| `GET /api/a2a/graph?from=&to=&window=30d` | `{"nodes": [{"id", "name", "kind", "external"}], "edges": [{"from", "to", "allowed", "rule", "calls", "refusals", "approvals", "spend_eur"}]}` |
+| `GET /api/a2a/explain?from=&to=&skill=` | `{"decision": {"result": "allow\|deny\|approval", "reasons", "approvals", "ceilings", "edge": {"id", "file", "line"}}}` |
+
+```json
+TASK = {"id", "context_id"?, "state": "WORKING|INPUT_REQUIRED|AUTH_REQUIRED|COMPLETED|FAILED|CANCELED|REJECTED",
+        "reason"?, "message"?, "artifacts"?: [{"name", "parts": [{"text"} | {"file_id", "name"}]}],
+        "approval"?: {"approval_id", "approval_url", "effect": {"service", "tool", "risk"}}, "connect_url"?}
+CHAIN = {"id", "status", "origin", "depth", "started_at", "audit": {"verified"},
+         "budget": {"limits": {"tokens", "cost_eur", "tool_calls"}, "used": {...}},
+         "hops": [{"id", "parent", "depth", "caller", "callee", "skill", "external", "state", "duration_ms",
+                   "tokens", "cost_eur", "dlp_findings", "injection_flags",
+                   "effects": [{"service", "tool", "risk", "approval_id", "outcome"}]}]}
+```
+
+Pages the CLI opens (no API call): `/agents/a2a/{slug}`. Text from cards and
+agents is printed with control, bidirectional and zero-width characters
+removed.
+
 ## Connector agent
 
 `zuano-connector` speaks to the gateway's agent-facing routes and to the

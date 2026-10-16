@@ -9,6 +9,17 @@ func TestCleanDropsC0AndC1Controls(t *testing.T) {
 	}
 }
 
+func TestStrictAlsoDropsFormatCharacters(t *testing.T) {
+	override, zeroWidth, tag := string(rune(0x202e)), string(rune(0x200b)), string(rune(0xe0041))
+	in := "a" + override + "b" + zeroWidth + "c" + tag + "d\x1b[2Jeé"
+	if got := Strict(in); got != "abcd[2Jeé" {
+		t.Fatalf("Strict = %q", got)
+	}
+	if Clean(in) == Strict(in) {
+		t.Fatal("Clean must keep format characters")
+	}
+}
+
 func TestBlockKeepsNewlinesAndTabs(t *testing.T) {
 	if got := Block("a\tb\nc\x1bd\u009be"); got != "a\tb\ncde" {
 		t.Fatalf("Block = %q", got)
