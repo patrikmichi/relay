@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -26,9 +27,12 @@ func openIfInteractive(cmd *cobra.Command, link string, noBrowser bool) bool {
 // it can, and otherwise prints the link with a QR code, so a phone with the
 // person's passkey can take over. It reports whether a browser was opened.
 func showLink(cmd *cobra.Command, link string, noBrowser bool, hint string) bool {
-	out := cmd.OutOrStdout()
+	return presentLink(cmd.OutOrStdout(), link, canOpenBrowser(cmd, noBrowser), hint)
+}
+
+func presentLink(out io.Writer, link string, tryBrowser bool, hint string) bool {
 	link = textsafe.Clean(link)
-	if canOpenBrowser(cmd, noBrowser) {
+	if tryBrowser {
 		err := openBrowserURL(link)
 		if err == nil {
 			fmt.Fprintf(out, "Opened %s\n%s.\n", link, hint)
