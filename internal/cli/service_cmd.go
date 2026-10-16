@@ -259,7 +259,7 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	if held == nil && envErr == nil && env.Result != nil {
 		held = pendingFromResult(env.Result)
 	}
-	if jsonOut && !(held != nil && waiting) {
+	if jsonOut && (held == nil || !waiting) {
 		fmt.Fprintln(out, string(respBody))
 	}
 	if held != nil {
