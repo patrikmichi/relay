@@ -461,7 +461,7 @@ denied, 11 expired, 12 still pending when the timeout ended.`,
 		},
 	}
 	f.bind(cmd, "Print the last response body unchanged")
-	cmd.Flags().StringVar(&timeout, "timeout", strconv.Itoa(defaultWaitSeconds), "How long to wait, in seconds or as a duration such as 90s or 5m; 0 asks once")
+	cmd.Flags().StringVar(&timeout, "wait-timeout", strconv.Itoa(defaultWaitSeconds), "How long to wait, in seconds or as a duration such as 90s or 5m; 0 asks once")
 	return cmd
 }
 

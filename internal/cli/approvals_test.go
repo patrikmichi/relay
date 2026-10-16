@@ -262,7 +262,7 @@ func TestApprovalsWait_PrintsTheResultOfAnApprovedCall(t *testing.T) {
 		),
 	})
 
-	out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--timeout", "60")
+	out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--wait-timeout", "60")
 	if err != nil {
 		t.Fatalf("exit %d: %v", exitCodeOf(err), err)
 	}
@@ -295,7 +295,7 @@ func TestApprovalsWait_ExitCodes(t *testing.T) {
 			approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 				"POST /api/approvals/apr_1/await": awaitHandler(tc.reply),
 			})
-			out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--timeout", tc.timeout)
+			out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--wait-timeout", tc.timeout)
 			if got := exitCodeOf(err); got != tc.code {
 				t.Fatalf("exit code = %d (%v), want %d", got, err, tc.code)
 			}
@@ -318,7 +318,7 @@ func TestApprovalsWait_JSONPrintsTheBodyUnchangedAndKeepsTheExitCode(t *testing.
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 		"POST /api/approvals/apr_1/await": awaitHandler(denied),
 	})
-	out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--json", "--timeout", "0")
+	out, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--json", "--wait-timeout", "0")
 	if strings.TrimSpace(out) != denied || exitCodeOf(err) != exitDenied {
 		t.Errorf("output %q, exit %d (%v)", out, exitCodeOf(err), err)
 	}
@@ -331,7 +331,7 @@ func TestApprovalsWait_HTTPFailuresExitOne(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 		"POST /api/approvals/apr_1/await": reply(500, `{"ok":false,"error":"tool execution failed"}`),
 	})
-	_, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--timeout", "0")
+	_, err := runCommand(t, ApprovalsCmd(), "wait", "apr_1", "--wait-timeout", "0")
 	if exitCodeOf(err) != 1 || err == nil || !strings.Contains(err.Error(), "HTTP 500") {
 		t.Errorf("exit %d, err %v", exitCodeOf(err), err)
 	}

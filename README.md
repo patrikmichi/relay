@@ -459,7 +459,7 @@ Provider formats were checked against [Codex custom agents](https://learn.chatgp
 `relay authorize <service> --scope <tool>` requests access to gateway tools.
 Repeat `--scope` for multiple tools and use `--account` when selecting a linked
 account. The command polls for approved grants and required credentials, with a
-default timeout of ten minutes (`--timeout`, maximum thirty minutes). Tool grants
+default timeout of ten minutes (`--wait-timeout`, maximum thirty minutes). Tool grants
 do not verify the upstream provider's OAuth scopes; connect the required account
 in the gateway.
 

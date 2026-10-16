@@ -116,13 +116,12 @@ with `--wait`. An outcome that was printed adds no error message of its own.
 | `relay approvals show <id> [--json]` | `GET /api/approvals/{id}`: the approval and a preview of its arguments |
 | `relay approvals approve <id> [--grant MINUTES] [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/approve` |
 | `relay approvals deny <id> [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/deny` |
-| `relay approvals wait <id> [--timeout SECONDS] [--json]` | `POST /api/approvals/{id}/await`, repeated while the status is `pending` |
+| `relay approvals wait <id> [--wait-timeout SECONDS] [--json]` | `POST /api/approvals/{id}/await`, repeated while the status is `pending` |
 
 `--json` prints the response body unchanged. `--grant` (1 to 480) applies to a
 write approval: it also lets the same agent session write to the service for
-that long. `wait --timeout` takes seconds or a duration (`0` asks once; the
-default is 300 seconds) and shadows the root `--timeout`, which limits a single
-request.
+that long. `wait --wait-timeout` takes seconds or a duration (`0` asks once; the
+default is 300 seconds). The root `--timeout` limits a single request.
 
 Deciding needs an org owner, admin or listed approver with an unmarked
 session. `approve` and `deny` refuse the agent profile before sending anything,

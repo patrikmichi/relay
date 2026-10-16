@@ -49,7 +49,7 @@ func AuthorizeCmd() *cobra.Command {
 			return fmt.Errorf("at least one --scope gateway tool name is required")
 		}
 		if timeout <= 0 || timeout > 30*time.Minute {
-			return fmt.Errorf("--timeout must be greater than zero and at most 30m")
+			return fmt.Errorf("--wait-timeout must be greater than zero and at most 30m")
 		}
 		scopes = uniqueSorted(scopes)
 		request := serviceAuthorizationRequest{args[0], account, scopes}
@@ -108,7 +108,7 @@ func AuthorizeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&gateway, "gateway-url", "", "Gateway URL override")
 	cmd.Flags().StringVar(&account, "account", "", "Account connection label")
 	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "Gateway tool name to authorize (repeatable or comma-separated)")
-	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "Maximum time to wait for approval and account connection")
+	cmd.Flags().DurationVar(&timeout, "wait-timeout", 10*time.Minute, "Maximum time to wait for approval and account connection")
 	return cmd
 }
 
