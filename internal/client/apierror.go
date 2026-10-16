@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
@@ -156,7 +157,7 @@ func (e *StepUpRequiredError) Error() string {
 type ReauthRequiredError struct{}
 
 func (*ReauthRequiredError) Error() string {
-	return "the gateway no longer accepts this session: run `relay login` to sign in again"
+	return "the gateway no longer accepts this session: run `" + brand.Cmd("login") + "` to sign in again"
 }
 
 // refusalBody is the union of the fields the gateway's refusals carry. Number

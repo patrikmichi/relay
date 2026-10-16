@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
@@ -100,7 +101,7 @@ func handlePending(parent context.Context, c *client.Client, p *pendingApproval,
 				fmt.Fprintln(out, "Personal CLI sessions follow the same approvals as agents; only a browser session runs writes unasked.")
 			}
 			fmt.Fprintf(out, "  approval: %s\n  call:     %s %s\n  risk:     %s\n  expires:  %s\n", p.ApprovalID, p.Service, p.Tool, p.Risk, p.ExpiresAt)
-			fmt.Fprintf(out, "Decide it with `relay approvals approve %s` (opens the approval page), then collect the result with `relay approvals wait %s`, or repeat the call with --wait.\n", p.ApprovalID, p.ApprovalID)
+			fmt.Fprintf(out, "Decide it with `%s` (opens the approval page), then collect the result with `%s`, or repeat the call with --wait.\n", brand.Cmd("approvals approve "+p.ApprovalID), brand.Cmd("approvals wait "+p.ApprovalID))
 		}
 		return &ExitError{Code: exitPending}
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
@@ -115,7 +116,7 @@ func handleStartedJob(parent context.Context, c *client.Client, j *startedJob, j
 	if !o.wait {
 		if !jsonOut {
 			fmt.Fprintf(out, "Started on the gateway: %s (%s).\n", textsafe.Clean(j.pollID()), textsafe.Clean(j.Status))
-			fmt.Fprintf(out, "Follow it with `relay runs show %s`, or repeat the call with --wait.\n", textsafe.Clean(j.pollID()))
+			fmt.Fprintf(out, "Follow it with `%s`, or repeat the call with --wait.\n", brand.Cmd("runs show "+textsafe.Clean(j.pollID())))
 		}
 		return nil
 	}
@@ -410,7 +411,7 @@ func runsRetryCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !strings.HasPrefix(args[0], jobIDPrefix) {
-				return errors.New("retry takes a job id (job_...); find it with `relay runs list --status dead`")
+				return errors.New("retry takes a job id (job_...); find it with `" + brand.Cmd("runs list --status dead") + "`")
 			}
 			c, err := approvalsClient(f.gatewayURL)
 			if err != nil {

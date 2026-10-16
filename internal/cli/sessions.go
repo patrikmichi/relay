@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
@@ -139,7 +140,7 @@ func sessionsRevokeAllCmd() *cobra.Command {
 				printRaw(cmd.OutOrStdout(), raw)
 				return nil
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Signed out everywhere. Run `relay login` to sign in again.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Signed out everywhere. Run `"+brand.Cmd("login")+"` to sign in again.")
 			return nil
 		},
 	}
