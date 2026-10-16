@@ -372,7 +372,7 @@ func TestPluginInstall_GeminiAndCodexUseTheGitMirrorThroughTheCredentialHelper(t
 		t.Fatalf("ran %+v", *ran)
 	}
 	gem := (*ran)[0]
-	if gem.name != "gemini" || strings.Join(gem.args, " ") != "extensions install "+g.srv.URL+"/m/acme/git/toolkit.git --ref stable" {
+	if gem.name != "gemini" || strings.Join(gem.args, " ") != "extensions install "+g.srv.URL+"/m/acme/git/toolkit.git --ref stable --consent" {
 		t.Errorf("gemini ran %+v", gem)
 	}
 	env := strings.Join(gem.env, "\n")
@@ -381,13 +381,54 @@ func TestPluginInstall_GeminiAndCodexUseTheGitMirrorThroughTheCredentialHelper(t
 			t.Errorf("git env lacks %q:\n%s", want, env)
 		}
 	}
-	if strings.Join((*ran)[1].args, " ") != "plugin marketplace add "+g.srv.URL+"/m/acme/git/stable.git" || strings.Join((*ran)[2].args, " ") != "plugin install toolkit@zuano-acme" {
+	if strings.Join((*ran)[1].args, " ") != "plugin marketplace add "+g.srv.URL+"/m/acme/git/stable.git" || strings.Join((*ran)[2].args, " ") != "plugin add toolkit@zuano-acme" {
 		t.Errorf("codex ran %+v %+v", (*ran)[1], (*ran)[2])
 	}
 
 	g.gitMirror = false
 	if out, err := runCommand(t, PluginCmd(), "install", "toolkit", "--to", "codex", "--allow-hooks"); err == nil || !strings.Contains(out, "git mirror is not enabled") {
 		t.Errorf("no mirror: %v\n%s", err, out)
+	}
+}
+
+func TestPluginInstall_CodexRemovesWithPluginRemoveAndClineInstallsFromADirectory(t *testing.T) {
+	newPluginGW(t)
+	ran := fakeAgentBinaries(t, "codex", "cline")
+	var clineDir string
+	old := runAgentBinary
+	runAgentBinary = func(ctx context.Context, env []string, out io.Writer, name string, args ...string) error {
+		if name == "cline" {
+			clineDir = args[len(args)-1]
+			if data, err := os.ReadFile(filepath.Join(clineDir, "skills", "triage", "SKILL.md")); err != nil || string(data) != testSkill {
+				t.Errorf("cline was not given the unpacked package: %v %q", err, data)
+			}
+		}
+		return old(ctx, env, out, name, args...)
+	}
+	t.Cleanup(func() { runAgentBinary = old })
+
+	if out, err := runCommand(t, PluginCmd(), "install", "toolkit", "--to", "codex,cline", "--allow-hooks"); err != nil {
+		t.Fatalf("err %v\n%s", err, out)
+	}
+	var cline *ranCommand
+	for i := range *ran {
+		if (*ran)[i].name == "cline" {
+			cline = &(*ran)[i]
+		}
+	}
+	if cline == nil || strings.Join(cline.args[:2], " ") != "plugin install" || clineDir == "" {
+		t.Fatalf("cline ran %+v", cline)
+	}
+	if _, err := os.Stat(clineDir); err == nil {
+		t.Error("the unpacked package was left behind")
+	}
+
+	*ran = nil
+	if out, err := runCommand(t, PluginCmd(), "remove", "toolkit", "--to", "codex,cline"); err != nil || !strings.Contains(out, "Cline has no command to remove toolkit") && !strings.Contains(out, "Removed toolkit from cline") {
+		t.Fatalf("remove: %v\n%s", err, out)
+	}
+	if len(*ran) != 1 || (*ran)[0].name != "codex" || strings.Join((*ran)[0].args, " ") != "plugin remove toolkit@zuano-acme" {
+		t.Errorf("remove ran %+v", *ran)
 	}
 }
 

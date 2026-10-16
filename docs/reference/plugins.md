@@ -57,20 +57,44 @@ Cline `cline`.
 | Agent | Install | Remove |
 |---|---|---|
 | Claude Code | the marketplace is added to `~/.claude/settings.json` (`extraKnownMarketplaces`, url source, `headersHelper` = `zuano auth header --json`), then `claude plugin install <name>@<marketplace>` | `claude plugin uninstall <name>@<marketplace>` |
-| Codex | `codex plugin marketplace add <git mirror>`, then `codex plugin install <name>@<marketplace>` | `codex plugin uninstall <name>` |
-| Copilot CLI | the same with `copilot` | `copilot plugin uninstall <name>` |
+| Codex | `codex plugin marketplace add <git mirror>`, then `codex plugin add <name>@<marketplace>` | `codex plugin remove <name>@<marketplace>` |
+| Copilot CLI | `copilot plugin marketplace add <git mirror>`, then `copilot plugin install <name>@<marketplace>` | `copilot plugin uninstall <name>` |
 | VS Code | the git mirror is added to `chat.plugins.marketplaces` in the user settings (comments kept); VS Code installs from its plugins view | forgotten only |
 | Cursor | the verified package is unpacked to `~/.cursor/plugins/local/<name>` | the files zuano wrote, if unchanged |
-| Gemini CLI | `gemini extensions install <git mirror>/git/<name>.git --ref <channel>` | `gemini extensions uninstall <name>` |
+| Gemini CLI | `gemini extensions install <git mirror>/git/<name>.git --ref <channel> --consent` (`--consent` because the commands were already listed and approved here) | `gemini extensions uninstall <name>` |
 | OpenCode | the feed's npm scope and a feed key in `~/.config/opencode/.npmrc`, the package added to `plugin` in `opencode.json[c]`, and the parts OpenCode's package cannot carry expanded | the config entry and the expanded parts |
-| Cline | `cline plugin install <verified archive>` when `cline` is on PATH, and the parts it cannot carry expanded; otherwise expanded only | `cline plugin uninstall <name>` and the expanded parts |
+| Cline | the verified package unpacked to a temporary directory and `cline plugin install <directory>` (Cline copies it into its store) when `cline` is on PATH, plus the parts it cannot carry expanded; otherwise expanded only | Cline documents no uninstall command: you delete it from Cline's plugin store; zuano forgets it and removes the expanded parts |
 | Windsurf | expanded only | the expanded parts |
 
 The git mirror is used with git's credential helper set for the gateway's `/m/`
 paths only, through environment variables on the one command, so your git
 configuration is not touched (`plugin feeds setup --to vscode` sets it globally,
-because VS Code runs git itself). The exact commands above are what zuano runs;
-an agent version whose CLI differs needs the matching change.
+because VS Code runs git itself).
+
+### Sources for the agent commands
+
+Checked against the vendors' documentation on 2026-10-16:
+
+- Codex: `codex plugin marketplace add <source>`, `codex plugin add
+  <plugin[@marketplace]>` and `codex plugin remove <plugin[@marketplace]>` —
+  <https://developers.openai.com/codex/cli/reference> (`codex plugin`) and
+  <https://developers.openai.com/codex/plugins>.
+- Copilot CLI: `copilot plugin marketplace add` (accepts `OWNER/REPO`, a local
+  path or a git URL), `copilot plugin install PLUGIN@MARKETPLACE` and `copilot
+  plugin uninstall PLUGIN` —
+  <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing>.
+- Gemini CLI: `gemini extensions install <source> [--ref <ref>] [--consent]`
+  and `gemini extensions uninstall <name...>` —
+  <https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md>.
+  The documentation names a GitHub URL or local path as the source; a git URL
+  on another host is expected to work through git but is not documented.
+- Cline: `cline plugin install <url | git URL[@ref] | npm:pkg | local path>`,
+  where a local directory with a `package.json` is copied into the plugin
+  store; no uninstall command is documented —
+  <https://docs.cline.bot/customization/plugins>.
+
+If an agent's CLI changes, the argument lists live in
+`internal/cli/plugin_native.go`.
 
 ### Expansion
 

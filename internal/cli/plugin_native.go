@@ -34,7 +34,7 @@ type pluginAgent struct {
 
 var pluginAgentTable = []*pluginAgent{
 	{id: "claude", platform: platformClaude, method: "native", install: installClaude, remove: removeClaude},
-	{id: "codex", platform: platformAgentPlugins, method: "native", install: installCodex, remove: removeViaCLI("codex", "plugin", "uninstall")},
+	{id: "codex", platform: platformAgentPlugins, method: "native", install: installCodex, remove: removeCodex},
 	{id: "copilot", platform: platformAgentPlugins, method: "native", install: installCopilot, remove: removeViaCLI("copilot", "plugin", "uninstall")},
 	{id: "vscode", platform: platformAgentPlugins, method: "native", install: installVSCode, remove: removeVSCode},
 	{id: "cursor", platform: platformAgentPlugins, method: "native", install: installCursor, remove: removeLedgerFiles},
@@ -156,14 +156,16 @@ func removeViaCLI(bin string, verb ...string) func(*pluginSession, *pluginAgent,
 // ---- Codex, Copilot CLI, VS Code: the git mirror ----
 
 func installCodex(s *pluginSession, _ *pluginAgent, t *pluginTarget) (plugins.Install, error) {
-	return installFromGitMarketplace(s, t, "codex")
+	return installFromGitMarketplace(s, t, "codex", "add")
 }
 
 func installCopilot(s *pluginSession, _ *pluginAgent, t *pluginTarget) (plugins.Install, error) {
-	return installFromGitMarketplace(s, t, "copilot")
+	return installFromGitMarketplace(s, t, "copilot", "install")
 }
 
-func installFromGitMarketplace(s *pluginSession, t *pluginTarget, bin string) (plugins.Install, error) {
+// installFromGitMarketplace adds the feed's git mirror as a marketplace and
+// installs the plugin from it; the two CLIs name the install verb differently.
+func installFromGitMarketplace(s *pluginSession, t *pluginTarget, bin, installVerb string) (plugins.Install, error) {
 	if err := s.requireGitMirror(); err != nil {
 		return plugins.Install{}, err
 	}
@@ -175,10 +177,14 @@ func installFromGitMarketplace(s *pluginSession, t *pluginTarget, bin string) (p
 	if err := s.run(env, bin, "plugin", "marketplace", "add", s.gitURL("", t.channel)); err != nil {
 		return plugins.Install{}, err
 	}
-	if err := s.run(env, bin, "plugin", "install", t.name+"@"+m.Name); err != nil {
+	if err := s.run(env, bin, "plugin", installVerb, t.name+"@"+m.Name); err != nil {
 		return plugins.Install{}, err
 	}
 	return plugins.Install{Method: "native", Marketplace: m.Name}, nil
+}
+
+func removeCodex(s *pluginSession, _ *pluginAgent, name string, in plugins.Install) error {
+	return s.run(nil, "codex", "plugin", "remove", name+"@"+in.Marketplace)
 }
 
 func vscodeSettingsPath(home string) string {
@@ -228,7 +234,9 @@ func installGemini(s *pluginSession, _ *pluginAgent, t *pluginTarget) (plugins.I
 	if err := s.requireGitMirror(); err != nil {
 		return plugins.Install{}, err
 	}
-	if err := s.run(s.gitEnv(), "gemini", "extensions", "install", s.gitURL(t.name, t.channel), "--ref", t.channel); err != nil {
+	// The commands the bundle runs were listed and approved before this point,
+	// so Gemini's own consent prompt, which has no terminal here, is skipped.
+	if err := s.run(s.gitEnv(), "gemini", "extensions", "install", s.gitURL(t.name, t.channel), "--ref", t.channel, "--consent"); err != nil {
 		return plugins.Install{}, err
 	}
 	return plugins.Install{Method: "native"}, nil
@@ -394,19 +402,23 @@ func removeOpencode(s *pluginSession, a *pluginAgent, name string, in plugins.In
 func installCline(s *pluginSession, a *pluginAgent, t *pluginTarget) (plugins.Install, error) {
 	in := plugins.Install{Method: "expanded"}
 	if s.hasBinary("cline") {
-		tmp, err := os.CreateTemp("", "zuano-cline-*"+t.vp.entry.Ext())
+		// Cline installs from a directory, not an archive: unpack the
+		// verified package and point it there.
+		dir, err := os.MkdirTemp("", "zuano-cline-*")
 		if err != nil {
 			return in, err
 		}
-		defer os.Remove(tmp.Name())
-		_, werr := tmp.Write(t.vp.archive)
-		if cerr := tmp.Close(); werr == nil {
-			werr = cerr
+		defer os.RemoveAll(dir)
+		for _, name := range t.vp.pkg.Paths() {
+			target, err := safeJoin(dir, name)
+			if err != nil {
+				return in, err
+			}
+			if err := writeFileAtomic(target, t.vp.pkg.Files[name], 0o600); err != nil {
+				return in, err
+			}
 		}
-		if werr != nil {
-			return in, werr
-		}
-		if err := s.run(nil, "cline", "plugin", "install", tmp.Name()); err != nil {
+		if err := s.run(nil, "cline", "plugin", "install", dir); err != nil {
 			return in, err
 		}
 		in.Method = "native"
@@ -421,9 +433,9 @@ func installCline(s *pluginSession, a *pluginAgent, t *pluginTarget) (plugins.In
 
 func removeCline(s *pluginSession, a *pluginAgent, name string, in plugins.Install) error {
 	if in.Method == "native" {
-		if err := s.run(nil, "cline", "plugin", "uninstall", name); err != nil {
-			return err
-		}
+		// Cline documents no uninstall command for a plugin it copied into its
+		// store, so the person removes it there.
+		fmt.Fprintf(s.err, "Cline has no command to remove %s: delete it from Cline's plugin store (see `cline config`). zuano forgets it.\n", textsafe.Clean(name))
 	}
 	return removeExpanded(s, a, name, in)
 }
