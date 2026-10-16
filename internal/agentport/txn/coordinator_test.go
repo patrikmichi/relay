@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // isolate points HOME at a fresh t.TempDir() so every test operates only
@@ -28,6 +29,63 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return b
+}
+
+func TestBegin_ConcurrentRunWaitsForTheLockInsteadOfFailingAsPending(t *testing.T) {
+	isolate(t)
+	keys := []string{"skill:claude:user:demo:"}
+	first, err := Begin(context.Background(), "first", keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Persist(); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		tx  *Tx
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		tx, err := Begin(context.Background(), "second", keys)
+		done <- result{tx, err}
+	}()
+
+	select {
+	case r := <-done:
+		t.Fatalf("second Begin returned while the first run held the lock: %v", r.err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := first.Commit(func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("second Begin = %v, want success after the first committed", r.err)
+		}
+		_ = r.tx.Discard(nil)
+	case <-time.After(5 * time.Second):
+		t.Fatal("second Begin never acquired the lock")
+	}
+}
+
+func TestBegin_InterruptedJournalStillBlocksANewRun(t *testing.T) {
+	isolate(t)
+	keys := []string{"skill:claude:user:demo:"}
+	tx, err := Begin(context.Background(), "crashed", keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatal(err)
+	}
+	tx.locks.Unlock() // the process died: its locks are gone, its journal is not terminal
+
+	if _, err := Begin(context.Background(), "next", keys); !errors.Is(err, ErrPending) {
+		t.Fatalf("Begin = %v, want ErrPending", err)
+	}
 }
 
 func TestApply_HappyPath(t *testing.T) {

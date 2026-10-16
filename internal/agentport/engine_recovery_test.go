@@ -84,11 +84,8 @@ func TestWrite_RefusesWhilePriorJournalPending(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	// A journal file existing on disk in a non-terminal state is what
-	// Write's pending-check looks for — it's checked before any lock is
-	// even attempted, so this "stale" transaction's own lock deliberately
-	// stays held (as a real crashed process's would have, until the OS
-	// released it) without affecting the assertion below.
+	// A journal on disk in a non-terminal state whose process is gone: the
+	// check runs once Write holds the locks, which a dead process no longer does.
 	key := skillLockKey(plan.Target.ID(), plan.Scope, plan.Skill.Name, "")
 	stale, err := txn.Begin(context.Background(), "stale write", []string{key})
 	if err != nil {
@@ -100,6 +97,7 @@ func TestWrite_RefusesWhilePriorJournalPending(t *testing.T) {
 	if err := stale.Persist(); err != nil {
 		t.Fatalf("Persist: %v", err)
 	}
+	stale.Abandon()
 
 	err = Write(plan)
 	if err == nil {

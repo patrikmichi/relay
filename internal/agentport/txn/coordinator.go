@@ -44,19 +44,13 @@ type Tx struct {
 func (t *Tx) ID() string { return t.j.ID }
 
 // Begin acquires every lock key (sorted, deterministic order) and refuses
-// to proceed if a non-terminal journal already claims one of them. It
-// checks for a pending journal both before AND after acquiring the locks:
-// the second check is what actually matters for correctness (it runs
-// under exclusive possession of every key, so nothing else can be
-// concurrently creating a conflicting journal at that point); the first
-// check is only a cheap way to fail fast without waiting on a lock that a
-// pending-recovery situation will hold indefinitely.
+// to proceed if a non-terminal journal still claims one of them. The check
+// runs only once the locks are held: a journal of a run that is still in
+// progress is not terminal yet, so checking earlier would fail a concurrent
+// run that should simply wait. Under the locks, no live holder can exist, so
+// any non-terminal journal left is an interrupted one that needs recovery.
 func Begin(ctx context.Context, op string, lockKeys []string) (*Tx, error) {
 	sorted := append([]string(nil), lockKeys...)
-
-	if err := checkPending(sorted); err != nil {
-		return nil, err
-	}
 
 	locks, err := AcquireAll(ctx, sorted)
 	if err != nil {
@@ -111,6 +105,10 @@ func checkPending(keys []string) error {
 	}
 	return fmt.Errorf("%w: journal %s (op %q, state %s) — run `relay recover %s`", ErrPending, pending[0].ID, pending[0].Op, pending[0].State, pending[0].ID)
 }
+
+// Abandon releases the locks and leaves the journal as it is, which is what
+// a killed process leaves behind. It exists so tests can exercise recovery.
+func (t *Tx) Abandon() { t.locks.Unlock() }
 
 // Stage records dest's (root+rel) prior bytes/mode into a private backup
 // file and writes newData into a private staged file — both durable on
