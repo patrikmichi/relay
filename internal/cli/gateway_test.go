@@ -89,7 +89,7 @@ func TestResolveGatewayURLOrFailClosed_UsesConfigFile(t *testing.T) {
 func TestSkillInstall_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
-	_, err := fetchFromGateway("res_never_reached", skillInstallOpts{})
+	_, _, err := fetchFromGateway("res_never_reached", skillInstallOpts{})
 	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Fatalf("expected offlineGuidance error, got: %v", err)
 	}

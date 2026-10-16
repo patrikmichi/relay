@@ -307,6 +307,10 @@ func TestSkillInstall_CatalogID_VersionAndChannelForwarded(t *testing.T) {
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	var gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/download") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		gotQuery = r.URL.RawQuery
 		w.Header().Set("X-Skill-Content-Sha256", sha256HexOfBundle(bundle))
 		w.Header().Set("X-Skill-Scan-Verdict", "approved")

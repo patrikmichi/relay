@@ -303,6 +303,7 @@ func SkillCmd() *cobra.Command {
 	skill.AddCommand(skillPublishCmd())
 	skill.AddCommand(SkillMigrateCmd())
 	skill.AddCommand(SkillInstallCmd())
+	skill.AddCommand(SkillInfoCmd())
 	skill.AddCommand(SkillSearchCmd())
 	skill.AddCommand(SkillListCmd())
 	skill.AddCommand(SkillDiffCmd())

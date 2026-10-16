@@ -267,6 +267,9 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		}
 		run.items = append(run.items, run.plan.Items...)
 	}
+	if kinds.skills {
+		run.warns = append(run.warns, skillRequirementWarnings(o.from, scopes)...)
+	}
 	if kinds.skills || kinds.subagents {
 		for _, scope := range scopes {
 			items, writes, err := planSkillsAndSubagents(skillSyncOpts{

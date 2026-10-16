@@ -33,6 +33,7 @@ func SkillInstallCmd() *cobra.Command {
 		version    string
 		channel    string
 		gatewayURL string
+		reqs       requirementOpts
 	)
 
 	cmd := &cobra.Command{
@@ -59,6 +60,13 @@ content-hash mismatch, a missing/failed scan verdict, or a malformed bundle.
 If --to is omitted, installs to every provider detected as installed on
 this machine.
 
+A catalog skill can declare the connectors it needs (requires.connectors).
+Before installing, relay asks the gateway which of them you have not
+connected and offers 'relay connect <slug>' for each, then checks again.
+--yes connects without asking, --no-connect only reports. If something is
+still missing the install fails; --ignore-requirements installs anyway with
+a warning. 'relay skill info <id>' shows the same status without installing.
+
 Examples:
   relay skill install ./my-skill --to claude
   relay skill install ./my-skill/SKILL.md --to codex --to cursor
@@ -66,6 +74,10 @@ Examples:
   relay skill install pr-triage --version 1.4.2 --channel beta --to claude`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if reqs.yes && reqs.noConnect {
+				return fmt.Errorf("--yes and --no-connect cannot be used together")
+			}
+			reqs.dryRun, reqs.gatewayURL = dryRun, gatewayURL
 			return runSkillInstall(cmd, args[0], skillInstallOpts{
 				to:         toFlags,
 				scope:      scopeFlag,
@@ -75,9 +87,13 @@ Examples:
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
+				reqs:       reqs,
 			})
 		},
 	}
+	cmd.Flags().BoolVarP(&reqs.yes, "yes", "y", false, "Connect missing connectors without asking")
+	cmd.Flags().BoolVar(&reqs.noConnect, "no-connect", false, "Report missing connectors without offering to connect them")
+	cmd.Flags().BoolVar(&reqs.ignore, "ignore-requirements", false, "Install even if required connectors are not connected (warns)")
 
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected providers")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to write to: user or project")
@@ -100,6 +116,7 @@ type skillInstallOpts struct {
 	version    string
 	channel    string
 	gatewayURL string
+	reqs       requirementOpts
 }
 
 func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) error {
@@ -126,8 +143,16 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 		}
 	} else {
 		fromLabel = "gateway"
-		src, err = fetchFromGateway(arg, opts)
+		var c *client.Client
+		src, c, err = fetchFromGateway(arg, opts)
 		if err != nil {
+			return err
+		}
+		id := src.Provenance.CatalogID
+		if id == "" {
+			id = arg
+		}
+		if err := ensureSkillRequirements(cmd, c, id, opts.reqs); err != nil {
 			return err
 		}
 	}
@@ -164,25 +189,25 @@ func classifyInstallSource(arg string) (isLocal bool, err error) {
 // resolveGatewayURLOrFailClosed itself checks the root --offline flag
 // (cli.Offline()) and refuses with offlineGuidance before this ever reaches
 // client.Resolve.
-func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill, error) {
+func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill, *client.Client, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(opts.gatewayURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	c, err := client.Resolve(gURL)
 	if err != nil {
 		if errors.Is(err, client.ErrNotLoggedIn) {
-			return nil, fmt.Errorf("%s", offlineGuidance)
+			return nil, nil, fmt.Errorf("%s", offlineGuidance)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	skill, err := catalog.FetchSkill(c, catalogID, opts.version, opts.channel)
 	if err != nil {
-		return nil, translateGatewayFetchError(catalogID, err)
+		return nil, nil, translateGatewayFetchError(catalogID, err)
 	}
-	return skill, nil
+	return skill, c, nil
 }
 
 // translateGatewayFetchError maps catalog.FetchSkill's sentinel errors to
