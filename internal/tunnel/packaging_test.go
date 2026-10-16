@@ -184,7 +184,7 @@ func TestHelmChartRendersAHardenedStatefulSet(t *testing.T) {
 	if out, err := helm(t, "lint", filepath.Join("..", "..", "deploy", "helm", BinaryName), "--set", "config.network=net_ABC", "--set", "enrollment.url=https://app.example.com", "--set", "enrollment.token="+testToken); err != nil {
 		t.Fatalf("helm lint: %v\n%s", err, out)
 	}
-	docs := renderChart(t, "enrollment.token="+testToken,"config.targets[0].name=erp", "config.targets[0].kind=http", "config.targets[0].url=https://erp.internal", "config.targets[0].methods[0]=GET", "config.targets[0].paths[0]=/**")
+	docs := renderChart(t, "enrollment.token="+testToken, "config.targets[0].name=erp", "config.targets[0].kind=http", "config.targets[0].url=https://erp.internal", "config.targets[0].methods[0]=GET", "config.targets[0].paths[0]=/**")
 	ss := find(docs, "StatefulSet")
 	if ss == nil {
 		t.Fatal("no StatefulSet")
