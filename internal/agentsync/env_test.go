@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 func envBundle() Bundle { return Bundle{Env: []EnvVar{{Name: "RELAY_AGENT", Value: "1"}}} }
@@ -53,6 +55,30 @@ func TestEnvIsUserScopeOnly(t *testing.T) {
 	}
 	if got := statusOf(plan.Items, KindEnv, "*"); got != StatusUnsupported {
 		t.Errorf("status = %q, want unsupported", got)
+	}
+}
+
+func TestForceNeverDuplicatesAUserTOMLTable(t *testing.T) {
+	env := newEnv(t)
+	config := filepath.Join(env.Home, ".codex", "config.toml")
+	writeFile(t, config, "[mcp_servers.relay]\ncommand = \"mine\"\n\n[shell_environment_policy.set]\nFOO = \"bar\"\n")
+
+	opts := userOpts(Codex)
+	opts.Force = true
+	opts.Kinds = []Kind{KindMCP, KindEnv}
+	plan := syncAll(t, env, userBundle(fixtureBundle()), opts)
+	if got := statusOf(plan.Items, KindEnv, "shell_environment_policy.set"); got != StatusConflict {
+		t.Errorf("env status = %q, want conflict", got)
+	}
+	got := readFile(t, config)
+	for _, header := range []string{"[mcp_servers.relay]", "[shell_environment_policy.set]"} {
+		if strings.Count(got, header) > 1 {
+			t.Errorf("%s defined twice:\n%s", header, got)
+		}
+	}
+	var parsed map[string]any
+	if err := toml.Unmarshal([]byte(got), &parsed); err != nil {
+		t.Fatalf("the forced sync wrote invalid TOML: %v\n%s", err, got)
 	}
 }
 

@@ -138,7 +138,8 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	var bodies []string
 	newHeaders := map[string]bool{}
 	for _, t := range o.tables {
-		if definedAt(parsed, t.path) && !c.Force {
+		// Even under --force: a second definition of the same table makes the file invalid TOML.
+		if definedAt(parsed, t.path) {
 			items = append(items, o.item(t.header, real, StatusConflict, "already defined and not managed by relay; --force is not supported for TOML tables, remove the existing table first"))
 			continue
 		}
