@@ -877,10 +877,13 @@ before any tool is served.
 
 | Request | Carries / answers |
 |---|---|
-| `POST /api/fw/local/session` | `{"slug"?, "fingerprint", "packageSpec"?, "installId", "agentId"?}`; signed `{"upstream": {"id", "slug"}, "status": "active\|pending\|unknown\|quarantined", "adminUrl"?, "settings": {"onDefinitionChange": "block\|warn", "offline": "deny\|allow_read_pinned", "unknown": "allow\|deny", "denyTools": [glob]}, "pins": [{"kind": "tool", "name", "hash", "state": "active", "risk": "read\|write\|destructive\|outward", "definition"}]}`. `quarantined` ends the command with exit 44 |
+| `POST /api/fw/local/session` | `{"slug"?, "fingerprint", "packageSpec"?, "installId", "agentId"?}`; signed `{"upstream": {"id", "slug"}, "status": "active\|pending\|unknown\|quarantined", "adminUrl"?, "settings": {"onDefinitionChange": "block\|warn", "offline": "deny\|allow_read_pinned", "unknown": "allow\|deny", "denyTools": [glob], "fastReads"?: bool}, "pins": [{"kind": "tool", "name", "hash", "state": "active", "risk": "read\|write\|destructive\|outward", "definition"}]}`. `quarantined` ends the command with exit 44 |
 | `POST /api/fw/local/changes` | `{"upstream", "changes": [{"kind": "tool", "name", "change": "added\|modified\|removed", "oldHash"?, "newHash"?, "definition"?}]}`; `200` |
 | `POST /api/fw/local/calls` | `{"upstream", "tool", "sessionRef", "arguments"}` (or `"argumentsDigest"` and `"localFindings"` with `--screen local`); answers `{"decision": "allow\|deny\|pending\|redact", "callId"?, "reason"?, "message"?, "approval_id"?, "url"?, "arguments"?}` |
 | `POST /api/fw/local/calls/{callId}/result` | `{"error", "content"}` (or `"digest"` and `"localFindings"`); answers `{"decision": "allow\|redact\|withhold", "content"?, "message"?}`. A result the gateway cannot check is withheld |
+| `POST /api/fw/local/snapshot` | `{"upstream"}`; signed `{"upstream", "digest", "expiresAt", "tools": [{"name", "hash", "risk"}], "deny": [glob]}`. Asked for only when the session has `fastReads`; the shim reuses it for 60 s or until `expiresAt`, whichever is first |
+| `POST /api/fw/local/audit-batch` | `{"upstream", "sessionRef", "entries": [{"event": "call\|result", "callId", "tool", "at", "risk"?, "decision"?, "argumentsDigest"?, "snapshot"?, "findings"?, "severity"?, "digest"?, "error"?}]}`; `200`. Sent every 10 s, at 50 entries and on exit; a failed send is retried with the next batch (at most 5000 entries are kept) |
+| `GET /api/fw/local/requirements` | `{"requiredRouting": bool}`; `zuano doctor` fails while an agent has an MCP server that is not routed. `404` means not required |
 | `GET /api/firewall/upstreams`, `GET /api/firewall/upstreams/{slug}` | `{"upstreams": [{"slug", "name", "transport", "status", "toolCount", "pendingChanges"}]}`, `{"upstream": {...}}` |
 | `POST /api/firewall/upstreams` | `{"slug", "name", "url"}` or `{"slug", "name", "package"}`; `201` |
 | `POST /api/firewall/upstream-requests` | as above plus `"reason"`; `201` |
@@ -892,6 +895,12 @@ server's credentials. A refusal reason `tool_definition_changed` exits 43,
 `upstream_quarantined` and `registry_server_deleted` exit 44, and
 `denied_by_policy`, `tool_not_pinned` and the other reasons in the exit-code
 table exit 10.
+
+With `fastReads` the shim decides a call itself when the tool is pinned with
+the hash the snapshot lists, is classified `read` and no `deny` glob matches;
+the call id starts with `fast-`, the result is screened on the machine and
+only digests are audited. Writes, and any call made with a missing, stale or
+unverifiable snapshot, are decided by the gateway.
 
 Pages the CLI opens (no API call): `/firewall/changes/{id}` and
 `/api/fw/oauth/start?upstream={slug}`.

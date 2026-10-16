@@ -164,6 +164,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 	doctorAutomations(ctx, c, add)
 	doctorChat(ctx, c, add)
 	doctorPasskeys(ctx, c, add)
+	doctorFirewallRequired(ctx, c, gateway, add)
 	if os.Getenv("ZUANO_API_KEY") != "" {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
 		return checks

@@ -1,0 +1,34 @@
+=== .gemini/settings.json
+{
+  "mcpServers": {
+    "zuano": {
+      "httpUrl": "https://gw.example.com/api/mcp",
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "docs": {
+      "httpUrl": "https://gw.example.com/api/fw/docs/mcp",
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "files": {
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}

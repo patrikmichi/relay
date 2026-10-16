@@ -29,7 +29,19 @@ Servers stay in zuano's own list as installed, so turning the firewall off
 needs no stored originals. Servers an agent's config holds that zuano did not
 write are untouched until `firewall import-local` hands them over. Wrapping,
 importing and turning the firewall on or off are refused while `ZUANO_AGENT` is
-set. `zuano doctor` reports whether servers are routed.
+set. `zuano doctor` reports whether servers are routed, and fails (`firewall-required`)
+when the organisation requires routing and an agent still has a server that is not;
+`firewall import-local <name>` routes it.
+
+## Fast reads
+
+When the organisation turns on fast reads, `zuano mcp wrap` decides calls to
+read tools itself, in milliseconds, from a signed policy snapshot it keeps for 60
+seconds. A tool qualifies when it is pinned with the hash the snapshot lists, is
+classified read and no deny rule matches. Results are screened on the machine
+and the audit (digests, never arguments) goes to the gateway in batches every
+10 seconds, at 50 entries and on exit. Writes, and every call made while the
+snapshot is missing, stale or fails verification, are decided by the gateway.
 
 ## Offline
 

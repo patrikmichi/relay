@@ -1,0 +1,64 @@
+=== .cline/data/settings/cline_mcp_settings.json
+{
+  "mcpServers": {
+    "zuano": {
+      "type": "streamableHttp",
+      "url": "https://gw.example.com/api/mcp",
+      "disabled": false
+    },
+    "docs": {
+      "type": "streamableHttp",
+      "url": "https://gw.example.com/api/fw/docs/mcp",
+      "disabled": false
+    },
+    "files": {
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}
+=== .config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+{
+  "mcpServers": {
+    "zuano": {
+      "type": "streamableHttp",
+      "url": "https://gw.example.com/api/mcp",
+      "disabled": false
+    },
+    "docs": {
+      "type": "streamableHttp",
+      "url": "https://gw.example.com/api/fw/docs/mcp",
+      "disabled": false
+    },
+    "files": {
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}

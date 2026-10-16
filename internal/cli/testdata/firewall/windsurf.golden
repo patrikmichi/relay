@@ -1,0 +1,56 @@
+=== .codeium/windsurf/mcp_config.json
+{
+  "mcpServers": {
+    "zuano": {
+      "serverUrl": "https://gw.example.com/api/mcp"
+    },
+    "docs": {
+      "serverUrl": "https://gw.example.com/api/fw/docs/mcp"
+    },
+    "files": {
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}
+=== .config/devin/mcp_config.json
+{
+  "mcpServers": {
+    "zuano": {
+      "serverUrl": "https://gw.example.com/api/mcp"
+    },
+    "docs": {
+      "serverUrl": "https://gw.example.com/api/fw/docs/mcp"
+    },
+    "files": {
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}
