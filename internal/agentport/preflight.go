@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
 var (
@@ -37,7 +39,7 @@ func verifyPathHasNoSymlinks(root, rel string) error {
 	}
 
 	if info, err := os.Lstat(root); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
+		if txn.IsLinkMode(info.Mode()) {
 			return fmt.Errorf("%w: %s", ErrDestinationSymlink, root)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -57,7 +59,7 @@ func verifyPathHasNoSymlinks(root, rel string) error {
 			}
 			return fmt.Errorf("stat %s: %w", cur, err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if txn.IsLinkMode(info.Mode()) {
 			return fmt.Errorf("%w: %s", ErrDestinationSymlink, cur)
 		}
 	}

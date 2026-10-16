@@ -7,9 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/patrikmichi/relay/internal/nofollow"
 )
+
+// permissionsDiffer compares a file's mode with the one recorded at install.
+// Windows has no POSIX permission bits: Go reports a synthetic 0666 or 0444
+// that says nothing about what was installed, so it never differs there.
+func permissionsDiffer(goos string, got os.FileMode, want uint32) bool {
+	return goos != "windows" && uint32(got.Perm()) != want
+}
 
 type IntegrityResult struct {
 	ID      string `json:"id"`
@@ -85,7 +93,7 @@ func inspectEntry(entry ManifestEntry) error {
 			_ = file.Close()
 			return fmt.Errorf("installed file is not a bounded regular file: %s", rel)
 		}
-		if mode, ok := entry.FileModes[rel]; ok && uint32(info.Mode().Perm()) != mode {
+		if mode, ok := entry.FileModes[rel]; ok && permissionsDiffer(runtime.GOOS, info.Mode(), mode) {
 			_ = file.Close()
 			return fmt.Errorf("installed file permissions differ from manifest: %s", rel)
 		}
