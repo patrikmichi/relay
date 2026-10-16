@@ -395,7 +395,7 @@ scripts/CI that must never make a network call.
 | `relay whoami [--full]` | gateway | Show the current authenticated identity and which profile (human or agent) answered |
 | `relay approvals list\|show\|approve\|deny\|wait` | gateway | List the held calls of agents, decide them with your own session, or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
 | `relay explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
-| `relay authorize <service> --scope <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
+| `relay authorize <service> --tool <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay tokens list` | gateway | Show active session info |
 | `relay tokens revoke` | gateway | Revoke the current session token |
 | `relay config set-gateway <url>` | local | Persist a gateway URL to `~/.config/relay/config.json` |
@@ -480,7 +480,7 @@ Source format provenance remains Claude for downloaded agents so tool and model 
 
 Provider formats were checked against [Codex custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Cursor subagents](https://cursor.com/docs/subagents), and [Gemini CLI subagents](https://geminicli.com/docs/core/subagents/). The adapters support the fields documented in [agent formats](docs/agent-formats.md) and refuse migrations that cannot preserve execution restrictions.
 
-`relay authorize <service> --scope <tool>` requests access to gateway tools.
+`relay authorize <service> --tool <tool>` requests access to gateway tools.
 Repeat `--scope` for multiple tools and use `--account` when selecting a linked
 account. The command polls for approved grants and required credentials, with a
 default timeout of ten minutes (`--wait-timeout`, maximum thirty minutes). Tool grants

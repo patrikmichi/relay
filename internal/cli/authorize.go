@@ -45,9 +45,9 @@ func AuthorizeCmd() *cobra.Command {
 	var gateway, account string
 	var scopes []string
 	var timeout time.Duration
-	cmd := &cobra.Command{Use: "authorize <service> --scope <tool> [--account <label>]", Short: "Request and verify service-specific gateway tool access", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "authorize <service> --tool <tool> [--account <label>]", Short: "Request and verify service-specific gateway tool access", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(scopes) == 0 {
-			return fmt.Errorf("at least one --scope gateway tool name is required")
+			return fmt.Errorf("at least one --tool gateway tool name is required")
 		}
 		if timeout <= 0 || timeout > 30*time.Minute {
 			return fmt.Errorf("--wait-timeout must be greater than zero and at most 30m")
@@ -122,7 +122,7 @@ func AuthorizeCmd() *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&gateway, "gateway-url", "", "Gateway URL override")
 	cmd.Flags().StringVar(&account, "account", "", "Account connection label")
-	cmd.Flags().StringSliceVar(&scopes, "scope", nil, "Gateway tool name to authorize (repeatable or comma-separated)")
+	cmd.Flags().StringSliceVar(&scopes, "tool", nil, "Gateway tool name to authorize (repeatable or comma-separated)")
 	cmd.Flags().DurationVar(&timeout, "wait-timeout", 10*time.Minute, "Maximum time to wait for approval and account connection")
 	return cmd
 }

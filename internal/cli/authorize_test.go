@@ -48,7 +48,7 @@ func TestAuthorizeVerifiesGrantBeforeSuccess(t *testing.T) {
 	cmd := AuthorizeCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"sample", "--scope", "read", "--account", "work", "--gateway-url", srv.URL})
+	cmd.SetArgs([]string{"sample", "--tool", "read", "--account", "work", "--gateway-url", srv.URL})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestAuthorizeRejectsFalseConfirmationAndDenial(t *testing.T) {
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
-			cmd.SetArgs([]string{"sample", "--scope", "read", "--gateway-url", srv.URL})
+			cmd.SetArgs([]string{"sample", "--tool", "read", "--gateway-url", srv.URL})
 			err := cmd.Execute()
 			if err == nil || strings.Contains(out.String(), "Authorized gateway") || strings.Contains(out.String(), "synthetic-secret") {
 				t.Fatalf("unsafe success: %v %s", err, out.String())
@@ -123,7 +123,7 @@ func runAuthorize(t *testing.T, srv *httptest.Server) (string, error) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"sample", "--scope", "read", "--gateway-url", srv.URL})
+	cmd.SetArgs([]string{"sample", "--tool", "read", "--gateway-url", srv.URL})
 	err := cmd.Execute()
 	return out.String(), err
 }
@@ -164,7 +164,7 @@ func TestAuthorizeCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	cmd.SetContext(ctx)
-	cmd.SetArgs([]string{"sample", "--scope", "read", "--gateway-url", "http://127.0.0.1:1"})
+	cmd.SetArgs([]string{"sample", "--tool", "read", "--gateway-url", "http://127.0.0.1:1"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("canceled authorization succeeded")
 	}
