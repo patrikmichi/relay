@@ -101,11 +101,20 @@ func queryConnected(ctx context.Context, c *client.Client, slug string) (connect
 	return *doc.Connected, statusAnswered
 }
 
+// statusEndpointMissingAfter is how many unavailable answers, with no answer
+// at all, show the gateway has no connection status endpoint.
+const statusEndpointMissingAfter = 3
+
 // fetchServiceLinks probes every accessible service that takes credentials,
 // preferring the connection status endpoint and falling back to the
 // authorize probe once the gateway turns out not to offer it.
 func fetchServiceLinks(ctx context.Context, c *client.Client, services []DiscoveryService) map[string]serviceLink {
-	var noStatusEndpoint atomic.Bool
+	// One service the endpoint cannot answer for (a 404 for an unknown slug)
+	// falls back to the authorize probe for that service only. The endpoint
+	// counts as missing when several in a row were unavailable and none ever
+	// answered.
+	var unavailable atomic.Int32
+	var answeredAny atomic.Bool
 	ctx, cancel := context.WithTimeout(ctx, linkProbeTimeout)
 	defer cancel()
 	out := map[string]serviceLink{}
@@ -123,13 +132,14 @@ func fetchServiceLinks(ctx context.Context, c *client.Client, services []Discove
 			defer func() { <-sem }()
 			var l serviceLink
 			answered := false
-			if !noStatusEndpoint.Load() {
+			if answeredAny.Load() || unavailable.Load() < statusEndpointMissingAfter {
 				connected, answer := queryConnected(ctx, c, svc.ID)
 				answered = answer == statusAnswered
 				if answered {
 					l = serviceLink{Known: true, AccountLinked: connected}
+					answeredAny.Store(true)
 				} else if answer == statusUnavailable {
-					noStatusEndpoint.Store(true)
+					unavailable.Add(1)
 				}
 			}
 			if !answered {

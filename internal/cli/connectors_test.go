@@ -1,14 +1,18 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/client"
 )
 
 // connectorGateway is a gateway double covering the endpoints connectors and
@@ -116,6 +120,37 @@ func stubBrowser(t *testing.T) *[]string {
 	connectPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { openBrowserURL, connectPollInterval = prevOpen, prevPoll })
 	return &opened
+}
+
+func TestFetchServiceLinks_OneMissingServiceDoesNotDisableTheStatusEndpoint(t *testing.T) {
+	var statusCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/connections" {
+			http.NotFound(w, r) // the authorize fallback
+			return
+		}
+		statusCalls.Add(1)
+		if r.URL.Query().Get("service") == "gone" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"connected":true}`))
+	}))
+	defer srv.Close()
+
+	services := []DiscoveryService{{ID: "gone", Accessible: true, AuthType: "apikey"}}
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		services = append(services, DiscoveryService{ID: id, Accessible: true, AuthType: "oauth"})
+	}
+	links := fetchServiceLinks(context.Background(), client.New(srv.URL, "tok"), services)
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		if !links[id].Known || !links[id].AccountLinked {
+			t.Errorf("%s = %+v, want connected from the status endpoint", id, links[id])
+		}
+	}
+	if n := statusCalls.Load(); n != 6 {
+		t.Errorf("status endpoint called %d times, want once per service (6)", n)
+	}
 }
 
 func TestConnectorsListSearchAndCategory(t *testing.T) {
