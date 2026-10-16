@@ -176,6 +176,29 @@ relay sync --to claude,codex --scope all # named agents, user + current project
 relay sync --kind mcp,rules --to all     # only some kinds, every supported agent
 ```
 
+**Safety.** A sync changes what your agents run, so it is gated:
+
+- It is refused while `RELAY_AGENT` is set (`--yes` does not override that).
+- A write that adds or changes a hook or a stdio MCP command shows the full
+  diff and asks on a terminal. Without a terminal it refuses; `--yes` skips the
+  question after you reviewed `--dry-run`. A project's `.relay/` is untrusted
+  input, which is why hooks from it are shown, not just applied.
+- Project paths are never followed through symlinks. A user config that is a
+  symlink is followed only while it stays inside your home directory, and the
+  report says so. A file that changed after the plan was made is not
+  overwritten.
+- The gateway entry uses the gateway saved in the config file, never
+  `$GATEWAY_URL`. Another gateway needs an explicit `--gateway-url` and a
+  confirmation.
+- `GATEWAY_API_KEY` is sent only to `RELAY_API_KEY_ORIGIN`, or else the saved
+  gateway; a flag or variable that points elsewhere is refused (a loopback
+  development gateway excepted).
+- Skill, agent and plugin downloads are verified against the gateway's pinned
+  signing keys; see
+  [docs/reference/signed-downloads.md](docs/reference/signed-downloads.md).
+  `--require-signature` refuses unsigned ones and `relay config trust-key`
+  reviews changed keys.
+
 **What gets synced.** MCP servers come from the gateway (when one is
 configured) plus servers added with `relay mcp install`. Hooks, rules and
 commands come from files you keep in one place:
@@ -410,7 +433,8 @@ with environment variables — env always wins over the config file:
 | Variable | Purpose |
 |---|---|
 | `GATEWAY_URL` | Gateway base URL (overrides the config file) |
-| `GATEWAY_API_KEY` | Non-interactive bearer auth — use in scripts/CI instead of `relay login` |
+| `GATEWAY_API_KEY` | Non-interactive bearer auth — use in scripts/CI instead of `relay login`. Sent only to the gateway named by `RELAY_API_KEY_ORIGIN`, or else the one saved in the config file |
+| `RELAY_API_KEY_ORIGIN` | The one gateway origin `GATEWAY_API_KEY` may be sent to, e.g. `https://gateway.example.com`. Needed in CI when no gateway is saved; a `--gateway-url` or `$GATEWAY_URL` for another origin is refused |
 | `RELAY_EMAIL` | Selects which keychain-stored session to use (overrides the last `relay login`'d identity) |
 | `RELAY_AGENT` | `1` makes relay use the agent profile's session, which the gateway holds to approvals, and never your own; `relay login` then signs the agent profile in. `relay sync` sets it for the agents it configures |
 | `RELAY_TIMEOUT` | Limit for each gateway request, e.g. `90s` or `10m`; `0` means no limit. Defaults: 30s, 150s for tool calls and uploads. `--timeout` overrides it. A request that hits the limit exits with status 4 |

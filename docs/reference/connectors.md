@@ -55,9 +55,14 @@ gateway without that endpoint the authorize probe may never report
 flow succeeded; confirm in the gateway's connection page. The same lookup
 drives the `already connected` check and the status columns.
 
-`relay connect` never writes credentials to disk. `--field KEY=VALUE` and
+`relay connect` never writes credentials to disk. `--field KEY=@file`,
+`--field KEY=-` (one field from stdin), `--field KEY=VALUE` and
 `RELAY_CONNECT_<KEY>` supply values non-interactively; without a terminal and
-without values a required field is an error rather than a hang.
+without values a required field is an error rather than a hang. A literal
+`KEY=VALUE` for a secret field warns, because arguments are visible to other
+users in `ps`. An interrupt during the hidden prompt restores terminal echo
+before relay exits. The OAuth connect link must be a path on the gateway; a
+link that points elsewhere is refused.
 
 ## Skills that need connectors
 
