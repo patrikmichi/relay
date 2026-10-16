@@ -969,3 +969,48 @@ Forwarded events are signed as Standard Webhooks: HMAC-SHA256 over
 `{webhook-id}.{webhook-timestamp}.{raw body}` with the key in `whsec_<base64>`,
 header `webhook-signature: v1,<base64>`, a 300 second tolerance. Tool inputs for
 `zuano generate` come from `GET /api/integrations` (each tool's `inputSchema`).
+
+## Builder: auth configs, accounts, links and sessions
+
+Bearer auth, all under `/api/v1`. The plan names the routes and the objects;
+the request and response wrappers (`items` and `nextCursor` for lists, the
+singular object name for one) and the flag-to-field mapping are this client's
+decisions. A refusal is `{"error": CODE, "message"}`. The builder refusal codes
+are `auth_config_required`, `auth_config_invalid`, `auth_config_disabled`,
+`account_config_mismatch`, `policy_widening`, `request_state_invalid`,
+`idempotency_key_reused`, `idempotency_in_progress`, `refresh_requires_custom_app`,
+`callback_not_allowed`, `zdr_conflict`, `config_conflict` and
+`approval_unavailable`; the CLI maps them by HTTP class and adds no exit
+status: 400, 409 and 422 exit 1, 403 exits 10, 402 exits 30 or 31, 429 exits 13,
+and a held write (`202`) exits 12.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /auth-configs?service=&search=&projectId=&showDisabled=&limit=&cursor=` | `{"items": [AUTH_CONFIG], "nextCursor"?}` |
+| `POST /auth-configs` | `{"service", "name", "type", "scheme", "scopes"?, "credentialSource"?, "redirectHost"?, "projectId"?, "shareWithProjects"?, "isDefault"?, "secrets"?: {field: value}}`; `201` `{"authConfig"}` |
+| `GET /auth-configs/{id}`, `PATCH /auth-configs/{id}` | `{"authConfig"}`; PATCH takes `name`, `scopes`, `redirectHost`, `shareWithProjects`, `isDefault` |
+| `POST /auth-configs/{id}:enable`, `POST /auth-configs/{id}:disable` | `{}` or `{"suspendAccounts": true}`; `DELETE /auth-configs/{id}` |
+| `PUT /auth-configs/{id}/secrets`, `POST /auth-configs/{id}/secrets:rotate` | `{"fields": {name: value}, "graceSeconds"?}` |
+| `GET /services/{service}/auth-config-fields?scheme=&requiredOnly=` | `{"scheme", "fields": [{"key", "label", "required", "secret", "kind"}], "scopes": {"available", "default", "required"}, "redirectUri", "managedAvailable"}` |
+| `GET /connected-accounts?userId=&service=&authConfigId=&status=&alias=&cursor=` | `{"items": [ACCOUNT], "nextCursor"?}` |
+| `GET\|PATCH\|DELETE /connected-accounts/{id}` | `{"account"}`; PATCH takes `alias`, `isPrimary` |
+| `PATCH /connected-accounts/{id}/credentials` | `{"credentials": {name: value\|null}}` |
+| `POST /connected-accounts:import` | `{"userId", "service", "authConfigId", "alias"?, "credentials"}`; `201` `{"account"}` |
+| `POST /connected-accounts:importBatch` | `{"rows": [import body]}`, at most 1000; `202` `{"jobId"}` |
+| `POST /connect-links`, `GET /connect-links/{id}` | `{"userId", "service", "authConfigId"?, "alias"?, "callbackUrl"?, "scopes"?, "expiresIn"? (seconds)}` answers `{"id", "url", "expiresAt"}`; `GET` answers `{"status", "connectedAccountId"?, "error"?}` |
+| `POST /sessions`, `GET /sessions?userId=&limit=&cursor=` | the session policy plus `userId` (`toolkits`, `tools`, `risk`, `authConfigs`, `connectedAccounts`, `multiAccount`, `identity`, `preset`, `preload`, `sandbox`, `memory`, `ttl`, `metadata` or `configId`); `201` `{"session": SESSION}`; the list answers `{"items": [SESSION], "nextCursor"?}` |
+| `GET\|PATCH\|DELETE /sessions/{id}` | `{"session"}`; PATCH carries the changed blocks and `expectedConfigVersion`; a stale version is `409` `config_conflict` |
+| `GET /sessions/{id}/config-history`, `GET /sessions/{id}/toolkits` | `{"items": [{"version", "at", "by", "summary"}]}`; `{"items": [{"service", "connected", "accounts"}]}` |
+| `POST /sessions/{id}/tokens`, `DELETE /sessions/{id}/tokens/{tokenId}` | `{"expiresIn"? (seconds)}` answers `{"token", "tokenId", "expiresAt", "mcp": {"url"}}`, the token shown once |
+| `GET\|POST /session-configs`, `GET\|PATCH\|DELETE /session-configs/{id}` | `{"name", "policy"}` (PATCH also `propagate`); answers `{"id", "version"}`; lists `{"items": [{"id", "name", "version"}]}` |
+
+```json
+AUTH_CONFIG = {"id", "projectId"?, "service", "name", "type", "scheme", "credentialSource", "scopes", "redirectHost",
+               "shareWithProjects", "isDefault", "enabled", "secretFields": [{"key", "set", "updatedAt", "hint"?}]}
+ACCOUNT = {"id", "service", "alias"?, "status", "ownerKind", "userId"?, "authConfigId", "displayName"?, "isPrimary"}
+SESSION = {"id", "userId", "identity", "configVersion", "createdAt", "lastUsedAt", "mcp": {"url"}}
+```
+
+Secret values are never in a response: `secretFields` carries only whether
+each is set. Ids are `ac_`, `ca_`, `lnk_`, `ses_` and `scf_` followed by the
+identifier; the CLI refuses an argument with another prefix before sending it.

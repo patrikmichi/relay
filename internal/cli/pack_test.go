@@ -70,7 +70,7 @@ func packGatewayAt(t *testing.T, routes map[string]func(s *packServer, w http.Re
 	ps.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := r.Method + " " + r.URL.Path
 		var body map[string]any
-		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) && strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 		}
 		ps.mu.Lock()

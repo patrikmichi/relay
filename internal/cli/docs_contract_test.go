@@ -53,3 +53,12 @@ func TestTriggersReferenceDocumentsEveryCommandAndFlag(t *testing.T) {
 	assertDocumented(t, DevCmd(), "zuano dev", "../../docs/reference/triggers.md")
 	assertDocumented(t, GenerateCmd(), "zuano generate", "../../docs/reference/triggers.md")
 }
+
+func TestBuilderReferenceDocumentsEveryCommandAndFlag(t *testing.T) {
+	for _, c := range []struct {
+		cmd  *cobra.Command
+		path string
+	}{{AuthConfigsCmd(), "zuano auth-configs"}, {AccountsCmd(), "zuano accounts"}, {LinksCmd(), "zuano links"}, {BuilderCmd(), "zuano builder"}} {
+		assertDocumented(t, c.cmd, c.path, "../../docs/reference/builder.md")
+	}
+}
