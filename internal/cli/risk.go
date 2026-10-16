@@ -125,7 +125,7 @@ func fetchRiskCatalog(c *client.Client, cached *riskCatalog) (*riskCatalog, erro
 		return cached, nil
 	case http.StatusOK:
 		var cat riskCatalog
-		if err := json.NewDecoder(resp.Body).Decode(&cat); err != nil {
+		if err := client.DecodeJSON(resp.Body, &cat); err != nil {
 			return nil, fmt.Errorf("decode risk catalog: %w", err)
 		}
 		cat.GatewayURL = c.GatewayURL

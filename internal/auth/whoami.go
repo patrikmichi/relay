@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -41,12 +40,12 @@ func Whoami(ctx context.Context, c *client.Client, full bool) (*WhoamiResponse, 
 
 	if resp.StatusCode != http.StatusOK {
 		var errBody map[string]string
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		_ = client.DecodeJSON(resp.Body, &errBody)
 		return nil, fmt.Errorf("whoami failed (%d): %s", resp.StatusCode, errBody["error"])
 	}
 
 	var wr WhoamiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := client.DecodeJSON(resp.Body, &wr); err != nil {
 		return nil, fmt.Errorf("decode whoami response: %w", err)
 	}
 	return &wr, nil

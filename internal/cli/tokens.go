@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/auth"
+	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
@@ -71,7 +71,7 @@ func tokensListCmd() *cobra.Command {
 				IssuedAt  string   `json:"issuedAt"`
 				ExpiresAt string   `json:"expiresAt,omitempty"`
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			if err := client.DecodeJSON(resp.Body, &info); err != nil {
 				return fmt.Errorf("decode response: %w", err)
 			}
 

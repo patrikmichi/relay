@@ -127,11 +127,28 @@ func NoRedirectHTTPClient() *http.Client {
 	return &http.Client{CheckRedirect: refuseRedirects, Timeout: tokenEndpointTimeout, Transport: versionTransport{}}
 }
 
+const (
+	// responseHeaderTimeout is the backstop for a gateway that accepts the
+	// connection and never answers. It is far above any tool call a caller
+	// allows, so a caller's own context is what normally ends a request.
+	responseHeaderTimeout = 10 * time.Minute
+)
+
+// defaultRequestTimeout bounds Get and Post, whose callers pass no context.
+var defaultRequestTimeout = 2 * time.Minute
+
+var gatewayTransport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = responseHeaderTimeout
+	return t
+}()
+
 // gatewayHTTPClient returns the client for gateway API requests. It has no
-// Timeout: a tool call may legitimately run for minutes, so every request is
-// bounded by its caller's context instead.
+// Timeout: a tool call may legitimately run for minutes, so a request is
+// bounded by its caller's context, with a response-header timeout as the
+// backstop.
 func gatewayHTTPClient() *http.Client {
-	return &http.Client{CheckRedirect: refuseRedirects, Transport: versionTransport{}}
+	return &http.Client{CheckRedirect: refuseRedirects, Transport: versionTransport{base: gatewayTransport}}
 }
 
 var clientVersion = "dev"
@@ -150,13 +167,16 @@ func userAgent() string {
 
 // versionTransport adds the relay version headers to every request. These
 // two headers are the only client details relay sends.
-type versionTransport struct{}
+type versionTransport struct{ base http.RoundTripper }
 
-func (versionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t versionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	r := req.Clone(req.Context())
 	r.Header.Set("User-Agent", userAgent())
 	r.Header.Set("Relay-Client-Version", clientVersion)
-	return http.DefaultTransport.RoundTrip(r)
+	if t.base == nil {
+		return http.DefaultTransport.RoundTrip(r)
+	}
+	return t.base.RoundTrip(r)
 }
 
 // New creates a gateway client with a fixed bearer token and NO refresh
@@ -434,15 +454,42 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.httpClient.Do(retryReq)
 }
 
-// Post is PostContext without a deadline. Prefer PostContext so a hanging
-// gateway cannot block the CLI.
-func (c *Client) Post(path, contentType string, body io.Reader) (*http.Response, error) {
-	return c.PostContext(context.Background(), path, contentType, body)
+// cancelOnClose releases a request's deadline timer once the body is closed:
+// the deadline has to outlive the call that returns the response.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
 }
 
-// Get is GetContext without a deadline. Prefer GetContext.
+func (b cancelOnClose) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
+}
+
+func withDefaultDeadline(do func(context.Context) (*http.Response, error)) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	resp, err := do(ctx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = cancelOnClose{resp.Body, cancel}
+	return resp, nil
+}
+
+// Post is PostContext bounded by defaultRequestTimeout, for callers that have
+// no context of their own. Prefer PostContext.
+func (c *Client) Post(path, contentType string, body io.Reader) (*http.Response, error) {
+	return withDefaultDeadline(func(ctx context.Context) (*http.Response, error) {
+		return c.PostContext(ctx, path, contentType, body)
+	})
+}
+
+// Get is GetContext bounded by defaultRequestTimeout. Prefer GetContext.
 func (c *Client) Get(path string) (*http.Response, error) {
-	return c.GetContext(context.Background(), path)
+	return withDefaultDeadline(func(ctx context.Context) (*http.Response, error) {
+		return c.GetContext(ctx, path)
+	})
 }
 
 // PostContext sends an authenticated POST bounded only by ctx: the Client

@@ -78,7 +78,7 @@ func fetchIntegrations(c *client.Client, parents ...context.Context) (_ *Integra
 	}
 
 	var out IntegrationsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := client.DecodeJSON(resp.Body, &out); err != nil {
 		return nil, fmt.Errorf("decode integrations response: %w", err)
 	}
 	if !out.OK {
