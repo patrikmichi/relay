@@ -123,6 +123,10 @@ func ExitCode(err error) int {
 	if errors.As(err, &exit) {
 		return exit.Code
 	}
+	var coded interface{ ExitCode() int }
+	if errors.As(err, &coded) {
+		return coded.ExitCode()
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return 4
 	}

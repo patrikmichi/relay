@@ -61,6 +61,9 @@ type Client struct {
 	// WithSessionStore/WithSessionLocker for tests.
 	store  SessionStore
 	locker SessionLocker
+
+	stepUp StepUpHandler
+	proofs ProofSigner
 }
 
 // errRedirectRefused is returned via http.Client.CheckRedirect to refuse
@@ -183,6 +186,7 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		}
 		c := New(origin, apiKey)
 		c.profile = profile
+		c.stepUp = defaultStepUp
 		for _, opt := range opts {
 			opt(c)
 		}
@@ -222,6 +226,7 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 
 	c := New(origin, tokenData.AccessToken)
 	c.profile = profile
+	c.stepUp = defaultStepUp
 	c.store = keychainSessionStore{profile: profile}
 	c.email = email
 	c.gatewayOrigin = origin
@@ -386,11 +391,96 @@ func cloneRequest(req *http.Request) (*http.Request, error) {
 	return clone, nil
 }
 
-// Do performs an authenticated HTTP request.
+// StepUpChallenge is a confirmation the gateway wants a person to give
+// before it runs an action.
+type StepUpChallenge struct {
+	ID  string
+	URL string
+	// Gateway is the origin the challenge came from; the handler opens URL
+	// only when it is on that origin.
+	Gateway string
+}
+
+// StepUpHandler gets a person to complete a StepUpChallenge and returns the
+// id to send in the X-Step-Up header of the retried request. It may use the
+// client to poll the gateway for the outcome.
+type StepUpHandler func(ctx context.Context, challenge StepUpChallenge, c *Client) (string, error)
+
+var defaultStepUp StepUpHandler
+
+// SetDefaultStepUpHandler sets the handler every client built by Resolve
+// starts with.
+func SetDefaultStepUpHandler(h StepUpHandler) { defaultStepUp = h }
+
+// SetStepUpHandler makes Do complete a step-up and retry once when the
+// gateway answers 401 step_up_required. Without a handler the refusal is
+// returned as a *StepUpRequiredError.
+func (c *Client) SetStepUpHandler(h StepUpHandler) { c.stepUp = h }
+
+// ProofSigner builds the DPoP proof (RFC 9449) that binds one request to the
+// device key the session was issued to.
+type ProofSigner interface {
+	Proof(method, rawURL, accessToken string) (string, error)
+}
+
+// SetProofSigner makes Do authorize requests with a DPoP proof instead of a
+// bare bearer token.
+func (c *Client) SetProofSigner(p ProofSigner) { c.proofs = p }
+
+func (c *Client) authorize(req *http.Request, token string) error {
+	if c.proofs == nil {
+		req.Header.Set("Authorization", "Bearer "+token)
+		return nil
+	}
+	proof, err := c.proofs.Proof(req.Method, req.URL.String(), token)
+	if err != nil {
+		return fmt.Errorf("sign DPoP proof: %w", err)
+	}
+	req.Header.Set("Authorization", "DPoP "+token)
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
+// Do performs an authenticated HTTP request. A refusal by the gateway's
+// billing gate, a quota or a step-up requirement comes back as a typed error
+// (EntitlementError, QuotaExceededError, StepUpRequiredError) instead of a
+// response, so every command reports it the same way.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	resp, err := c.doAuthorized(req)
+	if err != nil {
+		return resp, err
+	}
+	refusal := refusalOf(resp)
+	if refusal == nil {
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+	var challenge *StepUpRequiredError
+	if !errors.As(refusal, &challenge) || c.stepUp == nil {
+		return nil, refusal
+	}
+	id, err := c.stepUp(req.Context(), StepUpChallenge{ID: challenge.ID, URL: challenge.URL, Gateway: c.GatewayURL}, c)
+	if err != nil {
+		return nil, err
+	}
+	retry, err := cloneRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	retry.Header.Set("X-Step-Up", id)
+	resp, err = c.doAuthorized(retry)
+	if err != nil {
+		return resp, err
+	}
+	return classify(resp)
+}
+
+func (c *Client) doAuthorized(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	c.maybeProactiveRefresh(ctx)
-	req.Header.Set("Authorization", "Bearer "+c.bearerSnapshot())
+	if err := c.authorize(req, c.bearerSnapshot()); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.httpClient.Do(req)
 	c.mu.Lock()
@@ -398,6 +488,10 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	c.mu.Unlock()
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || !refreshable {
 		return resp, err
+	}
+	// A step-up is not an expired token: refreshing would only repeat it.
+	if _, wantsStepUp := refusalOf(resp).(*StepUpRequiredError); wantsStepUp {
+		return resp, nil
 	}
 
 	// 401 — attempt exactly one refresh-and-retry.
@@ -418,7 +512,9 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// THIS call still reports 401.
 		return unauthorizedResponse(req), nil
 	}
-	retryReq.Header.Set("Authorization", "Bearer "+retryToken)
+	if err := c.authorize(retryReq, retryToken); err != nil {
+		return nil, err
+	}
 	return c.httpClient.Do(retryReq)
 }
 
