@@ -106,9 +106,23 @@ func timeoutCause(ctx context.Context, err error) error {
 	return err
 }
 
-// ExitCode maps a command error to the process exit status: 4 when a
-// gateway request hit relay's time limit, 1 for any other failure.
+// ExitError ends the process with a specific status. An empty Msg means the
+// command already printed what the caller needs to see.
+type ExitError struct {
+	Code int
+	Msg  string
+}
+
+func (e *ExitError) Error() string { return e.Msg }
+
+// ExitCode maps a command error to the process exit status: the code of an
+// ExitError, 4 when a gateway request hit relay's time limit, 1 for any other
+// failure.
 func ExitCode(err error) int {
+	var exit *ExitError
+	if errors.As(err, &exit) {
+		return exit.Code
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return 4
 	}

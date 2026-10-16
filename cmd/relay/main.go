@@ -61,7 +61,7 @@ var staticCommandNames = map[string]bool{
 	"help-tools": true, "help": true, "completion": true, "sync": true,
 	"publish": true, "skill": true, "agent": true, "mcp": true,
 	"providers": true, "doctor": true, "recover": true, "history": true,
-	"explain": true, "connectors": true, "connect": true,
+	"explain": true, "connectors": true, "connect": true, "approvals": true,
 	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
@@ -191,6 +191,7 @@ func newRootCmd() *cobra.Command {
 		cli.AuthorizeCmd(),
 		cli.CallCmd(),
 		cli.ExplainCmd(),
+		cli.ApprovalsCmd(),
 		cli.ServicesCmd(),
 		cli.ConnectorsCmd(),
 		cli.ConnectCmd(),
@@ -247,7 +248,9 @@ func main() {
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		err = rewriteOfflineUnknownCommandErr(err, os.Args[1:])
-		fmt.Fprintln(os.Stderr, err)
+		if err.Error() != "" {
+			fmt.Fprintln(os.Stderr, err)
+		}
 		os.Exit(cli.ExitCode(err))
 	}
 }
