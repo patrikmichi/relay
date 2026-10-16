@@ -193,6 +193,46 @@ func TestUnparseableConfigIsSkippedNotOverwritten(t *testing.T) {
 	}
 }
 
+func TestJSONKeepsBOMAndCRLF(t *testing.T) {
+	env := newEnv(t)
+	path := filepath.Join(env.Home, ".cursor", "mcp.json")
+	writeFile(t, path, "\xef\xbb\xbf{\r\n  \"mcpServers\": {\r\n    \"mine\": {\r\n      \"command\": \"x\"\r\n    }\r\n  }\r\n}\r\n")
+	syncAll(t, env, userBundle(fixtureBundle()), Options{Agents: []AgentID{Cursor}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
+	got := readFile(t, path)
+	if !strings.HasPrefix(got, "\xef\xbb\xbf") || strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") || !strings.Contains(got, "\"docs\"") {
+		t.Fatalf("BOM or CRLF lost:\n%q", got)
+	}
+}
+
+func TestJSONCIsSkippedWithAClearReasonAndOpenCodePrefersTheJSONCFile(t *testing.T) {
+	env := newEnv(t)
+	dir := filepath.Join(env.Home, ".config", "opencode")
+	jsonc := "{\n  // my theme\n  \"theme\": \"dark\",\n}\n"
+	writeFile(t, filepath.Join(dir, "opencode.jsonc"), jsonc)
+	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
+	var detail string
+	for _, it := range plan.Items {
+		if it.Kind == KindMCP && it.Status == StatusSkipped {
+			detail = it.Detail
+		}
+	}
+	if !strings.Contains(detail, "JSONC") {
+		t.Errorf("skip reason = %q", detail)
+	}
+	if readFile(t, filepath.Join(dir, "opencode.jsonc")) != jsonc {
+		t.Error("the JSONC file was modified")
+	}
+	if fileExists(filepath.Join(dir, "opencode.json")) {
+		t.Error("a second opencode.json was created next to the user's opencode.jsonc")
+	}
+
+	writeFile(t, filepath.Join(dir, "opencode.jsonc"), "{\n  \"theme\": \"dark\"\n}\n")
+	syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
+	if !strings.Contains(readFile(t, filepath.Join(dir, "opencode.jsonc")), "\"docs\"") || fileExists(filepath.Join(dir, "opencode.json")) {
+		t.Error("a plain-JSON opencode.jsonc was not the file edited")
+	}
+}
+
 func TestTOMLTableDefinedByUserIsNotDuplicated(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".codex", "config.toml")

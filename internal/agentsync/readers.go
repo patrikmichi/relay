@@ -492,11 +492,7 @@ func (r *agentReader) mcp() []MCPServer {
 	case Gemini:
 		return r.jsonMCP(filepath.Join(root, ".gemini", "settings.json"), "mcpServers")
 	case OpenCode:
-		path := filepath.Join(r.env.Project, "opencode.json")
-		if r.scope == ScopeUser {
-			path = filepath.Join(r.env.Home, ".config", "opencode", "opencode.json")
-		}
-		return r.jsonMCP(path, "mcp")
+		return r.jsonMCP(opencodeConfigPath(r.env, r.scope), "mcp")
 	case Windsurf:
 		if r.scope == ScopeProject {
 			r.warn("Windsurf reads MCP servers from the user config only")

@@ -166,12 +166,22 @@ func geminiMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	}), ""
 }
 
+// opencodeConfigPath prefers an existing opencode.jsonc over opencode.json,
+// which OpenCode reads too, so relay edits the file the user already keeps.
+func opencodeConfigPath(env Env, scope Scope) string {
+	dir := env.Project
+	if scope == ScopeUser {
+		dir = filepath.Join(env.Home, ".config", "opencode")
+	}
+	if p := filepath.Join(dir, "opencode.jsonc"); fileExists(p) {
+		return p
+	}
+	return filepath.Join(dir, "opencode.json")
+}
+
 func opencodeMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	m := meta{OpenCode, KindMCP, scope}
-	path := filepath.Join(env.Project, "opencode.json")
-	if scope == ScopeUser {
-		path = filepath.Join(env.Home, ".config", "opencode", "opencode.json")
-	}
+	path := opencodeConfigPath(env, scope)
 	seed := obj{{"$schema", "https://opencode.ai/config.json"}}
 	return jsonMCP(m, path, []string{"mcp"}, seed, servers, func(s MCPServer) any {
 		if s.remote() {

@@ -20,11 +20,15 @@ func loadRoot(data []byte, exists bool, seed obj) (root *jnode, indent string, d
 	}
 	n, err := parseJSON(data)
 	if err != nil {
+		if _, jsoncErr := parseJSON(stripJSONC(data)); jsoncErr == nil {
+			return nil, "", "not plain JSON: it has comments or trailing commas (JSONC), which relay cannot edit without losing them; edit it by hand or remove them"
+		}
 		return nil, "", "not plain JSON (" + err.Error() + "); edit it by hand"
 	}
 	if n.kind != jObject {
 		return nil, "", "top level is not a JSON object"
 	}
+	n.style = styleOf(data)
 	return n, detectIndent(data), ""
 }
 
@@ -375,5 +379,5 @@ func writeRoot(c *Ctx, real string, mode fs.FileMode, root *jnode, indent string
 	if emptyRoot(root, seed) {
 		return c.remove(real)
 	}
-	return c.write(real, mode, root.marshal(indent))
+	return c.write(real, mode, root.style.apply(root.marshal(indent)))
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 )
 
@@ -27,6 +28,28 @@ type jnode struct {
 	keys []string
 	vals map[string]*jnode
 	arr  []*jnode
+	// style is the byte-order mark and line ending of the file a root node
+	// was read from, restored when it is written back.
+	style fileStyle
+}
+
+type fileStyle struct {
+	bom bool
+	eol string
+}
+
+func styleOf(data []byte) fileStyle {
+	return fileStyle{bom: bytes.HasPrefix(data, []byte("\xef\xbb\xbf")), eol: lineEnding(data)}
+}
+
+func (s fileStyle) apply(b []byte) []byte {
+	if s.eol == "\r\n" {
+		b = bytes.ReplaceAll(b, []byte("\n"), []byte("\r\n"))
+	}
+	if s.bom {
+		b = append([]byte("\xef\xbb\xbf"), b...)
+	}
+	return b
 }
 
 // kv and obj build ordered JSON objects in code.
@@ -83,6 +106,45 @@ func toNode(v any) *jnode {
 	default:
 		return &jnode{kind: jScalar, raw: encodeScalar(v)}
 	}
+}
+
+var trailingComma = regexp.MustCompile(`,(\s*[}\]])`)
+
+// stripJSONC removes comments and trailing commas. It only tells JSONC from
+// broken JSON: relay never writes the stripped text.
+func stripJSONC(data []byte) []byte {
+	var out []byte
+	inString := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		switch {
+		case inString:
+			out = append(out, c)
+			if c == '\\' && i+1 < len(data) {
+				i++
+				out = append(out, data[i])
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			inString = true
+			out = append(out, c)
+		case c == '/' && i+1 < len(data) && data[i+1] == '/':
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			out = append(out, '\n')
+		case c == '/' && i+1 < len(data) && data[i+1] == '*':
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			i++
+		default:
+			out = append(out, c)
+		}
+	}
+	return trailingComma.ReplaceAll(out, []byte("$1"))
 }
 
 func (n *jnode) get(key string) *jnode {
