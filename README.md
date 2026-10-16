@@ -336,9 +336,10 @@ RELAY_AGENT=1 relay whoami             # Profile:  agent (RELAY_AGENT=1; writes 
 # What an agent sees when a write is held (exit status 12):
 RELAY_AGENT=1 relay stripe create_refund --arg charge=ch_1 --wait=120
 
-# What you do, with your own session (no RELAY_AGENT):
+# What you do:
 relay approvals list
-relay approvals approve apr_3f9c4e --grant 30   # shows the whole call, asks y/N
+relay approvals approve apr_3f9c4e              # opens the approval page; confirm with your passkey
+relay approvals approve apr_3f9c4e --no-browser # prints the link and a QR code for your phone
 ```
 
 `relay login` says which kind of session it asked for, because the kind is
@@ -354,15 +355,12 @@ destructive and outward tools, `grant` for writes. Exit statuses, the profiles
 and what `relay sync` sets are in
 [docs/reference/approvals.md](docs/reference/approvals.md).
 
-**Security note.** `RELAY_AGENT` is a selector, not a security boundary. The
-agent marker is chosen when a session is issued; an unmarked `relay login` on
-the same machine is still unrestricted, and a process that unsets `RELAY_AGENT`
-or reads your keychain acts as you. The agent profile makes the default safe;
-it is not a sandbox. The planned protection is gateway-side human presence:
-passkey step-up for approvals and high-risk actions, with approvals confirmed
-on the approving device. keylatch is an optional integration. As a minimum, `relay approvals approve` and `deny` need an interactive
-terminal and show the whole call before they ask; they refuse when stdin is not
-a terminal.
+**Security note.** `RELAY_AGENT` is a selector, not a security boundary. What
+stops a process running as you from approving its own calls is that nothing in
+the CLI decides: an approval is a passkey confirmation in a browser, so
+`relay approvals approve` and `deny` only open the approval page (or print a
+link and a QR code for your phone). A personal CLI session is held to the same
+approvals as an agent's; only a browser session is unrestricted.
 
 ## The offline-vs-gateway model
 
@@ -418,7 +416,7 @@ a gateway.
 | `relay help-tools [service]` | gateway | List tools for one or all services |
 | `relay call <service> <tool> [--arg k=v] [--arg-json k=<json>] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
 | `relay explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
-| `relay approvals list\|show\|approve\|deny\|wait` | gateway | List the held calls of agents, decide them with your own session, or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
+| `relay approvals list\|show\|approve\|deny\|wait` | gateway | List held calls, open the page where one is approved or denied with a passkey (`--no-browser` prints a link and QR code), or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
 
 ### Syncing coding agents
 

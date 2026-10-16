@@ -16,8 +16,8 @@ approvals documentation.
 | Keychain account | `oauth-refresh-token:<gateway>:<email>` | `oauth-refresh-token:agent:<gateway>:<email>` |
 | Config file field | `email` | `agentEmail` |
 | Used when | `RELAY_AGENT` is unset | `RELAY_AGENT` is `1`, `true`, `yes` or `on` |
-| Writes | run | wait for approval (reads run) |
-| `relay approvals` | list, show, approve, deny, wait | wait only; approve and deny are refused |
+| Writes | wait for approval unless a time-boxed service grant covers them (reads run) | wait for approval (reads run) |
+| `relay approvals` | list, show, approve, deny (open the approval page), wait | list, show, wait; approve and deny only print the link |
 
 Both can be signed in to the same gateway and account at once. With
 `RELAY_AGENT` set, relay uses the agent session and nothing else: if there is
@@ -53,24 +53,15 @@ approves the call.
 
 ## What the profile does not do
 
-`RELAY_AGENT` is a selector, not a security boundary. The marker is chosen
-when the session is issued, and the variable only picks which stored session
-relay uses. It is not proof of who holds it. A process that can run `relay
-login` without `--agent` as the same user on the same machine gets an
-unrestricted session, a process that unsets `RELAY_AGENT` runs as you, and one
-that can read the OS keychain can read your own session. The agent profile and
-`relay sync` below make the default path safe, but they are not a sandbox.
-`RELAY_AGENT` selects a profile; it is not a security boundary. The planned
-protection is gateway-side human presence: passkey step-up for approvals and
-high-risk actions, with approvals confirmed on the approving device. keylatch
-is an optional integration.
-
-The one check relay can add on its own is a person at the keyboard. `relay
-approvals approve` and `deny` therefore refuse to run without an interactive
-terminal on stdin, show the whole call and ask before deciding (see below).
-That stops an unattended script or agent harness from approving its own calls
-through the CLI; it does not stop a process that talks to the gateway directly
-with your session.
+`RELAY_AGENT` is a selector, not a security boundary: it only picks which
+stored session relay uses. What keeps a process running as you from approving
+its own calls is that the CLI cannot decide anything. A decision is a WebAuthn
+assertion with user verification, made in a browser session, and the gateway
+refuses a decision from any bearer token. `relay approvals approve` and
+`deny` therefore only open the approval page. A personal CLI session is held to
+the same approvals as an agent's: only a browser session is unrestricted. The
+gateway's organisation policy decides which risk classes are off, need an
+approval, or run.
 
 ## Held calls
 
@@ -114,29 +105,35 @@ with `--wait`. An outcome that was printed adds no error message of its own.
 |---|---|
 | `relay approvals list [--status S] [--json]` | `GET /api/approvals?status=S`; `S` is `pending` (default), `approved`, `denied`, `executed`, `failed`, `expired` or `all` |
 | `relay approvals show <id> [--json]` | `GET /api/approvals/{id}`: the approval and a preview of its arguments |
-| `relay approvals approve <id> [--grant MINUTES] [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/approve` |
-| `relay approvals deny <id> [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/deny` |
+| `relay approvals approve <id> [--no-browser] [--wait] [--wait-timeout T] [--json]` | `GET /api/approvals/{id}`, then opens `<gateway>/approvals/{id}?decision=approve` |
+| `relay approvals deny <id> [--no-browser] [--wait] [--wait-timeout T] [--json]` | `GET /api/approvals/{id}`, then opens `<gateway>/approvals/{id}?decision=deny` |
 | `relay approvals wait <id> [--wait-timeout SECONDS] [--json]` | `POST /api/approvals/{id}/await`, repeated while the status is `pending` |
 
-`--json` prints the response body unchanged. `--grant` (1 to 480) applies to a
-write approval: it also lets the same agent session write to the service for
-that long. `wait --wait-timeout` takes seconds or a duration (`0` asks once; the
-default is 300 seconds). The root `--timeout` limits a single request.
+`list` and `show` with `--json` print the response body unchanged. `wait
+--wait-timeout` takes seconds or a duration (`0` asks once; the default is 300
+seconds). The root `--timeout` limits a single request.
 
-Deciding needs an org owner, admin or listed approver with an unmarked
-session. `approve` and `deny` refuse the agent profile before sending anything,
-as the gateway does, so run them without `RELAY_AGENT`. `wait` is the other
-way round: only the session that made the call can collect it, so run it with
-the same `RELAY_AGENT` setting.
+`approve` and `deny` send no decision. They look the approval up (so a wrong or
+already decided id is reported before a browser opens, and the call is
+summarised), then open the approval page. There the approver sees the whole
+call, the policy that held it and its requester, chooses a grant duration for a
+write, and confirms with a passkey. The page is the only place a decision is
+made; no relay command posts one.
 
-`approve` and `deny` also need an interactive terminal. They fetch the call
-with `GET /api/approvals/{id}?full=1`, print the approval and every argument
-untruncated (control characters removed), and ask `Approve this call? [y/N]`.
-Only `y` or `yes` sends the decision; anything else, and end of input, sends
-nothing. With no terminal on stdin they refuse before contacting the gateway.
-`approve` also refuses when the gateway no longer has the arguments, because a
-call that cannot be shown must not be approved; `deny` still works. The review
-goes to stderr, so `--json` output stays machine-readable.
+- In a terminal relay opens the default browser. With `--no-browser`, in an
+  agent session (`RELAY_AGENT`) or without a terminal on stdin, it prints the
+  link and a QR code instead. Scan the code to decide on a phone with its own
+  passkey, or open the link on a desktop whose browser offers the phone
+  (cross-device passkey).
+- `--wait` polls `GET /api/approvals/{id}` every two seconds until the approval
+  is decided and exits 0 (approved or executed), 10 (denied), 11 (expired) or
+  12 (still pending when `--wait-timeout` ended).
+- `--json` prints one document: `{"approval_id","decision","url","opened","status"}`.
+- The approval must exist and be `pending`; relay refuses a decided one
+  before opening anything.
+
+`wait` is for the session that made the call: only that session can collect the
+result, so run it with the same `RELAY_AGENT` setting.
 
 ## relay explain
 

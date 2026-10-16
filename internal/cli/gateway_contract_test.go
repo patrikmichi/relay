@@ -62,26 +62,28 @@ func TestContract_ApprovalShowReadsArgsPreview(t *testing.T) {
 	}
 }
 
-func TestContract_ApproveShowsTheFullArgsTheGatewayReturns(t *testing.T) {
-	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/approvals/apr_1?full=1":   reply(200, contractApprovalFull),
-		"POST /api/approvals/apr_1/approve": reply(200, `{"ok":true,"approval":{"approval_id":"apr_1","status":"approved"}}`),
-	})
-	out, err := decide(t, "y\n", "approve", "apr_1")
-	if err != nil {
-		t.Fatalf("approve = %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "full text") {
-		t.Errorf("the review omitted the untruncated arguments:\n%s", out)
+func TestContract_ApprovalBodiesDecodeToTheSameRecord(t *testing.T) {
+	for name, body := range map[string]string{"preview": contractApprovalPreview, "full": contractApprovalFull, "args gone": contractApprovalGone} {
+		var doc struct {
+			Approval approvalRecord `json:"approval"`
+		}
+		if err := json.Unmarshal([]byte(body), &doc); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if a := doc.Approval; a.ApprovalID != "apr_1" || a.Status != "pending" || a.Service != "stripe" || a.Risk != "destructive" {
+			t.Errorf("%s: approval = %+v", name, a)
+		}
 	}
 }
 
-func TestContract_ApproveRefusesWhenTheGatewayHoldsNoArgs(t *testing.T) {
+func TestContract_ApproveOpensThePageForAnApprovalTheGatewayReturns(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/approvals/apr_1?full=1": reply(200, contractApprovalGone),
+		"GET /api/approvals/apr_1": reply(200, contractApprovalPreview),
 	})
-	if _, err := decide(t, "y\n", "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), "blind") {
-		t.Errorf("err = %v, want a blind-approval refusal", err)
+	stubBrowserWith(t, nil)
+	out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--no-browser")
+	if err != nil || !strings.Contains(out, "/approvals/apr_1?decision=approve") {
+		t.Fatalf("approve = %v\n%s", err, out)
 	}
 }
 

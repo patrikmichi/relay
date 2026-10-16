@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -19,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
@@ -33,8 +32,6 @@ const (
 	defaultWaitSeconds = 300
 	maxAwaitSeconds    = 30
 	maxApprovalBody    = 1 << 20
-	maxApprovalNote    = 500
-	maxGrantMinutes    = 480
 )
 
 var awaitRetryDelay = time.Second
@@ -84,8 +81,6 @@ type awaitOutcome struct {
 	ExpiresAt  string          `json:"expires_at"`
 }
 
-var errAgentCannotDecide = errors.New("the agent profile cannot approve or deny calls, and the gateway refuses it: an agent must not decide its own approvals. Unset RELAY_AGENT and run this with your own session (`relay login`)")
-
 type approvalFlags struct {
 	gatewayURL string
 	jsonOut    bool
@@ -101,14 +96,15 @@ func (f *approvalFlags) bind(cmd *cobra.Command, jsonHelp string) {
 func ApprovalsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approvals",
-		Short: "List, decide and wait for approvals of agent calls",
-		Long: `An agent's writes wait for a human. These commands list the held calls,
-decide them and collect the result of one that was approved.
+		Short: "List held calls, open their approval page and wait for the result",
+		Long: `Calls from an agent or a personal CLI session wait for a person. These
+commands list the held calls, take you to the page where you decide one, and
+collect the result of one that was approved.
 
-Deciding (list, show, approve, deny) needs your own session: an org owner,
-admin or listed approver, signed in with 'relay login' and without
-RELAY_AGENT. The agent profile is refused. Collecting (wait) needs the
-session that made the call, so run it with the same RELAY_AGENT setting.
+A decision is made only in a browser, with your passkey: 'approve' and 'deny'
+open the approval page (or print a link and a QR code for your phone) and send
+no decision themselves. Collecting (wait) needs the session that made the
+call, so run it with the same RELAY_AGENT setting.
 
 wait exit status
   0   approved and executed
@@ -314,125 +310,209 @@ func indentJSON(raw []byte) string {
 	return textsafe.Block(buf.String())
 }
 
-// confirmDecision shows the person the whole call the gateway holds, fetched
-// without truncation, and asks before a decision is sent. It is the check
-// that a human, not a process running as the same user, decided: the agent
-// profile check alone is only a selector.
-func confirmDecision(cmd *cobra.Command, c *client.Client, id string, approve bool, body map[string]any) error {
-	code, raw, err := approvalsDo(cmd.Context(), c, controlRequest, http.MethodGet, "/api/approvals/"+url.PathEscape(id)+"?full=1", nil)
+var approvalPollInterval = 2 * time.Second
+
+// approvalPageURL is the page where a person decides one approval, on the
+// gateway's own origin.
+func approvalPageURL(gatewayOrigin, id, decision string) string {
+	return strings.TrimRight(gatewayOrigin, "/") + "/approvals/" + url.PathEscape(id) + "?decision=" + decision
+}
+
+type decideFlags struct {
+	approvalFlags
+	noBrowser   bool
+	wait        bool
+	waitTimeout string
+}
+
+// approvalsDecideCmd returns `relay approvals approve` or `deny`. Neither
+// decides anything: a decision is a passkey confirmation in a browser, on this
+// computer or a phone, so the command only takes the person to that page.
+func approvalsDecideCmd(approve bool) *cobra.Command {
+	var f decideFlags
+	decision := "deny"
+	short := "Open the page where a held call is denied"
+	if approve {
+		decision = "approve"
+		short = "Open the page where a held call is approved"
+	}
+	cmd := &cobra.Command{
+		Use:   decision + " <id>",
+		Short: short,
+		Long: `Opens the gateway's approval page for the held call in your browser. You review
+the whole call there and confirm with your passkey; relay sends no decision
+itself, so nothing running as your user can approve a call through the CLI.
+
+With --no-browser, or in an agent session or a script, relay prints the link
+and a QR code instead: scan the code to decide with the passkey on your phone.
+
+--wait then polls the approval until it is decided and exits like 'relay
+approvals wait': 0 approved, 10 denied, 11 expired, 12 still pending when the
+timeout ended.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDecidePage(cmd, f, decision, args[0])
+		},
+	}
+	f.bind(cmd, "Print the link and the outcome as one JSON document")
+	cmd.Flags().BoolVar(&f.noBrowser, "no-browser", false, "Print the link and a QR code for a phone instead of opening a browser")
+	cmd.Flags().BoolVar(&f.wait, "wait", false, "Wait until the approval is decided")
+	cmd.Flags().StringVar(&f.waitTimeout, "wait-timeout", strconv.Itoa(defaultWaitSeconds), "How long --wait polls, in seconds or as a duration such as 90s or 5m")
+	return cmd
+}
+
+func runDecidePage(cmd *cobra.Command, f decideFlags, decision, id string) error {
+	total, err := parseWaitTimeout(f.waitTimeout)
 	if err != nil {
 		return err
 	}
-	if code != http.StatusOK {
-		return approvalError(code, raw)
+	gURL, err := resolveGatewayURLOrFailClosed(f.gatewayURL)
+	if err != nil {
+		return err
 	}
-	// ?full=1 answers {approval, args, truncated}; with nothing stored it
-	// answers args_preview:null instead, so a missing "args" means none held.
-	var doc struct {
-		Approval approvalRecord  `json:"approval"`
-		Args     json.RawMessage `json:"args"`
+	origin, err := config.NormalizeGatewayURL(gURL)
+	if err != nil {
+		return err
 	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("decode approval: %w", err)
-	}
-	hasArgs := len(doc.Args) > 0 && string(doc.Args) != "null"
-	if approve && !hasArgs {
-		return errors.New("the gateway no longer has this call's arguments, so relay cannot show what would run: refusing to approve it blind. Deny it, or ask the agent to repeat the call")
+	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+	c, clientErr := resolveClient(gURL)
+	if clientErr == nil {
+		if rec, ok, err := lookupApproval(cmd.Context(), c, id); err != nil {
+			return err
+		} else if ok {
+			if rec.Status != "pending" {
+				return fmt.Errorf("approval %s is already %s; nothing is left to decide", textsafe.Clean(id), textsafe.Clean(rec.Status))
+			}
+			if !f.jsonOut {
+				printApproval(out, rec)
+			}
+		}
+	} else if f.wait {
+		return clientErr
 	}
 
-	out := cmd.ErrOrStderr()
-	printApproval(out, doc.Approval)
-	if hasArgs {
-		fmt.Fprintf(out, "Arguments: %s\n", indentJSON(doc.Args))
+	page := approvalPageURL(origin, id, decision)
+	opened := false
+	if f.jsonOut {
+		opened = openIfInteractive(cmd, page, f.noBrowser)
 	} else {
-		fmt.Fprintln(out, "Arguments: no longer available")
+		opened = showLink(cmd, page, f.noBrowser, "Decide it with your passkey")
 	}
-	if g, ok := body["grant_minutes"].(int); ok {
-		fmt.Fprintf(out, "This also lets the agent session write to %s for %d minutes.\n", textsafe.Clean(doc.Approval.Service), g)
+
+	status := "pending"
+	exit := 0
+	if f.wait {
+		if !f.jsonOut {
+			fmt.Fprintf(errOut, "Waiting up to %s for the decision...\n", total)
+		}
+		status, exit, err = pollDecision(cmd.Context(), c, id, total, out, f.jsonOut)
+		if err != nil {
+			return err
+		}
 	}
-	verb := "Deny"
-	if approve {
-		verb = "Approve"
+	if f.jsonOut {
+		doc, err := json.Marshal(map[string]any{"approval_id": id, "decision": decision, "url": page, "opened": opened, "status": status})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, string(doc))
 	}
-	if !askNo(bufio.NewReader(cmd.InOrStdin()), out, "\n"+verb+" this call?") {
-		return errors.New("not confirmed; nothing was decided")
+	if exit != 0 {
+		return &ExitError{Code: exit}
 	}
 	return nil
 }
 
-func approvalsDecideCmd(approve bool) *cobra.Command {
-	var f approvalFlags
-	var note string
-	var grant int
-	action, past := "deny", "Denied"
-	short := "Deny a held call"
-	if approve {
-		action, past = "approve", "Approved"
-		short = "Approve a held call; the agent collects it with await or by repeating the call"
+// lookupApproval fetches the approval so the person sees what the page will
+// show and an already-decided one is not opened. A gateway that cannot answer
+// does not block opening the page; an unknown id does.
+func lookupApproval(ctx context.Context, c *client.Client, id string) (approvalRecord, bool, error) {
+	code, raw, err := approvalsDo(ctx, c, controlRequest, http.MethodGet, "/api/approvals/"+url.PathEscape(id), nil)
+	if err != nil {
+		return approvalRecord{}, false, err
 	}
-	cmd := &cobra.Command{
-		Use:   action + " <id>",
-		Short: short,
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if client.ActiveProfile() == keychain.ProfileAgent {
-				return errAgentCannotDecide
-			}
-			body := map[string]any{}
-			if len(note) > maxApprovalNote {
-				return fmt.Errorf("--note is at most %d characters", maxApprovalNote)
-			}
-			if note != "" {
-				body["note"] = note
-			}
-			if cmd.Flags().Changed("grant") {
-				if grant < 1 || grant > maxGrantMinutes {
-					return fmt.Errorf("--grant is a number of minutes from 1 to %d", maxGrantMinutes)
-				}
-				body["grant_minutes"] = grant
-			}
-			if !canPrompt(cmd.InOrStdin()) {
-				return fmt.Errorf("relay approvals %s needs an interactive terminal: it shows you the whole call and asks before deciding", action)
-			}
-			c, err := approvalsClient(f.gatewayURL)
-			if err != nil {
-				return err
-			}
-			if err := confirmDecision(cmd, c, args[0], approve, body); err != nil {
-				return err
-			}
-			code, raw, err := approvalsDo(cmd.Context(), c, controlRequest, http.MethodPost, "/api/approvals/"+url.PathEscape(args[0])+"/"+action, body)
-			if err != nil {
-				return err
-			}
-			if code != http.StatusOK {
-				return approvalError(code, raw)
-			}
-			out := cmd.OutOrStdout()
-			if f.jsonOut {
-				printRaw(out, raw)
-				return nil
-			}
-			var doc struct {
-				Approval approvalRecord `json:"approval"`
-			}
-			if err := json.Unmarshal(raw, &doc); err != nil {
-				return fmt.Errorf("decode approval: %w", err)
-			}
-			a := doc.Approval.sanitized()
-			fmt.Fprintf(out, "%s %s: %s %s (%s)\n", past, a.ApprovalID, a.Service, a.Tool, a.Risk)
-			if a.GrantMinutes > 0 {
-				fmt.Fprintf(out, "Writes to %s are allowed for this agent session for %d minutes\n", a.Service, a.GrantMinutes)
-			}
-			return nil
-		},
+	switch code {
+	case http.StatusOK:
+		var doc struct {
+			Approval approvalRecord `json:"approval"`
+		}
+		if json.Unmarshal(raw, &doc) != nil {
+			return approvalRecord{}, false, nil
+		}
+		return doc.Approval, true, nil
+	case http.StatusNotFound:
+		return approvalRecord{}, false, approvalError(code, raw)
 	}
-	f.bind(cmd, "Print the response body unchanged")
-	cmd.Flags().StringVar(&note, "note", "", fmt.Sprintf("Note recorded with the decision (at most %d characters)", maxApprovalNote))
-	if approve {
-		cmd.Flags().IntVar(&grant, "grant", 0, fmt.Sprintf("For a write: also let this agent session write to the service for MINUTES (1 to %d)", maxGrantMinutes))
+	return approvalRecord{}, false, nil
+}
+
+// pollDecision polls an approval until it leaves pending or total passes and
+// returns its status with the matching exit status.
+func pollDecision(ctx context.Context, c *client.Client, id string, total time.Duration, out io.Writer, jsonOut bool) (string, int, error) {
+	deadline := time.Now().Add(total)
+	for {
+		code, raw, err := approvalsDo(ctx, c, controlRequest, http.MethodGet, "/api/approvals/"+url.PathEscape(id), nil)
+		if err != nil {
+			return "", 0, err
+		}
+		if code != http.StatusOK {
+			return "", 0, approvalError(code, raw)
+		}
+		var doc struct {
+			Approval approvalRecord `json:"approval"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return "", 0, fmt.Errorf("decode approval: %w", err)
+		}
+		a := doc.Approval.sanitized()
+		if a.Status != "pending" {
+			if !jsonOut {
+				fmt.Fprintf(out, "%s: %s\n", textsafe.Clean(id), decisionSummary(a))
+			}
+			return a.Status, decisionExit(a.Status), nil
+		}
+		if time.Now().After(deadline) {
+			if !jsonOut {
+				fmt.Fprintf(out, "Still pending (expires %s).\n", a.ExpiresAt)
+			}
+			return "pending", exitPending, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", 0, ctx.Err()
+		case <-time.After(approvalPollInterval):
+		}
 	}
-	return cmd
+}
+
+func decisionSummary(a approvalRecord) string {
+	who := "an approver"
+	if a.Approver != "" {
+		who = a.Approver
+	}
+	switch a.Status {
+	case "approved", "executed":
+		return a.Status + " by " + who
+	case "denied":
+		return "denied by " + who
+	}
+	return a.Status
+}
+
+// decisionExit maps a decided approval to the exit status documented for wait.
+func decisionExit(status string) int {
+	switch status {
+	case "approved", "executed":
+		return 0
+	case "denied":
+		return exitDenied
+	case "expired":
+		return exitExpired
+	case "pending":
+		return exitPending
+	}
+	return 1
 }
 
 func approvalsWaitCmd() *cobra.Command {

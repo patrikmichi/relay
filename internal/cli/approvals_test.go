@@ -121,108 +121,195 @@ func TestApprovalsShow_PrintsTheApprovalAndArgumentPreview(t *testing.T) {
 	}
 }
 
-const fullCallJSON = `{"approval":` + pendingApprovalJSON + `,"args":{"charge":"ch_1","amount":4200,"memo":"refund the whole order"},"truncated":false}`
+const pendingShowJSON = `{"approval":` + pendingApprovalJSON + `,"args_preview":{"charge":"ch_1"}}`
 
-// reviewable adds the full-call fetch every decision makes before asking.
-func reviewable(handlers map[string]func(http.ResponseWriter, map[string]any)) map[string]func(http.ResponseWriter, map[string]any) {
-	handlers["GET /api/approvals/apr_1?full=1"] = reply(200, fullCallJSON)
-	return handlers
-}
-
-// decide runs a decision with the person's answer typed on stdin.
-func decide(t *testing.T, answer string, args ...string) (string, error) {
+// decisionGateway serves the approval lookup only, and fails the test on any
+// other request, including a decision.
+func decisionGateway(t *testing.T, show func(http.ResponseWriter, map[string]any)) *[]string {
 	t.Helper()
-	return runWithInput(t, ApprovalsCmd(), answer, args...)
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
+		if r.Method != http.MethodGet || r.URL.Path != "/api/approvals/apr_1" {
+			t.Errorf("a decision must be made in the browser, but relay sent %s %s", r.Method, r.URL.RequestURI())
+			w.WriteHeader(http.StatusTeapot)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		show(w, nil)
+	}))
+	t.Cleanup(srv.Close)
+	withAPIKeyGateway(t, srv)
+	t.Setenv("RELAY_AGENT", "")
+	return &requests
 }
 
-func TestApprovalsApprove_SendsGrantAndNote(t *testing.T) {
-	_, bodies := approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
-		"POST /api/approvals/apr_1/approve": reply(200, `{"ok":true,"approval":`+approvedJSON+`}`),
-	}))
+func stubBrowserWith(t *testing.T, err error) *[]string {
+	t.Helper()
+	var opened []string
+	old := openBrowserURL
+	openBrowserURL = func(u string) error { opened = append(opened, u); return err }
+	t.Cleanup(func() { openBrowserURL = old })
+	return &opened
+}
 
-	out, err := decide(t, "y\n", "approve", "apr_1", "--grant", "30", "--note", "checked the invoice")
+func TestApprovalsDecide_OpensTheApprovalPageAndSendsNoDecision(t *testing.T) {
+	for _, decision := range []string{"approve", "deny"} {
+		t.Run(decision, func(t *testing.T) {
+			requests := decisionGateway(t, reply(200, pendingShowJSON))
+			opened := stubBrowserWith(t, nil)
+
+			out, err := runWithInput(t, ApprovalsCmd(), "", decision, "apr_1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(*opened) != 1 || !strings.HasSuffix((*opened)[0], "/approvals/apr_1?decision="+decision) {
+				t.Fatalf("opened %v", *opened)
+			}
+			if !strings.Contains(out, "stripe create_refund") || !strings.Contains(out, "passkey") {
+				t.Errorf("output lacks the call summary or the passkey hint:\n%s", out)
+			}
+			if len(*requests) != 1 {
+				t.Errorf("requests = %v, want only the approval lookup", *requests)
+			}
+		})
+	}
+}
+
+func TestApprovalsDecide_NoBrowserPrintsTheLinkAndAQRCode(t *testing.T) {
+	requests := decisionGateway(t, reply(200, pendingShowJSON))
+	opened := stubBrowserWith(t, nil)
+
+	out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--no-browser")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := (*bodies)[0]
-	if got["grant_minutes"] != float64(30) || got["note"] != "checked the invoice" {
-		t.Errorf("request body = %v", got)
+	if len(*opened) != 0 {
+		t.Errorf("--no-browser opened %v", *opened)
 	}
-	if !strings.Contains(out, "Approved apr_1") || !strings.Contains(out, "30 minutes") {
+	if !strings.Contains(out, "/approvals/apr_1?decision=approve") || !strings.Contains(out, "\x1b[30;47m") {
+		t.Errorf("output lacks the link or the QR code:\n%s", out)
+	}
+	if len(*requests) != 1 {
+		t.Errorf("requests = %v", *requests)
+	}
+}
+
+func TestApprovalsDecide_AgentSessionPrintsTheLinkInsteadOfOpeningABrowser(t *testing.T) {
+	decisionGateway(t, reply(200, pendingShowJSON))
+	opened := stubBrowserWith(t, nil)
+	t.Setenv("RELAY_AGENT", "1")
+
+	out, err := runWithInput(t, ApprovalsCmd(), "", "approve", "apr_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*opened) != 0 || !strings.Contains(out, "decision=approve") {
+		t.Errorf("opened %v, output %q", *opened, out)
+	}
+}
+
+func TestApprovalsDecide_FallsBackToTheLinkWhenNoBrowserOpens(t *testing.T) {
+	decisionGateway(t, reply(200, pendingShowJSON))
+	stubBrowserWith(t, errors.New("no display"))
+	out, err := runWithInput(t, ApprovalsCmd(), "", "deny", "apr_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "no display") || !strings.Contains(out, "decision=deny") {
 		t.Errorf("output = %q", out)
 	}
+}
 
-	if _, err := decide(t, "y\n", "approve", "apr_1"); err != nil {
-		t.Fatal(err)
+func TestApprovalsDecide_RefusesAnApprovalThatIsNotPending(t *testing.T) {
+	decisionGateway(t, reply(200, `{"approval":`+approvedJSON+`}`))
+	opened := stubBrowserWith(t, nil)
+	if _, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), "already approved") {
+		t.Errorf("err = %v, want an already-decided refusal", err)
 	}
-	if len((*bodies)[1]) != 0 {
-		t.Errorf("a bare approve must send an empty body, got %v", (*bodies)[1])
+	if len(*opened) != 0 {
+		t.Errorf("opened %v", *opened)
 	}
 }
 
-func TestApprovalsApprove_RejectsBadGrantAndLongNoteWithoutDialing(t *testing.T) {
-	_, bodies := approvalsGateway(t, nil)
-	for _, args := range [][]string{
-		{"approve", "apr_1", "--grant", "0"},
-		{"approve", "apr_1", "--grant", "481"},
-		{"approve", "apr_1", "--note", strings.Repeat("x", 501)},
-		{"deny", "apr_1", "--note", strings.Repeat("x", 501)},
-	} {
-		if _, err := runCommand(t, ApprovalsCmd(), args...); err == nil {
-			t.Errorf("%v: expected an error", args)
-		}
+func TestApprovalsDecide_UnknownApprovalIsAnError(t *testing.T) {
+	decisionGateway(t, reply(404, `{"error":"Approval not found"}`))
+	opened := stubBrowserWith(t, nil)
+	if _, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), "Approval not found") {
+		t.Errorf("err = %v", err)
 	}
-	if len(*bodies) != 0 {
-		t.Errorf("invalid input reached the gateway: %v", *bodies)
+	if len(*opened) != 0 {
+		t.Errorf("opened %v", *opened)
 	}
 }
 
-func TestApprovalsDeny_SendsNote(t *testing.T) {
-	_, bodies := approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
-		"POST /api/approvals/apr_1/deny": reply(200, `{"ok":true,"approval":{"approval_id":"apr_1","status":"denied","service":"stripe","tool":"create_refund","risk":"destructive"}}`),
-	}))
-	out, err := decide(t, "y\n", "deny", "apr_1", "--note", "no")
+func TestApprovalsDecide_WaitReportsTheOutcomeWithTheDocumentedExitStatus(t *testing.T) {
+	approvalPollInterval = time.Millisecond
+	t.Cleanup(func() { approvalPollInterval = 2 * time.Second })
+	for _, tc := range []struct {
+		status string
+		code   int
+	}{{"approved", 0}, {"executed", 0}, {"denied", 10}, {"expired", 11}} {
+		t.Run(tc.status, func(t *testing.T) {
+			var calls atomic.Int32
+			decisionGateway(t, func(w http.ResponseWriter, _ map[string]any) {
+				if calls.Add(1) == 1 {
+					_, _ = io.WriteString(w, pendingShowJSON)
+					return
+				}
+				_, _ = io.WriteString(w, `{"approval":{"approval_id":"apr_1","status":"`+tc.status+`","approver":"boss@example.com"}}`)
+			})
+			stubBrowserWith(t, nil)
+			out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--wait")
+			if got := exitCodeOf(err); got != tc.code {
+				t.Fatalf("exit = %d (%v), want %d", got, err, tc.code)
+			}
+			if !strings.Contains(out, tc.status) {
+				t.Errorf("output lacks %q:\n%s", tc.status, out)
+			}
+		})
+	}
+}
+
+func TestApprovalsDecide_WaitTimesOutAsStillPending(t *testing.T) {
+	approvalPollInterval = time.Millisecond
+	t.Cleanup(func() { approvalPollInterval = 2 * time.Second })
+	decisionGateway(t, reply(200, pendingShowJSON))
+	stubBrowserWith(t, nil)
+	_, err := runCommand(t, ApprovalsCmd(), "deny", "apr_1", "--wait", "--wait-timeout", "0")
+	if got := exitCodeOf(err); got != exitPending {
+		t.Fatalf("exit = %d (%v), want %d", got, err, exitPending)
+	}
+}
+
+func TestApprovalsDecide_JSONIsOneDocumentWithTheLink(t *testing.T) {
+	decisionGateway(t, reply(200, pendingShowJSON))
+	stubBrowserWith(t, nil)
+	out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--json", "--no-browser")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if (*bodies)[0]["note"] != "no" || !strings.Contains(out, "Denied apr_1") {
-		t.Errorf("body %v, output %q", (*bodies)[0], out)
+	var doc struct {
+		ApprovalID string `json:"approval_id"`
+		Decision   string `json:"decision"`
+		URL        string `json:"url"`
+		Opened     bool   `json:"opened"`
+		Status     string `json:"status"`
 	}
-	if _, err := runCommand(t, ApprovalsCmd(), "deny", "apr_1", "--grant", "5"); err == nil {
-		t.Error("deny must not accept --grant")
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("output is not one JSON document: %v\n%s", err, out)
+	}
+	if doc.ApprovalID != "apr_1" || doc.Decision != "approve" || doc.Opened || doc.Status != "pending" || !strings.HasSuffix(doc.URL, "/approvals/apr_1?decision=approve") {
+		t.Errorf("document = %+v", doc)
 	}
 }
 
-func TestApprovalsDecide_RefusesTheAgentProfileWithoutDialing(t *testing.T) {
-	_, bodies := approvalsGateway(t, nil)
-	t.Setenv("RELAY_AGENT", "1")
+func TestApprovalsDecide_HasNoNoteOrGrantFlags(t *testing.T) {
 	for _, verb := range []string{"approve", "deny"} {
-		_, err := runCommand(t, ApprovalsCmd(), verb, "apr_1")
-		if !errors.Is(err, errAgentCannotDecide) {
-			t.Errorf("%s: err = %v, want errAgentCannotDecide", verb, err)
-		}
-	}
-	if len(*bodies) != 0 {
-		t.Errorf("the agent profile reached the gateway: %v", *bodies)
-	}
-}
-
-func TestApprovalsDecide_MapsGatewayRefusals(t *testing.T) {
-	for _, tc := range []struct {
-		status int
-		body   string
-		want   string
-	}{
-		{403, `{"error":"Forbidden","reason":"forbidden"}`, "not the agent profile"},
-		{409, `{"error":"Approval was already decided","reason":"already_decided"}`, "Approval was already decided (HTTP 409)"},
-		{410, `{"error":"Approval has expired","reason":"expired"}`, "Approval has expired (HTTP 410)"},
-		{401, `{"error":"Unauthorized"}`, "relay login"},
-	} {
-		approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
-			"POST /api/approvals/apr_1/approve": reply(tc.status, tc.body),
-		}))
-		if _, err := decide(t, "y\n", "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("HTTP %d: err = %v, want %q", tc.status, err, tc.want)
+		for _, flag := range []string{"--note", "--grant"} {
+			if _, err := runCommand(t, ApprovalsCmd(), verb, "apr_1", flag, "1"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+				t.Errorf("%s %s: err = %v, want an unknown-flag error: the page takes the note and the grant", verb, flag, err)
+			}
 		}
 	}
 }
