@@ -304,11 +304,10 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode != http.StatusOK {
-		var doc struct {
-			Error string `json:"error"`
+		if err := agentSessionDenied(c.Profile(), resp.StatusCode, respBody); err != nil {
+			return err
 		}
-		_ = json.Unmarshal(respBody, &doc)
-		msg := doc.Error
+		msg := gatewayMessage(respBody)
 		if msg == "" {
 			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}

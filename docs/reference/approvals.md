@@ -12,7 +12,7 @@ approvals documentation.
 | | Human profile | Agent profile |
 |---|---|---|
 | Sign in | `relay login` | `relay login --agent`, or `RELAY_AGENT=1 relay login` |
-| Token request | no marker | `agent=1` on `POST /api/cli/token`, `agent: true` on the device-code poll |
+| Login request | no marker | `agent=1` on `GET /api/cli/authorize`, `{"agent":true}` in the `POST /api/cli/device/code` body; the token requests carry no flag |
 | Keychain account | `oauth-refresh-token:<gateway>:<email>` | `oauth-refresh-token:agent:<gateway>:<email>` |
 | Config file field | `email` | `agentEmail` |
 | Used when | `RELAY_AGENT` is unset | `RELAY_AGENT` is `1`, `true`, `yes` or `on` |
@@ -36,6 +36,20 @@ Email:    dev@example.com
 `RELAY_AGENT=1 relay logout` signs out the agent and leaves your own session.
 `GATEWAY_API_KEY` is used as given in either profile; whether it is held to
 approvals depends on how the gateway issued the key.
+
+## What an agent session cannot change
+
+The kind is fixed when the login starts: `relay login` prints which one it
+requested (`Requesting an agent session` or `Requesting a personal session`),
+because the browser flow shows nothing of its own. The token requests ignore
+any flag, so a login started as one kind cannot be redeemed as the other.
+
+An agent session reads connections, connectors and the marketplace, but the
+gateway answers `403` when it changes them: `relay connect` (credentials),
+`relay publish` and the skill eval, optimize and promote commands. relay prints
+the gateway's reason and suggests the way out: run the command with your
+personal profile (unset `RELAY_AGENT`), or use the MCP tools, where a person
+approves the call.
 
 ## What the profile does not do
 

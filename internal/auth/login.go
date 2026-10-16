@@ -57,9 +57,10 @@ type tokenResponse struct {
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
 //
-// With the agent profile the token request carries agent=1, so the gateway
+// With the agent profile the authorize request carries agent=1, so the gateway
 // marks the session as an agent's and holds its writes for approval; the
-// session is stored apart from the human one.
+// kind is fixed when the login starts and the token request carries no flag.
+// The session is stored apart from the human one.
 func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var diagnostic io.Writer = os.Stderr
 	if len(writers) > 0 && writers[0] != nil {
@@ -116,7 +117,8 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 		_ = server.Close()
 	}()
 
-	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge)
+	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge, profile == keychain.ProfileAgent)
+	fmt.Fprintln(diagnostic, sessionKindNotice(profile))
 	if err := openBrowser(authorizeURL); err != nil {
 		fmt.Fprintf(diagnostic, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
 	}
@@ -131,7 +133,7 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 		return nil, fmt.Errorf("login timed out after %s", loginTimeout)
 	}
 
-	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI, profile)
+	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
@@ -152,6 +154,15 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 		RefreshToken: resp.RefreshToken,
 		ExpiresIn:    resp.ExpiresIn,
 	}, nil
+}
+
+// sessionKindNotice tells the person which kind of session the login asked
+// for; the browser flow shows nothing of its own about it.
+func sessionKindNotice(profile keychain.Profile) string {
+	if profile == keychain.ProfileAgent {
+		return "Requesting an agent session: its writes wait for a person to approve them."
+	}
+	return "Requesting a personal session."
 }
 
 // generatePKCE generates a PKCE verifier and S256 challenge.
@@ -176,7 +187,7 @@ func randomHex(n int) (string, error) {
 }
 
 // buildAuthorizeURL constructs the /api/cli/authorize URL.
-func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge string) string {
+func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge string, agent bool) string {
 	u := fmt.Sprintf("%s/api/cli/authorize", strings.TrimRight(gatewayURL, "/"))
 	params := url.Values{
 		"client_id":             {clientID},
@@ -186,24 +197,24 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge strin
 		"code_challenge_method": {"S256"},
 		"response_type":         {"code"},
 	}
+	if agent {
+		params.Set("agent", "1")
+	}
 	return u + "?" + params.Encode()
 }
 
 // exchangeCode exchanges an authorization code for a token pair.
 func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
-	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI, keychain.ProfileHuman)
+	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI)
 }
 
-func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string, profile keychain.Profile) (*tokenResponse, error) {
+func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/cli/token", strings.TrimRight(gatewayURL, "/"))
 
 	data := url.Values{
 		"code":          {code},
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
-	}
-	if profile == keychain.ProfileAgent {
-		data.Set("agent", "1")
 	}
 
 	// Token exchange must never follow a redirect — a compromised or

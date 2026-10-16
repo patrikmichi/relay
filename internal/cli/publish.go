@@ -881,6 +881,9 @@ func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gate
 		return fmt.Errorf("not authenticated — run `relay login` first")
 
 	case http.StatusForbidden:
+		if err := agentSessionDenied(client.ActiveProfile(), statusCode, rawBody); err != nil {
+			return err
+		}
 		return fmt.Errorf("not authorized to publish — you must be an author or admin for this organization")
 
 	case http.StatusConflict:

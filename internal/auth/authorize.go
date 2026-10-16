@@ -73,7 +73,8 @@ func decodeJSONCapped(body io.Reader, v interface{}) error {
 }
 
 // DeviceLogin performs the device-code flow. With the agent profile the
-// token request carries agent: true, like Login's agent=1.
+// device-code request carries agent: true, like Login's agent=1; the token
+// poll carries no flag.
 func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var out io.Writer = os.Stdout
 	if len(writers) > 0 && writers[0] != nil {
@@ -86,7 +87,11 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 
 	// 1. Request device code
 	endpoint := fmt.Sprintf("%s/api/cli/device/code", origin)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	codeBody := "{}"
+	if profile == keychain.ProfileAgent {
+		codeBody = `{"agent":true}`
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(codeBody))
 	if err != nil {
 		return nil, fmt.Errorf("create device code request: %w", err)
 	}
@@ -112,6 +117,7 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 	}
 
 	// 2. Prompt user
+	fmt.Fprintf(out, "\n%s\n", sessionKindNotice(profile))
 	fmt.Fprintf(out, "\nOpen this URL in your browser:\n  %s\n\n", dc.VerificationURI)
 	fmt.Fprintf(out, "Enter this code when prompted: %s\n\n", dc.UserCode)
 	fmt.Fprintln(out, "Waiting for authorization...")
@@ -147,11 +153,7 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 		default:
 		}
 
-		pollBody := map[string]any{"device_code": deviceCode}
-		if profile == keychain.ProfileAgent {
-			pollBody["agent"] = true
-		}
-		reqBody, err := json.Marshal(pollBody)
+		reqBody, err := json.Marshal(map[string]any{"device_code": deviceCode})
 		if err != nil {
 			return nil, fmt.Errorf("encode poll request: %w", err)
 		}
