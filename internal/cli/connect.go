@@ -50,7 +50,8 @@ func ConnectCmd() *cobra.Command {
 		Long: `Link your account for a connector listed by 'relay connectors'.
 
 API-key connectors prompt for each credential field without echoing it
-(or take --field KEY=VALUE, or RELAY_CONNECT_<KEY> from the environment) and
+(or take --field KEY=@file, --field KEY=- from stdin, --field KEY=VALUE, or
+RELAY_CONNECT_<KEY> from the environment) and
 store it on the gateway. OAuth connectors open the gateway's consent flow in
 your browser and wait until the connection shows up.
 
@@ -63,14 +64,18 @@ Credentials are sent to your gateway only; relay never writes them to disk.
 Examples:
   relay connect clockify
   relay connect notion --no-browser
-  relay connect intervals-icu --field INTERVALS_API_KEY=... --label coach`,
+  relay connect intervals-icu --field INTERVALS_API_KEY=@key.txt --label coach
+  pass-cli get key | relay connect intervals-icu --field INTERVALS_API_KEY=-
+
+--field KEY=VALUE puts the value in this process's arguments, which other users
+can read with ps; prefer KEY=@file, KEY=- (stdin) or RELAY_CONNECT_<KEY>.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConnect(cmd, args[0], f)
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringArrayVar(&f.fields, "field", nil, "Credential field as KEY=VALUE (repeatable)")
+	fl.StringArrayVar(&f.fields, "field", nil, "Credential field as KEY=@file, KEY=- (stdin) or KEY=VALUE, which is visible in ps (repeatable)")
 	fl.StringVar(&f.label, "label", "", "Account label for multi-account connectors")
 	fl.BoolVar(&f.oauth, "oauth", false, "Use the OAuth consent flow even when the gateway does not advertise it")
 	fl.BoolVar(&f.noBrowser, "no-browser", false, "Print the URL instead of opening a browser")
@@ -286,12 +291,24 @@ func isConnected(ctx context.Context, c *client.Client, svc DiscoveryService) bo
 func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, entry connectionEntry, f connectFlags) error {
 	out := cmd.OutOrStdout()
 	given := map[string]string{}
+	stdinUsed := false
+	secretKeys := map[string]bool{}
+	for _, field := range entry.Fields {
+		secretKeys[field.Key] = field.Secret
+	}
 	for _, kv := range f.fields {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k == "" {
-			return fmt.Errorf("invalid --field %q: want KEY=VALUE", kv)
+			return fmt.Errorf("invalid --field %q: want KEY=VALUE, KEY=@file or KEY=-", textsafe.Clean(kv))
 		}
-		given[k] = v
+		resolved, literal, err := resolveFieldValue(v, cmd.InOrStdin(), &stdinUsed)
+		if err != nil {
+			return fmt.Errorf("--field %s: %w", textsafe.Clean(k), err)
+		}
+		if literal && secretKeys[k] {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: --field %s=VALUE puts the secret in this process's arguments, visible to other users in `ps`; use --field %s=@file, --field %s=- (stdin) or RELAY_CONNECT_%s\n", textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k))
+		}
+		given[k] = resolved
 	}
 	values := map[string]string{}
 	for _, field := range entry.Fields {
@@ -309,7 +326,7 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 			}
 		}
 		if v == "" && !field.Optional {
-			return fmt.Errorf("%s is required", field.Key)
+			return fmt.Errorf("%s is required", textsafe.Clean(field.Key))
 		}
 		if v != "" {
 			values[field.Key] = v
@@ -340,15 +357,48 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 	return nil
 }
 
+const maxFieldBytes = 64 << 10
+
+// resolveFieldValue turns the VALUE of --field KEY=VALUE into the credential:
+// "@path" reads it from a file, "-" from stdin (once per run), anything else is
+// the literal text, reported so the caller can warn that argv is visible.
+func resolveFieldValue(v string, stdin io.Reader, stdinUsed *bool) (value string, literal bool, err error) {
+	var raw []byte
+	switch {
+	case v == "-":
+		if *stdinUsed {
+			return "", false, errors.New("only one field can be read from stdin")
+		}
+		*stdinUsed = true
+		raw, err = io.ReadAll(io.LimitReader(stdin, maxFieldBytes+1))
+	case strings.HasPrefix(v, "@") && len(v) > 1:
+		var f *os.File
+		if f, err = os.Open(v[1:]); err == nil {
+			defer f.Close()
+			raw, err = io.ReadAll(io.LimitReader(f, maxFieldBytes+1))
+		}
+	default:
+		return v, true, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if len(raw) > maxFieldBytes {
+		return "", false, fmt.Errorf("value is larger than %d KiB", maxFieldBytes>>10)
+	}
+	return strings.TrimRight(string(raw), "\r\n"), false, nil
+}
+
 // promptField asks for one credential on the terminal; secrets are read
 // without echo. Without a terminal it fails rather than hang.
 func promptField(cmd *cobra.Command, field connectionField) (string, error) {
 	if !isInteractiveTerminal(os.Stdin) {
-		return "", fmt.Errorf("%s needs a value but there is no terminal; pass --field %s=VALUE or set RELAY_CONNECT_%s", field.Key, field.Key, field.Key)
+		key := textsafe.Clean(field.Key)
+		return "", fmt.Errorf("%s needs a value but there is no terminal; pass --field %s=@file or --field %s=- (stdin), or set RELAY_CONNECT_%s", key, key, key, key)
 	}
-	label := field.Label
+	label := textsafe.Clean(field.Label)
 	if label == "" {
-		label = field.Key
+		label = textsafe.Clean(field.Key)
 	}
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "%s: ", label)

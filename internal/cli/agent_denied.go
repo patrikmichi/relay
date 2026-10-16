@@ -7,11 +7,17 @@ import (
 	"strings"
 
 	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 // gatewayMessage reads the human message out of a gateway error body, which is
-// either {"error":"text"} or {"error":{"message":"text"}}.
+// either {"error":"text"} or {"error":{"message":"text"}}. Control characters
+// are removed: the text comes from the network and is printed on a terminal.
 func gatewayMessage(body []byte) string {
+	return textsafe.Clean(parseGatewayMessage(body))
+}
+
+func parseGatewayMessage(body []byte) string {
 	var doc struct {
 		Error   json.RawMessage `json:"error"`
 		Message string          `json:"message"`
