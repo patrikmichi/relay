@@ -13,40 +13,6 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 )
 
-type postOnlyDoer struct{ calls int }
-
-func (d *postOnlyDoer) Post(string, string, io.Reader) (*http.Response, error) {
-	d.calls++
-	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("legacy"))}, nil
-}
-
-type getOnlyDoer struct{ path string }
-
-func (d *getOnlyDoer) Get(path string) (*http.Response, error) {
-	d.path = path
-	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("legacy"))}, nil
-}
-
-func TestCommandDoer_FallsBackToLegacyDoers(t *testing.T) {
-	post := &postOnlyDoer{}
-	resp, err := commandDoer{post, context.Background()}.Post("/p", "text/plain", nil)
-	if err != nil || post.calls != 1 {
-		t.Fatalf("legacy Post: %v (calls %d)", err, post.calls)
-	}
-	_ = resp.Body.Close()
-
-	get := &getOnlyDoer{}
-	resp, err = commandDoer{get, context.Background()}.Get("/g")
-	if err != nil || get.path != "/g" {
-		t.Fatalf("legacy Get: %v (path %q)", err, get.path)
-	}
-	_ = resp.Body.Close()
-
-	if _, err := (commandDoer{post, context.Background()}).Get("/g"); err == nil || !strings.Contains(err.Error(), "does not support GET") {
-		t.Fatalf("POST-only doer must refuse GET, got %v", err)
-	}
-}
-
 func TestCommandDoer_PostThroughContextClientAndCancelledContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

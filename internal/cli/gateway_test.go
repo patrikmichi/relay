@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zalando/go-keyring"
-
 	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
@@ -377,35 +375,6 @@ func TestTokensRevoke_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t 
 	}
 	if _, err := keychain.ReadToken(origin, email); err == nil {
 		t.Errorf("expected the keychain entry for %s to be deleted", email)
-	}
-}
-
-// TestLogout_Legacy_RemovesUnboundSessionWithoutPrintingSecret covers the
-// unbound-session removal path: `relay logout --legacy` deletes a
-// pre-gateway-identity session by email alone (no gateway needed) and never
-// echoes the token.
-func TestLogout_Legacy_RemovesUnboundSessionWithoutPrintingSecret(t *testing.T) {
-	withNoGateway(t)
-	const email = "legacy-user@example.com"
-	t.Setenv("RELAY_EMAIL", email)
-	if err := keyring.Set("relay-cli", "oauth-refresh-token:"+email, `{"access_token":"top-secret-value"}`); err != nil {
-		t.Fatal(err)
-	}
-
-	cmd := LogoutCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--legacy"})
-	stdout := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("logout --legacy: %v", err)
-		}
-	})
-	if strings.Contains(stdout, "top-secret-value") {
-		t.Fatalf("logout --legacy must never print the stored token, got: %q", stdout)
-	}
-	if keychain.HasLegacyToken(email) {
-		t.Error("expected the legacy session to be removed")
 	}
 }
 

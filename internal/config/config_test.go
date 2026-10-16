@@ -175,29 +175,25 @@ func TestNormalizeGatewayURL_PermitsHTTPSAndLoopbackHTTP(t *testing.T) {
 	}
 }
 
-func TestLoad_MigratesLegacyGwDir(t *testing.T) {
+func TestLoad_IgnoresPreRenameConfigDir(t *testing.T) {
 	home := withTempHome(t)
 
-	legacyDir := filepath.Join(home, ".config", "gw")
-	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
-		t.Fatalf("create legacy dir: %v", err)
+	oldDir := filepath.Join(home, ".config", "gw")
+	if err := os.MkdirAll(oldDir, 0o700); err != nil {
+		t.Fatalf("create old dir: %v", err)
 	}
-	legacyCfg := []byte(`{"gatewayUrl":"https://legacy.example.com"}`)
-	if err := os.WriteFile(filepath.Join(legacyDir, "config.json"), legacyCfg, 0o600); err != nil {
-		t.Fatalf("write legacy config: %v", err)
+	if err := os.WriteFile(filepath.Join(oldDir, "config.json"), []byte(`{"gatewayUrl":"https://old.example.com"}`), 0o600); err != nil {
+		t.Fatalf("write old config: %v", err)
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.GatewayURL != "https://legacy.example.com" {
-		t.Errorf("GatewayURL: got %q, want legacy value", cfg.GatewayURL)
+	if cfg.GatewayURL != "" {
+		t.Errorf("GatewayURL: got %q, want empty: ~/.config/gw is no longer read", cfg.GatewayURL)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "relay", "config.json")); err != nil {
-		t.Errorf("migrated config not found at ~/.config/relay: %v", err)
-	}
-	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
-		t.Errorf("legacy ~/.config/gw dir still present after migration")
+	if _, err := os.Stat(oldDir); err != nil {
+		t.Errorf("~/.config/gw must stay untouched: %v", err)
 	}
 }

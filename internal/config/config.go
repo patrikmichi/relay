@@ -1,5 +1,5 @@
 // Package config provides persistent CLI configuration stored as JSON.
-// Config file: ~/.config/relay/config.json (auto-migrated from ~/.config/gw)
+// Config file: ~/.config/relay/config.json
 package config
 
 import (
@@ -119,19 +119,12 @@ func AgentMode() bool {
 }
 
 // configDir returns ~/.config/relay, creating it if necessary.
-// A pre-rename ~/.config/gw dir is migrated in place on first use.
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
 	dir := filepath.Join(home, ".config", "relay")
-	if _, statErr := os.Stat(dir); errors.Is(statErr, os.ErrNotExist) {
-		legacy := filepath.Join(home, ".config", "gw")
-		if _, legacyErr := os.Stat(legacy); legacyErr == nil {
-			_ = os.Rename(legacy, dir)
-		}
-	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create config dir %s: %w", dir, err)
 	}

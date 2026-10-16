@@ -104,16 +104,11 @@ func tokensListCmd() *cobra.Command {
 // tokensRevokeCmd returns `relay tokens revoke`.
 func tokensRevokeCmd() *cobra.Command {
 	var gatewayURL string
-	var legacy bool
 
 	cmd := &cobra.Command{
 		Use:   "revoke",
 		Short: "Revoke the current session token",
 		RunE: func(cmd *cobra.Command, _args []string) (err error) {
-			if legacy {
-				return logoutLegacySession(cmd.OutOrStdout())
-			}
-
 			// The keychain lookup below is scoped to (gateway, email), so
 			// the gateway must be identified before building a client —
 			// resolved locally (no network) so this still works offline.
@@ -166,6 +161,5 @@ func tokensRevokeCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
-	cmd.Flags().BoolVar(&legacy, "legacy", false, "Remove a pre-gateway-identity session left over from an older relay version")
 	return cmd
 }

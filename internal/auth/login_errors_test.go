@@ -181,12 +181,12 @@ func TestOAuthCallbackHandler_RejectsOversizedCode(t *testing.T) {
 	}
 }
 
-func TestRemoveLegacySession_WarnsOnFailure(t *testing.T) {
+func TestRemoveUnboundSession_WarnsOnFailure(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain locked"))
 	defer keyring.MockInit()
 
 	var diag bytes.Buffer
-	removeLegacySession("user@example.com", &diag)
+	removeUnboundSession("user@example.com", &diag)
 	if !strings.Contains(diag.String(), "could not remove the old session entry") {
 		t.Errorf("expected a warning, got %q", diag.String())
 	}

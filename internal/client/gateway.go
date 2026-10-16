@@ -23,10 +23,6 @@ import (
 // keychain entry) can be found.
 var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or set GATEWAY_API_KEY for non-interactive auth")
 
-// ErrSessionMigration is returned by Resolve when an email-only session from
-// an older relay version exists but cannot be moved to the selected gateway.
-var ErrSessionMigration = errors.New("relay now keeps one session per gateway. Run `relay login` once to continue")
-
 // ErrAgentNotLoggedIn is returned by Resolve when RELAY_AGENT selects the
 // agent profile and no agent session is stored. It never falls back to the
 // human session: that session is not held to approvals.
@@ -39,45 +35,6 @@ func ActiveProfile() keychain.Profile {
 		return keychain.ProfileAgent
 	}
 	return keychain.ProfileHuman
-}
-
-// migrationNotice receives the one-line notice printed after a session move.
-var migrationNotice io.Writer = os.Stderr
-
-// migrateLegacySession moves an email-only session from an older relay
-// version to the key bound to origin. An unbound token says nothing about
-// which gateway issued it, so it moves only to an https gateway saved in the
-// config file: never to one supplied per invocation by --gateway-url or
-// GATEWAY_URL, which could hand it to a host the user never logged in to.
-func migrateLegacySession(origin, email string) (keychain.TokenData, error) {
-	legacy, err := keychain.ReadLegacyToken(email)
-	if errors.Is(err, keychain.ErrNotFound) {
-		return keychain.TokenData{}, ErrNotLoggedIn
-	}
-	if err != nil {
-		return keychain.TokenData{}, err
-	}
-	if !strings.HasPrefix(origin, "https://") || !isSavedGateway(origin) {
-		return keychain.TokenData{}, ErrSessionMigration
-	}
-	if err := keychain.WriteToken(origin, email, legacy); err != nil {
-		return keychain.TokenData{}, err
-	}
-	if err := keychain.DeleteLegacyToken(email); err != nil {
-		fmt.Fprintf(migrationNotice, "relay: moved your session to %s but could not remove the old entry (%v); run `relay logout --legacy` to remove it\n", origin, err)
-		return legacy, nil
-	}
-	fmt.Fprintf(migrationNotice, "relay: moved your saved session for %s to %s\n", email, origin)
-	return legacy, nil
-}
-
-func isSavedGateway(origin string) bool {
-	cfg, err := config.Load()
-	if err != nil || cfg.GatewayURL == "" {
-		return false
-	}
-	saved, err := config.NormalizeGatewayURL(cfg.GatewayURL)
-	return err == nil && saved == origin
 }
 
 // refreshSkew is how far ahead of the recorded expiry Client proactively
@@ -251,15 +208,13 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		if agent {
 			return nil, ErrAgentNotLoggedIn
 		}
-		tokenData, err = migrateLegacySession(origin, email)
+		return nil, ErrNotLoggedIn
 	}
 	if err != nil {
 		var unavailable *keychain.UnavailableError
 		switch {
 		case errors.As(err, &unavailable):
 			return nil, fmt.Errorf("keychain unavailable: %v. Use GATEWAY_API_KEY for headless use", unavailable.Err)
-		case errors.Is(err, ErrNotLoggedIn), errors.Is(err, ErrSessionMigration):
-			return nil, err
 		default:
 			return nil, fmt.Errorf("%w; run `relay login` to replace the stored session", err)
 		}

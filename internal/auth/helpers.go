@@ -40,17 +40,17 @@ func persistLogin(profile keychain.Profile, email string, diagnostic io.Writer) 
 		}
 		return
 	}
-	removeLegacySession(email, diagnostic)
+	removeUnboundSession(email, diagnostic)
 	if err := config.SetEmail(email); err != nil {
 		fmt.Fprintf(diagnostic, "Warning: could not persist login email to config: %v\n", err)
 	}
 }
 
-// removeLegacySession deletes the email-only session an older relay version
-// may have left, now that a gateway-bound session replaces it. Failure only
-// warns: the new session is already stored.
-func removeLegacySession(email string, diagnostic io.Writer) {
-	if err := keychain.DeleteLegacyToken(email); err != nil {
+// removeUnboundSession deletes an email-only entry that no gateway-bound
+// session can use, now that a bound session replaces it. Failure only warns:
+// the new session is already stored.
+func removeUnboundSession(email string, diagnostic io.Writer) {
+	if err := keychain.DeleteUnboundToken(email); err != nil {
 		fmt.Fprintf(diagnostic, "Warning: could not remove the old session entry: %v\n", err)
 	}
 }

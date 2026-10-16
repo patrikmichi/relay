@@ -34,13 +34,13 @@ func TestCredentialNotSentToUnboundGateway(t *testing.T) {
 	}
 
 	gatewayB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("gateway B must never be dialed for a refused legacy session (Authorization: %q)", r.Header.Get("Authorization"))
+		t.Errorf("gateway B must never be dialed for a refused unbound session (Authorization: %q)", r.Header.Get("Authorization"))
 		_, _ = io.WriteString(w, "ok")
 	}))
 	defer gatewayB.Close()
 
-	if _, err := Resolve(gatewayB.URL); !errors.Is(err, ErrSessionMigration) {
-		t.Fatalf("err = %v, want ErrSessionMigration for an unbound legacy session", err)
+	if _, err := Resolve(gatewayB.URL); !errors.Is(err, ErrNotLoggedIn) {
+		t.Fatalf("err = %v, want ErrNotLoggedIn for an unbound session", err)
 	}
 }
 

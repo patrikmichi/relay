@@ -59,10 +59,8 @@ type pluginBundle struct {
 	Files map[string]string `json:"files"`
 }
 
-// ---- syncDoer interface — allows tests to swap in an httptest.Server ----
-
-// syncDoer is the minimal HTTP interface SyncCmd uses.
-// The gateway client satisfies it; httptest servers satisfy it via adapters in tests.
+// syncDoer is the GET the marketplace pull needs, bound to the command's
+// context by commandDoer.
 type syncDoer interface {
 	Get(path string) (*http.Response, error)
 }
@@ -76,7 +74,7 @@ func SyncCmd() *cobra.Command {
 
 // syncCmdWithDoer is the internal constructor; doer==nil means resolve from env.
 // The doer only serves the marketplace pull.
-func syncCmdWithDoer(doer syncDoer) *cobra.Command {
+func syncCmdWithDoer(doer gatewayDoer) *cobra.Command {
 	var (
 		o           agentSyncOpts
 		customDir   string
@@ -244,10 +242,8 @@ func planSync(cmd *cobra.Command, o agentSyncOpts) (*agentSyncRun, error) {
 // resolveSyncDoer reads the gateway URL and resolves an authenticated
 // client for it. Auth resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted
 // login email → keychain, with transparent OAuth refresh) is centralized in
-// client.Resolve — *client.Client already satisfies syncDoer (it has a
-// matching Get(path string) (*http.Response, error) method), so no adapter
-// type is needed here anymore.
-func resolveSyncDoer(overrideURL string) (syncDoer, error) {
+// client.Resolve.
+func resolveSyncDoer(overrideURL string) (gatewayDoer, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(overrideURL)
 	if err != nil {
 		return nil, err

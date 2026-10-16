@@ -177,29 +177,6 @@ func TestSave_PrivatePermissions(t *testing.T) {
 	}
 }
 
-func TestLoad_ExistingDirIsNotReplacedByLegacyDir(t *testing.T) {
-	home := withTempHome(t)
-	writeConfigFile(t, home, `{"gatewayUrl":"https://current.example.com"}`)
-	legacyDir := filepath.Join(home, ".config", "gw")
-	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacyDir, "config.json"), []byte(`{"gatewayUrl":"https://legacy.example.com"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.GatewayURL != "https://current.example.com" {
-		t.Errorf("GatewayURL: got %q, want the current config", cfg.GatewayURL)
-	}
-	if _, err := os.Stat(legacyDir); err != nil {
-		t.Errorf("legacy dir must stay untouched when the current dir exists: %v", err)
-	}
-}
-
 func TestGatewayURL_EnvValueIsValidated(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("GATEWAY_URL", "http://gw.example.com")

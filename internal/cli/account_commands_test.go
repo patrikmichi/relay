@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/zalando/go-keyring"
 
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
@@ -507,49 +506,17 @@ func TestSessionRemoval_NotLoggedIn(t *testing.T) {
 	}
 }
 
-func TestLegacySessionRemoval(t *testing.T) {
+func TestSessionCommandsHaveNoLegacyFlag(t *testing.T) {
 	for name, build := range sessionCommands() {
 		t.Run(name, func(t *testing.T) {
-			withNoGateway(t)
-			email := "legacy-" + strings.ReplaceAll(name, " ", "-") + "@example.com"
-			t.Setenv("RELAY_EMAIL", email)
-			legacyAccount := "oauth-refresh-token:" + email
-			raw, _ := json.Marshal(keychain.TokenData{AccessToken: syntheticKey("legacy")})
-			if err := keyring.Set("relay-cli", legacyAccount, string(raw)); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = keychain.DeleteLegacyToken(email) })
-
 			cmd, args := build()
-			out, err := runCommand(t, cmd, append(args, "--legacy")...)
-			if err != nil {
-				t.Fatalf("--legacy: %v", err)
+			if cmd.Flags().Lookup("legacy") != nil {
+				t.Fatal("the legacy flag was removed")
 			}
-			if !strings.Contains(out, "Removed legacy session for "+email) {
-				t.Errorf("unexpected output %q", out)
-			}
-			if keychain.HasLegacyToken(email) {
-				t.Fatal("legacy session still present")
-			}
-
-			cmd, args = build()
-			out, err = runCommand(t, cmd, append(args, "--legacy")...)
-			if err != nil {
-				t.Fatalf("second --legacy: %v", err)
-			}
-			if !strings.Contains(out, "No legacy session found") {
-				t.Errorf("second run should report nothing to remove, got %q", out)
+			if _, err := runCommand(t, cmd, append(args, "--legacy")...); err == nil || !strings.Contains(err.Error(), "unknown flag: --legacy") {
+				t.Fatalf("err = %v, want an unknown-flag error", err)
 			}
 		})
-	}
-}
-
-func TestLegacySessionRemoval_RequiresIdentity(t *testing.T) {
-	withNoGateway(t)
-	t.Setenv("RELAY_EMAIL", "")
-	_, err := runCommand(t, LogoutCmd(), "--legacy")
-	if err == nil || !strings.Contains(err.Error(), "not logged in") {
-		t.Fatalf("expected identity error, got %v", err)
 	}
 }
 

@@ -175,42 +175,42 @@ func TestReadToken_CorruptData(t *testing.T) {
 	}
 }
 
-// ─── Legacy (pre-gateway-identity) sessions ─────────────────────────────────
+// ─── Entries with no gateway binding ────────────────────────────────────────
 
-func TestHasLegacyToken(t *testing.T) {
+func TestHasUnboundToken(t *testing.T) {
 	const svcName = "relay-cli"
-	email := "legacy@example.com"
+	email := "unbound@example.com"
 
-	if keychain.HasLegacyToken(email) {
-		t.Fatal("expected no legacy token before writing one")
+	if keychain.HasUnboundToken(email) {
+		t.Fatal("expected no unbound token before writing one")
 	}
 
-	if err := keyring.Set(svcName, "oauth-refresh-token:"+email, `{"access_token":"legacy-access"}`); err != nil {
+	if err := keyring.Set(svcName, "oauth-refresh-token:"+email, `{"access_token":"stray-access"}`); err != nil {
 		t.Fatalf("mock keyring Set: %v", err)
 	}
 
-	if !keychain.HasLegacyToken(email) {
-		t.Error("expected HasLegacyToken to find the legacy entry")
+	if !keychain.HasUnboundToken(email) {
+		t.Error("expected HasUnboundToken to find the email-only entry")
 	}
 }
 
-func TestDeleteLegacyToken(t *testing.T) {
+func TestDeleteUnboundToken(t *testing.T) {
 	const svcName = "relay-cli"
-	email := "legacy-delete@example.com"
+	email := "unbound-delete@example.com"
 
-	if err := keyring.Set(svcName, "oauth-refresh-token:"+email, `{"access_token":"legacy-access"}`); err != nil {
+	if err := keyring.Set(svcName, "oauth-refresh-token:"+email, `{"access_token":"stray-access"}`); err != nil {
 		t.Fatalf("mock keyring Set: %v", err)
 	}
-	if err := keychain.DeleteLegacyToken(email); err != nil {
-		t.Fatalf("DeleteLegacyToken: %v", err)
+	if err := keychain.DeleteUnboundToken(email); err != nil {
+		t.Fatalf("DeleteUnboundToken: %v", err)
 	}
-	if keychain.HasLegacyToken(email) {
-		t.Error("expected legacy token to be gone after DeleteLegacyToken")
+	if keychain.HasUnboundToken(email) {
+		t.Error("expected the entry to be gone after DeleteUnboundToken")
 	}
 }
 
-func TestDeleteLegacyToken_Idempotent(t *testing.T) {
-	if err := keychain.DeleteLegacyToken("nobody-legacy@example.com"); err != nil {
-		t.Errorf("DeleteLegacyToken on non-existent should return nil, got: %v", err)
+func TestDeleteUnboundToken_Idempotent(t *testing.T) {
+	if err := keychain.DeleteUnboundToken("nobody-unbound@example.com"); err != nil {
+		t.Errorf("DeleteUnboundToken on non-existent should return nil, got: %v", err)
 	}
 }

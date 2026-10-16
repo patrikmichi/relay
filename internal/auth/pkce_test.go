@@ -266,7 +266,7 @@ func TestLogin_HappyPath(t *testing.T) {
 	if tok.AccessToken != "access-1" {
 		t.Errorf("keychain AccessToken: got %q, want access-1", tok.AccessToken)
 	}
-	if keychain.HasLegacyToken("user@example.com") {
+	if keychain.HasUnboundToken("user@example.com") {
 		t.Error("login must remove the email-only session it replaces")
 	}
 

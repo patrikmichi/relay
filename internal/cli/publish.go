@@ -117,18 +117,15 @@ func parseFrontmatter(content []byte) frontmatter {
 	return fm
 }
 
-// ---- publishDoer interface — allows tests to swap in an httptest.Server ----
-
-// publishDoer is the minimal HTTP interface PublishCmd uses.
+// publishDoer is the POST a publish needs, bound to the command's context by
+// commandDoer.
 type publishDoer interface {
 	// Post sends a POST request to the given path with the given content-type and body.
 	Post(path, contentType string, body io.Reader) (*http.Response, error)
 }
 
-// publishStatusDoer is the minimal HTTP interface used to poll publish status
-// (GET /api/marketplace/publish/<versionId>/status). Kept as a SEPARATE
-// interface from publishDoer (rather than adding Get to it) so existing
-// publishDoer test fakes that only implement Post keep compiling unchanged.
+// publishStatusDoer is the GET that polls publish status
+// (GET /api/marketplace/publish/<versionId>/status).
 type publishStatusDoer interface {
 	Get(path string) (*http.Response, error)
 }
@@ -140,7 +137,7 @@ func PublishCmd() *cobra.Command {
 	return publishCmdWithDoer(nil, "")
 }
 
-func publishCmdWithDoer(doer publishDoer, aliasKind agentport.ArtifactKind) *cobra.Command {
+func publishCmdWithDoer(doer gatewayDoer, aliasKind agentport.ArtifactKind) *cobra.Command {
 	var (
 		flagType       string
 		flagName       string
@@ -365,21 +362,18 @@ created; 'relay sync' keeps them current.`,
 
 // ---- auth resolution (mirrors sync.go / resolveSyncDoer) ----
 
-// resolvePublishDoer resolves the gateway URL + OAuth token and returns a publishDoer.
+// resolvePublishDoer resolves the gateway URL + OAuth token and returns the client.
 // Used by tests that only need the doer.
-func resolvePublishDoer(overrideURL string) (publishDoer, error) {
+func resolvePublishDoer(overrideURL string) (gatewayDoer, error) {
 	d, _, err := resolvePublishDoerWithURL(overrideURL)
 	return d, err
 }
 
 // resolvePublishDoerWithURL resolves an authenticated client and returns both
-// the publishDoer and the resolved gateway URL (for catalog link
-// generation). Auth resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted
-// login email → keychain, with transparent OAuth refresh) is centralized in
-// client.Resolve — *client.Client already satisfies both publishDoer and
-// publishStatusDoer (matching Post/Get signatures), so no adapter type is
-// needed here anymore.
-func resolvePublishDoerWithURL(overrideURL string) (publishDoer, string, error) {
+// it and the resolved gateway URL (for catalog link generation). Auth
+// resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted login email →
+// keychain, with transparent OAuth refresh) is centralized in client.Resolve.
+func resolvePublishDoerWithURL(overrideURL string) (gatewayDoer, string, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(overrideURL)
 	if err != nil {
 		return nil, "", err
@@ -390,21 +384,6 @@ func resolvePublishDoerWithURL(overrideURL string) (publishDoer, string, error) 
 		return nil, "", err
 	}
 	return c, c.GatewayURL, nil
-}
-
-// resolvePublishStatusDoer resolves the gateway URL + OAuth token and returns
-// a publishStatusDoer for `relay publish status`. Shares auth resolution with
-// resolvePublishDoerWithURL — *client.Client satisfies both interfaces.
-func resolvePublishStatusDoer(overrideURL string) (publishStatusDoer, error) {
-	d, _, err := resolvePublishDoerWithURL(overrideURL)
-	if err != nil {
-		return nil, err
-	}
-	statusDoer, ok := d.(publishStatusDoer)
-	if !ok {
-		return nil, fmt.Errorf("internal error: resolved publish doer does not support status polling")
-	}
-	return statusDoer, nil
 }
 
 // ---- publish options ----
@@ -1135,11 +1114,11 @@ changes_requested — useful for gating CI on a publish.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			versionID := args[0]
-			d, err := resolvePublishStatusDoer(flagGatewayURL)
+			base, err := resolvePublishDoer(flagGatewayURL)
 			if err != nil {
 				return err
 			}
-			d = commandDoer{d, cmd.Context()}
+			d := commandDoer{base, cmd.Context()}
 			if flagWatch {
 				return watchPublishStatus(d, versionID, out)
 			}

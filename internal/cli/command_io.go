@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,10 +15,16 @@ func outputWriter(writers []io.Writer) io.Writer {
 	return os.Stdout
 }
 
-// Binds legacy workflow interfaces to Cobra cancellation. Production clients
-// implement context-aware HTTP methods; old in-memory test doubles still work.
+// gatewayDoer is the context-aware HTTP surface of the gateway client.
+type gatewayDoer interface {
+	PostContext(ctx context.Context, path, contentType string, body io.Reader) (*http.Response, error)
+	GetContext(ctx context.Context, path string) (*http.Response, error)
+}
+
+// commandDoer binds a gateway client to the command's context, so Ctrl-C and
+// the transfer time limit cancel its requests.
 type commandDoer struct {
-	base any
+	base gatewayDoer
 	ctx  context.Context
 }
 
@@ -28,31 +33,17 @@ func (d commandDoer) Post(path, contentType string, body io.Reader) (*http.Respo
 	if err != nil {
 		return nil, err
 	}
-	if c, ok := d.base.(interface {
-		PostContext(context.Context, string, string, io.Reader) (*http.Response, error)
-	}); ok {
-		response, err := c.PostContext(ctx, path, contentType, body)
-		return responseWithCancel(response, timeoutCause(ctx, err), cancel)
-	}
-	cancel()
-	return d.base.(publishDoer).Post(path, contentType, body)
+	response, err := d.base.PostContext(ctx, path, contentType, body)
+	return responseWithCancel(response, timeoutCause(ctx, err), cancel)
 }
+
 func (d commandDoer) Get(path string) (*http.Response, error) {
 	ctx, cancel, err := requestContext(d.ctx, transferRequest)
 	if err != nil {
 		return nil, err
 	}
-	if c, ok := d.base.(interface {
-		GetContext(context.Context, string) (*http.Response, error)
-	}); ok {
-		response, err := c.GetContext(ctx, path)
-		return responseWithCancel(response, timeoutCause(ctx, err), cancel)
-	}
-	cancel()
-	if legacy, ok := d.base.(syncDoer); ok {
-		return legacy.Get(path)
-	}
-	return nil, fmt.Errorf("client does not support GET")
+	response, err := d.base.GetContext(ctx, path)
+	return responseWithCancel(response, timeoutCause(ctx, err), cancel)
 }
 func waitForPublish(d publishStatusDoer, duration time.Duration) error {
 	if bound, ok := d.(commandDoer); ok {

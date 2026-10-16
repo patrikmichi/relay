@@ -493,8 +493,7 @@ Run `relay <command> --help` for full flag documentation on any command.
 
 ## Configuration & environment
 
-Persistent config lives at `~/.config/relay/config.json` (migrated
-automatically from the older `~/.config/gw/` if present). Manage it with
+Persistent config lives at `~/.config/relay/config.json`. Manage it with
 `relay config set-gateway` / `get-gateway` / `show`, or override per-invocation
 with environment variables — env always wins over the config file:
 

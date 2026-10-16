@@ -8,7 +8,10 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +33,14 @@ type testDoer struct {
 func (td *testDoer) Get(path string) (*http.Response, error) {
 	td.paths = append(td.paths, path)
 	return http.Get(td.srv.URL + path)
+}
+
+func (td *testDoer) GetContext(_ context.Context, path string) (*http.Response, error) {
+	return td.Get(path)
+}
+
+func (td *testDoer) PostContext(context.Context, string, string, io.Reader) (*http.Response, error) {
+	return nil, errors.New("testDoer serves GET only")
 }
 
 // ---- fixtures ----

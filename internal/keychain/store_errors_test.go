@@ -42,16 +42,16 @@ func TestDeleteToken_KeychainFailureIsReported(t *testing.T) {
 	}
 }
 
-func TestDeleteLegacyToken_KeychainFailureIsReported(t *testing.T) {
+func TestDeleteUnboundToken_KeychainFailureIsReported(t *testing.T) {
 	withBrokenKeychain(t)
-	if err := keychain.DeleteLegacyToken("x@example.com"); err == nil {
+	if err := keychain.DeleteUnboundToken("x@example.com"); err == nil {
 		t.Fatal("expected a keychain failure, not a silent success")
 	}
 }
 
-func TestReadLegacyToken_KeychainFailureIsUnavailableError(t *testing.T) {
+func TestReadToken_KeychainFailureIsUnavailableError(t *testing.T) {
 	withBrokenKeychain(t)
-	_, err := keychain.ReadLegacyToken("x@example.com")
+	_, err := keychain.ReadToken(testOrigin, "x@example.com")
 	var unavailable *keychain.UnavailableError
 	if !errors.As(err, &unavailable) || !strings.Contains(unavailable.Error(), "keychain unavailable") {
 		t.Fatalf("err = %v, want *UnavailableError", err)

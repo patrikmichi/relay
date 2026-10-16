@@ -15,11 +15,8 @@ import (
 
 const serviceName = "relay-cli"
 
-// schemaVersion tags the shape of a persisted session. A version-2 session
-// is bound to a gateway identity; version 1 (or the zero value, for entries
-// written before this field existed) is a legacy email-only session with no
-// trustworthy origin; client.Resolve migrates one only to the gateway saved
-// in the config file.
+// schemaVersion tags the shape of a persisted session: bound to a gateway
+// identity.
 const schemaVersion = 2
 
 // TokenData holds the OAuth token pair and metadata stored in the keychain.
@@ -94,8 +91,8 @@ func WriteProfileToken(profile Profile, gatewayOrigin, email string, data TokenD
 // ReadToken retrieves the stored token for the given gateway identity and
 // email address. Returns an error (via go-keyring's ErrNotFound, wrapped) if
 // no session exists for that exact (gatewayOrigin, email) pair — it never
-// falls back to a legacy or differently-scoped entry; see HasLegacyToken for
-// detecting one to report to the user.
+// falls back to an unbound or differently-scoped entry; see HasUnboundToken
+// for detecting one to report to the user.
 func ReadToken(gatewayOrigin, email string) (TokenData, error) {
 	return ReadProfileToken(ProfileHuman, gatewayOrigin, email)
 }
@@ -145,9 +142,9 @@ func accountKey(profile Profile, gatewayOrigin, email string) string {
 	return "oauth-refresh-token:" + gatewayOrigin + ":" + email
 }
 
-// legacyAccountKey returns the older keychain account name: email only, no
-// gateway binding.
-func legacyAccountKey(email string) string {
+// unboundAccountKey is the keychain account name of an entry with no
+// gateway binding: the email alone.
+func unboundAccountKey(email string) string {
 	return "oauth-refresh-token:" + email
 }
 
@@ -169,41 +166,22 @@ func keyringGet(account string) (string, error) {
 	return raw, err
 }
 
-// HasLegacyToken reports whether an email-only session from an older relay
-// version exists for email, without returning its contents.
-func HasLegacyToken(email string) bool {
-	_, err := keyring.Get(serviceName, legacyAccountKey(email))
+// HasUnboundToken reports whether an email-only entry, written before
+// sessions were bound to a gateway, exists for email. It is never used to
+// sign in: the entry carries no proof of which gateway issued it.
+func HasUnboundToken(email string) bool {
+	_, err := keyring.Get(serviceName, unboundAccountKey(email))
 	return err == nil
 }
 
-// ReadLegacyToken returns the email-only session for email. Callers may use
-// it only after binding it to a gateway with WriteToken; see
-// client.Resolve for when that is safe. Wraps ErrNotFound when none exists.
-func ReadLegacyToken(email string) (TokenData, error) {
-	raw, err := keyringGet(legacyAccountKey(email))
-	if err != nil {
-		return TokenData{}, fmt.Errorf("read legacy token for %s: %w", email, err)
-	}
-	var data TokenData
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		return TokenData{}, fmt.Errorf("unmarshal legacy token for %s: %w", email, err)
-	}
-	if data.AccessToken == "" && data.RefreshToken == "" {
-		return TokenData{}, fmt.Errorf("legacy session for %s holds no token", email)
-	}
-	return data, nil
-}
-
-// DeleteLegacyToken removes a pre-gateway-identity session for email,
-// letting a user explicitly clear it out after logging in again against a
-// specific gateway. Idempotent.
-func DeleteLegacyToken(email string) error {
-	err := keyring.Delete(serviceName, legacyAccountKey(email))
+// DeleteUnboundToken removes the email-only entry for email. Idempotent.
+func DeleteUnboundToken(email string) error {
+	err := keyring.Delete(serviceName, unboundAccountKey(email))
 	if err == keyring.ErrNotFound {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("delete legacy token for %s: %w", email, err)
+		return fmt.Errorf("delete unbound token for %s: %w", email, err)
 	}
 	return nil
 }
