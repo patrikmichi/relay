@@ -17,6 +17,7 @@ func CallCmd() *cobra.Command {
 	var gatewayURL string
 	var rawArgs []string
 	var jsonOut bool
+	var wait string
 
 	cmd := &cobra.Command{
 		Use:   "call <service> <tool>",
@@ -25,11 +26,20 @@ func CallCmd() *cobra.Command {
 
 Arguments are passed as key=value pairs via --arg flags.
 
+A call the gateway holds for approval (an agent session's writes) prints the
+approval id, risk and expiry and exits 12. With --wait[=SECONDS] the command
+waits for the decision and prints the result instead; exit status as for
+'relay approvals wait'.
+
 Example:
   relay call clockify list_time_entries
   relay call google-workspace search_emails --arg query="is:unread" --arg maxResults=10`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts, err := callOptsFor(cmd, wait)
+			if err != nil {
+				return err
+			}
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -39,12 +49,13 @@ Example:
 			if err != nil {
 				return err
 			}
-			return callToolWithContext(cmd.Context(), c, args[0], args[1], rawArgs, jsonOut, cmd.OutOrStdout())
+			return callToolWithContext(cmd.Context(), c, args[0], args[1], rawArgs, jsonOut, cmd.OutOrStdout(), opts)
 		},
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
+	addWaitFlag(cmd, &wait)
 	return cmd
 }

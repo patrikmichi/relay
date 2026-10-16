@@ -100,8 +100,9 @@ type mcpRPCError struct {
 }
 
 type mcpToolResult struct {
-	IsError bool              `json:"isError"`
-	Content []json.RawMessage `json:"content"`
+	IsError           bool              `json:"isError"`
+	Content           []json.RawMessage `json:"content"`
+	StructuredContent json.RawMessage   `json:"structuredContent,omitempty"`
 }
 
 // mcpEnvelope mirrors the full JSON-RPC 2.0 response envelope for any MCP
@@ -183,10 +184,29 @@ func renderContentBlocks(blocks []json.RawMessage) string {
 func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut bool) error {
 	return callToolWithContext(context.Background(), c, service, tool, rawArgs, jsonOut, os.Stdout)
 }
-func callToolWithContext(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut bool, out io.Writer) (err error) {
+
+// callToolWithContext runs the call. A call the gateway holds for approval is
+// reported and, with a wait option, collected once it is decided.
+func callToolWithContext(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut bool, out io.Writer, opts ...callOpts) error {
+	var o callOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	pending, err := sendToolCall(parent, c, service, tool, rawArgs, jsonOut, o.wait, out)
+	if err != nil || pending == nil {
+		return err
+	}
+	return handlePending(parent, c, pending, jsonOut, o, out)
+}
+
+// sendToolCall posts the tools/call request. It returns the pending approval
+// when the gateway held the call instead of running it. With jsonOut it
+// prints the raw JSON-RPC envelope, except for a held call that waiting will
+// replace with the final result.
+func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut, waiting bool, out io.Writer) (pending *pendingApproval, err error) {
 	ctx, cancel, err := requestContext(parent, toolCallRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer cancel()
 	defer func() { err = timeoutCause(ctx, err) }()
@@ -194,7 +214,7 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 	for _, raw := range rawArgs {
 		k, v, ok := strings.Cut(raw, "=")
 		if !ok {
-			return fmt.Errorf("invalid --arg format %q: expected key=value", raw)
+			return nil, fmt.Errorf("invalid --arg format %q: expected key=value", raw)
 		}
 		// Try to parse the value as JSON (handles numbers, booleans, objects).
 		var parsed interface{}
@@ -215,76 +235,88 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("marshal request body: %w", err)
+		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
 	path := "/api/" + service + "/mcp"
 	resp, err := c.PostContext(ctx, path, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("POST %s: %w", path, err)
+		return nil, fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readLimitedResponse(resp.Body, maxToolCallResponseBytes)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
-	}
-
-	if jsonOut {
-		fmt.Fprintln(out, string(respBody))
+		return nil, errors.New("token expired or revoked — run `relay login` to re-authenticate")
 	}
 
 	env, envErr := decodeMCPEnvelope(respBody)
+	held := pendingFromREST(resp.StatusCode, respBody)
+	if held == nil && envErr == nil && env.Result != nil {
+		held = pendingFromResult(env.Result)
+	}
+	if jsonOut && !(held != nil && waiting) {
+		fmt.Fprintln(out, string(respBody))
+	}
+	if held != nil {
+		return held, nil
+	}
+
 	if envErr != nil {
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("call failed (%d): %w", resp.StatusCode, envErr)
+			return nil, fmt.Errorf("call failed (%d): %w", resp.StatusCode, envErr)
 		}
-		return envErr
+		return nil, envErr
 	}
 
 	if env.Error != nil {
 		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-			return fmt.Errorf("call failed (%d, code %d): %s — retry after %ss", resp.StatusCode, env.Error.Code, env.Error.Message, retryAfter)
+			return nil, fmt.Errorf("call failed (%d, code %d): %s — retry after %ss", resp.StatusCode, env.Error.Code, env.Error.Message, retryAfter)
 		}
-		return fmt.Errorf("call failed (%d, code %d): %s", resp.StatusCode, env.Error.Code, env.Error.Message)
+		return nil, fmt.Errorf("call failed (%d, code %d): %s", resp.StatusCode, env.Error.Code, env.Error.Message)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("call failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	if env.Result.IsError {
-		return fmt.Errorf("tool reported failure: %s", renderContentBlocks(env.Result.Content))
+		return nil, fmt.Errorf("tool reported failure: %s", renderContentBlocks(env.Result.Content))
 	}
 
 	if jsonOut {
-		return nil // raw envelope already printed above
+		return nil, nil // raw envelope already printed above
 	}
 
 	if len(env.Result.Content) == 0 {
 		fmt.Fprintln(out, "{}")
-		return nil
+		return nil, nil
 	}
 
 	for _, block := range env.Result.Content {
 		fmt.Fprintln(out, renderContentBlock(block))
 	}
-	return nil
+	return nil, nil
 }
 
 // buildToolCmd creates a leaf cobra command for a single tool.
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
 	var rawArgs []string
 	var jsonOut bool
+	var wait string
 	cmd := &cobra.Command{
 		Use:                toolName,
 		Short:              toolDesc,
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, _args []string) error {
+			opts, err := callOptsFor(cmd, wait)
+			if err != nil {
+				return err
+			}
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -293,11 +325,12 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			if err != nil {
 				return err
 			}
-			return callToolWithContext(cmd.Context(), c, serviceName, toolName, rawArgs, jsonOut, cmd.OutOrStdout())
+			return callToolWithContext(cmd.Context(), c, serviceName, toolName, rawArgs, jsonOut, cmd.OutOrStdout(), opts)
 		},
 	}
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable, JSON values supported)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
+	addWaitFlag(cmd, &wait)
 	return cmd
 }
 
