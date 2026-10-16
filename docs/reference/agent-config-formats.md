@@ -15,7 +15,7 @@ project directory (the current directory when `--scope project` is used).
 | Where relay writes | Marker | Consequence |
 |---|---|---|
 | JSON object keys (`mcpServers`, `mcp`, `servers`) | hash ledger in `~/.config/relay/sync-ledger.json` | Updated or removed only while the on-disk value still matches what relay wrote |
-| JSON hook arrays (`hooks.<Event>[]`) | hash ledger, per item | A hook you already wrote with the same matcher and command is not duplicated |
+| JSON hook arrays (`hooks.<Event>[]`) | hash ledger, per item, plus the hook's event, matcher and command | A hook you already wrote with the same matcher and command is not duplicated; a hook relay wrote and you then edited stays in place when it is dropped from the source, reported until `--force` removes it |
 | Codex `config.toml` | block delimited by `# >>> relay-managed:begin mcp >>>` ... `# <<< relay-managed:end mcp <<<`, text hash in the ledger | A table you defined outside the block wins and is reported as a conflict, even under `--force`; a block you edited is a conflict until `--force` |
 | Codex `config.toml`, environment | block delimited by `# >>> relay-managed:begin env >>>` ... `# <<< relay-managed:end env <<<`, text hash in the ledger | A `[shell_environment_policy.set]` table you defined outside the block wins and is reported as a conflict, even under `--force` |
 | Claude Code `settings.json` `env` | hash ledger, per variable | A variable you set to another value is a conflict; others are untouched |

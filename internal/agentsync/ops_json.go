@@ -226,7 +226,7 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 		return nil, err
 	}
 	led := c.Ledger.entries(real)
-	if len(o.events) == 0 && !hasPrefixKey(led, "hook:") {
+	if len(o.events) == 0 && !hasPrefixKey(led, "hook:") && !hasPrefixKey(led, hookSourcePrefix) {
 		return nil, nil
 	}
 	root, indent, bad := loadRoot(data, exists, o.seed)
@@ -244,9 +244,11 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 	}
 	for id := range led {
 		// A hand-edited ledger can hold a malformed id; it names no event.
-		if rest, ok := strings.CutPrefix(id, "hook:"); ok {
-			if i := strings.Index(rest, ":"); i > 0 {
-				events[rest[:i]] = true
+		for _, prefix := range []string{"hook:", hookSourcePrefix} {
+			if rest, ok := strings.CutPrefix(id, prefix); ok {
+				if i := strings.Index(rest, ":"); i > 0 {
+					events[rest[:i]] = true
+				}
 			}
 		}
 	}
@@ -276,9 +278,10 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 		if arr != nil {
 			existing = append(existing, arr.arr...)
 		}
-		wantHashes := map[string]bool{}
+		wantHashes, wantSources := map[string]bool{}, map[string]bool{}
 		for _, d := range desiredByEvent[ev] {
 			wantHashes[d.node.hash()] = true
+			wantSources[o.sourceKey(d.node)] = true
 		}
 
 		kept := make([]*jnode, 0, len(existing))
@@ -286,14 +289,38 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 		for _, it := range existing {
 			h := it.hash()
 			id := "hook:" + ev + ":" + h
+			src := hookSourcePrefix + ev + ":" + o.sourceKey(it)
 			if _, managed := led[id]; managed && !wantHashes[h] {
 				c.Ledger.drop(real, id)
+				c.Ledger.drop(real, src)
 				items = append(items, o.item(ev, real, StatusRemoved, "stale hook"))
 				changed = true
 				continue
 			}
+			// An item whose bytes no longer match what relay wrote but whose
+			// matcher and command still do is relay's hook, edited by hand.
+			if _, wasWritten := led[src]; wasWritten && !managed(led, id) && !wantSources[o.sourceKey(it)] {
+				if !c.Force {
+					items = append(items, o.item(ev, real, StatusSkipped, "a hook relay wrote was edited since; left in place, --force removes it"))
+				} else {
+					c.Ledger.drop(real, src)
+					items = append(items, o.item(ev, real, StatusRemoved, "edited hook removed (--force)"))
+					changed = true
+					continue
+				}
+			}
 			present[h] = true
 			kept = append(kept, it)
+		}
+		// Forget what relay wrote once no item carries it any more.
+		keptSources := map[string]bool{}
+		for _, it := range kept {
+			keptSources[o.sourceKey(it)] = true
+		}
+		for id := range led {
+			if rest, ok := strings.CutPrefix(id, hookSourcePrefix+ev+":"); ok && !keptSources[rest] && !wantSources[rest] {
+				c.Ledger.drop(real, id)
+			}
 		}
 		for id := range led {
 			if rest, ok := strings.CutPrefix(id, "hook:"+ev+":"); ok && !present[rest] {
@@ -305,8 +332,9 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 			h := d.node.hash()
 			id := "hook:" + ev + ":" + h
 			if present[h] {
-				if _, managed := led[id]; managed {
+				if managed(led, id) {
 					c.Ledger.set(real, id, h)
+					c.Ledger.set(real, hookSourcePrefix+ev+":"+o.sourceKey(d.node), h)
 				}
 				items = append(items, o.item(d.name, real, StatusUnchanged, ev))
 				continue
@@ -318,6 +346,7 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 			kept = append(kept, d.node)
 			present[h] = true
 			c.Ledger.set(real, id, h)
+			c.Ledger.set(real, hookSourcePrefix+ev+":"+o.sourceKey(d.node), h)
 			items = append(items, o.item(d.name, real, StatusAdded, ev))
 			changed = true
 		}
@@ -343,6 +372,22 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 		}
 	}
 	return items, nil
+}
+
+// hookSourcePrefix keys the ledger by what a hook is (its event, matcher and
+// commands) rather than by its bytes, so a hook relay wrote can still be
+// recognised after the person edits it.
+const hookSourcePrefix = "hooksrc:"
+
+func managed(led map[string]string, id string) bool {
+	_, ok := led[id]
+	return ok
+}
+
+// sourceKey identifies a hook item by its matcher and commands.
+func (o *jsonItemsOp) sourceKey(n *jnode) string {
+	m, cmds := o.signature(n)
+	return contentHash([]byte(m + "\x00" + strings.Join(cmds, "\x00")))
 }
 
 func (o *jsonItemsOp) userHas(existing []*jnode, want *jnode) bool {

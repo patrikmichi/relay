@@ -124,6 +124,48 @@ func TestCrashBetweenFilesAndLedgerIsRecoveredForward(t *testing.T) {
 	}
 }
 
+func TestHandEditedHookIsStillTiedToRelaysEntry(t *testing.T) {
+	env := newEnv(t)
+	settings := filepath.Join(env.Home, ".claude", "settings.json")
+	opts := Options{Agents: []AgentID{Claude}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindHooks}}
+	syncAll(t, env, userBundle(fixtureBundle()), opts)
+
+	edited := strings.Replace(readFile(t, settings), `"timeout": 10`, `"timeout": 99`, 1)
+	if edited == readFile(t, settings) {
+		t.Fatal("test edit changed nothing")
+	}
+	writeFile(t, settings, edited)
+
+	// Dropped from the source: the untouched hooks go, the edited one is reported.
+	plan := syncAll(t, env, userBundle(Bundle{}), opts)
+	var skipped bool
+	for _, it := range plan.Items {
+		skipped = skipped || (it.Status == StatusSkipped && strings.Contains(it.Detail, "--force"))
+	}
+	got := readFile(t, settings)
+	if !skipped || !strings.Contains(got, `"timeout": 99`) || strings.Contains(got, "/opt/relay/context.sh") {
+		t.Fatalf("edited hook not kept and reported, or stale hooks left (skipped=%v):\n%s", skipped, got)
+	}
+
+	forced := opts
+	forced.Force = true
+	syncAll(t, env, userBundle(Bundle{}), forced)
+	if fileExists(settings) && strings.Contains(readFile(t, settings), "guard.sh") {
+		t.Errorf("--force did not remove the edited hook:\n%s", readFile(t, settings))
+	}
+	led, err := LoadLedger(env.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, entries := range led.Files {
+		for id := range entries {
+			if strings.HasPrefix(id, hookSourcePrefix) || strings.HasPrefix(id, "hook:") {
+				t.Errorf("ledger still holds %s in %s", id, file)
+			}
+		}
+	}
+}
+
 func TestWindsurfProjectDirStaysWhereTheLedgerWrote(t *testing.T) {
 	env := newEnv(t)
 	opts := Options{Agents: []AgentID{Windsurf}, Scopes: []Scope{ScopeProject}, Kinds: []Kind{KindRules}}
