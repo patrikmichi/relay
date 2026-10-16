@@ -86,7 +86,7 @@ func TestDoctorGatewayProbeAndRedaction(t *testing.T) {
 					http.NotFound(w, r)
 					return
 				}
-				if (r.URL.Path != "/api/cli/whoami" && r.URL.Path != "/api/me/passkeys" && r.URL.Path != "/api/cli/sync/assignments") || r.Header.Get("Authorization") != "Bearer synthetic-secret-token" {
+				if (r.URL.Path != "/api/cli/whoami" && r.URL.Path != "/api/me/passkeys" && r.URL.Path != "/api/cli/sync/assignments" && r.URL.Path != "/api/automations") || r.Header.Get("Authorization") != "Bearer synthetic-secret-token" {
 					t.Errorf("unexpected request")
 				}
 				w.WriteHeader(tc.status)

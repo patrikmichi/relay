@@ -454,3 +454,41 @@ the exit statuses; the `{"pack": ...}`, `{"installs": ...}` wrappers, the
 by version) and the signature headers are this client's decisions. The plan
 asks for exit 20 on `plan_stale`; 20 is taken by a failed eval, so a stale
 plan exits 15 with the message to run `zuano pack plan` again.
+
+## Automations
+
+| Route | Request and response |
+|---|---|
+| `GET /api/automations?owner=me` | `{"automations": [AUTOMATION]}`; `owner=me` limits the list to the caller's, for `doctor` |
+| `GET /api/automations/{id}` | `{"automation": AUTOMATION}` |
+| `POST /api/automations` | `{"template": slug, "version"?, "name", "params": {}, "bindings": {service: "org\|personal"}, "runAsEmail"?}` answers `201` `{"automation", "wizardUrl": "/automations/{id}/wizard?step=preapprove"}`; a path on the gateway's own origin |
+| `GET /api/automations/templates?category=&service=` | `{"templates": [{"slug", "title", "summary", "category", "version", "ready"}]}` |
+| `GET /api/automations/templates/{slug}[/versions/{v}]` | `{"template": {...the list entry, "connectors": [slug], "minimumPlan", "permissions": [{"service", "tool", "risk"}], "preapprovableSteps": [path]}}` |
+| `POST /api/automations/templates/validate` | `{"manifest"}` answers `{"errors": [{"path", "message"}], "analysis": {"permissions", "minimumPlan", "preapprovableSteps"}}` |
+| `POST /api/automations/{id}/run` | `{"mode": "dry_run\|test\|live", "sample"?, "eventId"?, "input"?}` answers `202` `{"run_id", "job_id"}`; an agent session's run may be held like any call (exit 12) |
+| `GET /api/automations/{id}/runs` | `{"runs": [{"id", ...}]}` newest first |
+| `GET /api/automations/runs/{run}?after=<seq>` | `{"run": RUN}` with only the steps that changed after `seq` |
+| `POST /api/automations/{id}/pause`, `/disable` | `200` |
+| `GET /api/automations/{id}/preapprovals` | `{"preapprovals": [{"id", "stepPath", "status": "active\|void\|revoked\|expired", "voidReason"?, "expiresAt", "approver", "callsToday", "maxCallsPerDay"}]}` |
+| `GET /api/automations/{id}/upgrade?to=` | `{"diff": {"from", "to", "class": "patch\|minor\|major", "permissionsAdded", "permissionsRemoved", "connectorsAdded", "preapprovalsVoided", "stepsChanged"}}`; an empty diff means already current |
+| `POST /api/automations/{id}/upgrade`, `DELETE /api/automations/{id}` | `{"to"}`; `200` |
+
+Pages the CLI opens (no API call): `/automations/{id}/enable`,
+`/automations/{id}/preapprove?step=`, `/automations/{id}/upgrade?to=`.
+
+```json
+AUTOMATION = {"id": "atm_...", "name", "status": "draft|enabled|paused|disabled", "pausedReason"?,
+              "autoUpdate"?, "template": {"slug", "version"}, "lastRun"?: {"id", "status", "startedAt"},
+              "reapprovalNeeded"?: int}
+RUN = {"id": "atr_...", "status": "queued|running|succeeded|failed|cancelled|skipped", "mode", "error"?, "seq",
+       "steps": [{"seq", "path", "kind", "status": "running|succeeded|failed|held|denied|expired|skipped",
+                  "error"?, "approvalId"?, "approvalUrl"?: path, "preapprovalId"?}]}
+```
+
+A run with a step in `held` is waiting for an approval at its `approvalUrl`.
+A `failed` run with a `denied` or `expired` step exits 10 or 11.
+
+Source: automation templates plan (REST routes, CLI commands, exit codes). The
+plan names the routes, ids and exit codes; the response wrappers, `seq`
+cursor, the `template`/`runAsEmail` request fields, `owner=me` and the browser
+page paths are this client's decisions.
