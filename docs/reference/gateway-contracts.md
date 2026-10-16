@@ -528,7 +528,9 @@ the bytes of `manifest.json`), the files the manifest lists and
 `chain/checkpoints.jsonl`. The manifest has `{"pack", "packVersion",
 "mappingVersion", "orgId", "orgSlug", "range": {"from", "to"}, "generatedAt",
 "requestedBy", "evidenceKeyId", "files": [{"path", "sha256", "size"}]}`.
-`evidence/audit_chain*.jsonl` holds one event per line with `seq`, `prev_hash`
+`chain/audit_chain*.jsonl` (the plan puts it next to the other evidence
+files; the label check forbids that path, so zuano reads it from `chain/`)
+holds one event per line with `seq`, `prev_hash`
 and `hash` (hex) next to the event's own fields; `hash` is
 `sha256(prev_hash bytes || canonical JSON of the line without hash and prev_hash)`.
 A checkpoint line is `{"org_id", "date", "last_seq", "head_hash", "kid",

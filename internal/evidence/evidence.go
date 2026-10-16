@@ -28,7 +28,7 @@ const (
 	SignatureFile = "manifest.sig"
 	checkpoints   = "chain/checkpoints.jsonl"
 	verification  = "chain/verification.json"
-	chainPrefix   = "evidence/audit_chain"
+	chainPrefix   = "chain/audit_chain"
 	maxEntries    = 200000
 	maxSmallFile  = 64 << 20
 	maxLine       = 16 << 20

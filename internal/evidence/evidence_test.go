@@ -91,8 +91,8 @@ func (b *bundle) jsonl(v any) []byte {
 // write assembles the archive and returns its path.
 func (b *bundle) write() string {
 	t := b.t
-	if _, ok := b.files["evidence/audit_chain.jsonl"]; !ok {
-		b.files["evidence/audit_chain.jsonl"] = b.jsonl(b.events)
+	if _, ok := b.files["chain/audit_chain.jsonl"]; !ok {
+		b.files["chain/audit_chain.jsonl"] = b.jsonl(b.events)
 	}
 	if _, ok := b.files["chain/checkpoints.jsonl"]; !ok {
 		b.files["chain/checkpoints.jsonl"] = b.jsonl(b.cps)
@@ -227,7 +227,7 @@ func rewrite(t *testing.T, src, name string, data []byte) string {
 func TestATamperedAuditRowIsNamedBySequence(t *testing.T) {
 	b := newBundle(t)
 	b.events[2]["action"] = "tool.call.EDITED"
-	b.files["evidence/audit_chain.jsonl"] = b.jsonl(b.events)
+	b.files["chain/audit_chain.jsonl"] = b.jsonl(b.events)
 	r := verify(t, b)
 	got := failures(r)
 	if r.OK() || !strings.Contains(got, "event 7: the event's hash does not match its content") || !strings.Contains(got, "event 8: prev_hash is not the hash of event 7") {
@@ -241,7 +241,7 @@ func TestATamperedAuditRowIsNamedBySequence(t *testing.T) {
 func TestAMissingEventBreaksTheSequence(t *testing.T) {
 	b := newBundle(t)
 	b.events = append(b.events[:2:2], b.events[3:]...)
-	b.files["evidence/audit_chain.jsonl"] = b.jsonl(b.events)
+	b.files["chain/audit_chain.jsonl"] = b.jsonl(b.events)
 	if got := failures(verify(t, b)); !strings.Contains(got, "event 8: the sequence jumps from 6") {
 		t.Errorf("failures = %q", got)
 	}
@@ -285,9 +285,9 @@ func TestFilesOutsideTheManifestAndMissingFilesAreFailures(t *testing.T) {
 	b := newBundle(t)
 	b.files["extra.txt"] = []byte("x")
 	b.listed["extra.txt"] = true
-	b.phantom = []FileEntry{{Path: "evidence/missing.jsonl", SHA256: "00", Size: 1}}
+	b.phantom = []FileEntry{{Path: "data/missing.jsonl", SHA256: "00", Size: 1}}
 	got := failures(verify(t, b))
-	for _, want := range []string{"extra.txt: in the archive but not listed in the signed manifest", "evidence/missing.jsonl: listed in the manifest but missing"} {
+	for _, want := range []string{"extra.txt: in the archive but not listed in the signed manifest", "data/missing.jsonl: listed in the manifest but missing"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no failure %q in:\n%s", want, got)
 		}
@@ -341,9 +341,9 @@ func TestAnUnsignedChainTailIsAWarningAndTheGatewaysOwnFailureIsNot(t *testing.T
 
 func TestGarbledChainFilesAreFailures(t *testing.T) {
 	for name, files := range map[string]map[string][]byte{
-		"bad event":      {"evidence/audit_chain.jsonl": []byte("{nope\n")},
-		"no seq":         {"evidence/audit_chain.jsonl": []byte(`{"hash":"00","prev_hash":"00"}` + "\n")},
-		"bad prev hash":  {"evidence/audit_chain.jsonl": []byte(`{"seq":5,"hash":"00","prev_hash":"zz"}` + "\n")},
+		"bad event":      {"chain/audit_chain.jsonl": []byte("{nope\n")},
+		"no seq":         {"chain/audit_chain.jsonl": []byte(`{"hash":"00","prev_hash":"00"}` + "\n")},
+		"bad prev hash":  {"chain/audit_chain.jsonl": []byte(`{"seq":5,"hash":"00","prev_hash":"zz"}` + "\n")},
 		"bad checkpoint": {"chain/checkpoints.jsonl": []byte("{nope\n")},
 	} {
 		b := newBundle(t)
@@ -355,7 +355,7 @@ func TestGarbledChainFilesAreFailures(t *testing.T) {
 		}
 	}
 	b := newBundle(t)
-	b.files["evidence/audit_chain.jsonl"] = []byte("")
+	b.files["chain/audit_chain.jsonl"] = []byte("")
 	if r := verify(t, b); r.Events != 0 {
 		t.Errorf("empty chain: %+v", r)
 	}
@@ -363,10 +363,10 @@ func TestGarbledChainFilesAreFailures(t *testing.T) {
 
 func TestCheckpointsWithoutAChainAreAFailure(t *testing.T) {
 	b := newBundle(t)
-	b.files["evidence/audit_chain.jsonl"] = []byte{}
+	b.files["chain/audit_chain.jsonl"] = []byte{}
 	path := b.write()
 	// Rebuild the archive without the (empty) chain file.
-	rewritten := dropFile(t, path, "evidence/audit_chain.jsonl")
+	rewritten := dropFile(t, path, "chain/audit_chain.jsonl")
 	res, err := Verify(rewritten, b.keys())
 	if err != nil || !strings.Contains(failures(res), "the bundle has checkpoints but no audit chain") {
 		t.Errorf("%v %q", err, failures(res))
@@ -408,11 +408,11 @@ func dropFile(t *testing.T, src, name string) string {
 
 func TestSplitChainPartsAreReadInOrder(t *testing.T) {
 	b := newBundle(t)
-	b.files["evidence/audit_chain.part-001.jsonl"] = b.jsonl(b.events[:3])
-	b.files["evidence/audit_chain.part-002.jsonl"] = b.jsonl(b.events[3:])
+	b.files["chain/audit_chain.part-001.jsonl"] = b.jsonl(b.events[:3])
+	b.files["chain/audit_chain.part-002.jsonl"] = b.jsonl(b.events[3:])
 	// write() recreates the default chain file unless one is supplied; an
 	// empty one leaves only the parts to count.
-	b.files["evidence/audit_chain.jsonl"] = []byte{}
+	b.files["chain/audit_chain.jsonl"] = []byte{}
 	r := verify(t, b)
 	if !r.OK() || r.Events != 5 {
 		t.Errorf("parts: %+v\n%s", r, failures(r))
