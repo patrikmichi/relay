@@ -82,7 +82,7 @@ func TestDoctorGatewayProbeAndRedaction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			setupDoctor(t)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/cli/whoami" || r.Header.Get("Authorization") != "Bearer synthetic-secret-token" {
+				if (r.URL.Path != "/api/cli/whoami" && r.URL.Path != "/api/me/passkeys") || r.Header.Get("Authorization") != "Bearer synthetic-secret-token" {
 					t.Errorf("unexpected request")
 				}
 				w.WriteHeader(tc.status)

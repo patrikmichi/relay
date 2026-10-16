@@ -11,8 +11,10 @@ import (
 
 	"github.com/patrikmichi/relay/internal/agentport"
 	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/dpop"
 	"github.com/patrikmichi/relay/internal/keychain"
 	"github.com/spf13/cobra"
 )
@@ -110,6 +112,9 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		add("recovery", pending == 0, fmt.Sprintf("%d transactions need recovery", pending))
 	}
 	doctorSyncChecks(add)
+	if email, err := config.ResolveEmail(); err == nil && keychain.HasUnboundToken(email) {
+		add("stray-session", false, "an email-only keychain entry exists that no gateway session can use; `"+brand.Cmd("login")+"` removes it")
+	}
 	gateway, err := config.GatewayURL()
 	if err != nil {
 		add("gateway", false, "gateway configuration is invalid")
@@ -142,13 +147,15 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 	}
 	body, err := readLimitedResponse(response.Body, 1<<20)
 	var identity struct {
-		Email string `json:"email"`
+		Email      string `json:"email"`
+		StrictMode bool   `json:"strict_mode"`
 	}
 	if err != nil || json.Unmarshal(body, &identity) != nil || identity.Email == "" {
 		add("gateway", false, "invalid authentication probe response")
 		return checks
 	}
 	add("gateway", true, "gateway reachable and session authenticated")
+	doctorPasskeys(ctx, c, add)
 	if os.Getenv("GATEWAY_API_KEY") != "" {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
 		return checks
@@ -168,7 +175,46 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		return checks
 	}
 	add("token", token.ExpiresAt > time.Now().Unix(), fmt.Sprintf("access token expires at Unix time %d", token.ExpiresAt))
+	doctorDeviceKey(identity.StrictMode, token, add)
 	return checks
+}
+
+// doctorPasskeys reports how many passkeys the person enrolled. Only someone
+// who approves calls needs one, so a missing passkey never fails the check.
+func doctorPasskeys(ctx context.Context, c *client.Client, add func(string, bool, string)) {
+	var list struct {
+		Passkeys []json.RawMessage `json:"passkeys"`
+	}
+	if _, err := gatewayJSON(ctx, c, http.MethodGet, "/api/me/passkeys", nil, &list); err != nil {
+		add("passkeys", true, "could not read the passkey list (browser sessions only on some gateways)")
+		return
+	}
+	if len(list.Passkeys) == 0 {
+		add("passkeys", true, "none enrolled; add one under Settings, Security in the dashboard to approve calls")
+		return
+	}
+	add("passkeys", true, fmt.Sprintf("%d enrolled", len(list.Passkeys)))
+}
+
+// doctorDeviceKey checks the key a strict organisation binds the session to.
+func doctorDeviceKey(strict bool, token keychain.TokenData, add func(string, bool, string)) {
+	switch {
+	case token.DPoPKey != "":
+		key, err := dpop.Load(token.DPoPKey)
+		if err != nil {
+			add("device-key", false, err.Error())
+			return
+		}
+		kind := "stored in a file"
+		if key.Hardware() {
+			kind = "hardware-backed (" + key.Backend() + ")"
+		}
+		add("device-key", true, "session is bound to a device key, "+kind)
+	case strict:
+		add("device-key", false, "the organisation requires a device-bound session and this one is not; run `"+brand.Cmd("login")+"` again")
+	default:
+		add("device-key", true, "not required: the organisation does not use strict mode")
+	}
 }
 
 // Checks filesystem permissions without creating directories or probe files.
