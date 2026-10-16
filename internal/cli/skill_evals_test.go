@@ -438,6 +438,7 @@ func TestEval_FailOnRegression(t *testing.T) {
 	}
 
 	g = newEvalGateway(t)
+	g.summary = strings.Replace(triggerSummary, `"errors":1`, `"errors":0`, 1)
 	if out, err = evalCmd(t, g, SkillEvalCmd(), "evskill", "--fail-on-regression"); err != nil {
 		t.Fatalf("clean run failed: %v\n%s", err, out)
 	}
@@ -446,6 +447,26 @@ func TestEval_FailOnRegression(t *testing.T) {
 	g.summary = regressed
 	if _, err = evalCmd(t, g, SkillEvalCmd(), "evskill", "--wait"); err != nil {
 		t.Fatalf("a regression without --fail-on-regression must not fail: %v", err)
+	}
+}
+
+func TestEval_FailOnRegressionFailsWhenNothingWasVerified(t *testing.T) {
+	clean := strings.Replace(triggerSummary, `"errors":1`, `"errors":0`, 1)
+	for name, summary := range map[string]string{
+		"nothing scored": strings.Replace(clean, `"completed":6`, `"completed":0`, 1),
+		"cases errored":  triggerSummary,
+		"no summary":     "null",
+	} {
+		g := newEvalGateway(t)
+		g.summary = summary
+		_, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--fail-on-regression")
+		if ExitCode(err) != exitEvalRegression || !strings.Contains(err.Error(), "not verified") {
+			t.Errorf("%s: err = %v (exit %d), want exit %d", name, err, ExitCode(err), exitEvalRegression)
+		}
+		g.runPolls = 0
+		if _, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--wait"); err != nil {
+			t.Errorf("%s: without --fail-on-regression the run still reports success: %v", name, err)
+		}
 	}
 }
 

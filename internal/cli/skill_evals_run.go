@@ -231,7 +231,8 @@ is printed; with --wait relay polls and prints the scores.
 
 Exit status: 0 on success, %d when the run failed or was cancelled, %d with
 --fail-on-regression when a validation score dropped against the previous
-version or a variant got significantly worse than the baseline, 4 when
+version or a variant got significantly worse than the baseline, or when no case
+was scored or some ended in an error (nothing was verified), 4 when
 --wait-timeout passed. Use --json for machine-readable output.
 
 Examples:
@@ -416,11 +417,31 @@ func runExit(r evalRun, failOnRegression bool) error {
 		}
 		return &ExitError{Code: exitEvalFailed, Msg: msg}
 	case "succeeded":
-		if regs := findRegressions(r); failOnRegression && len(regs) > 0 {
+		if !failOnRegression {
+			return nil
+		}
+		if regs := findRegressions(r); len(regs) > 0 {
 			return &ExitError{Code: exitEvalRegression, Msg: "regression: " + strings.Join(regs, "; ")}
+		}
+		// A gate that scored nothing, or lost cases to errors, cannot show there was no regression.
+		if why := unscored(r); why != "" {
+			return &ExitError{Code: exitEvalRegression, Msg: "not verified: " + why}
 		}
 	}
 	return nil
+}
+
+// unscored says why a finished run cannot support a regression verdict, or "".
+func unscored(r evalRun) string {
+	if r.Summary == nil || r.Summary.Completed == 0 {
+		return "the run scored no cases"
+	}
+	for _, v := range r.Summary.Variants {
+		if v.Errors > 0 {
+			return fmt.Sprintf("%d case runs of %s ended in an error and were left out of the scores", v.Errors, v.Label)
+		}
+	}
+	return ""
 }
 
 // findRegressions lists what got worse: a version scoring below its
