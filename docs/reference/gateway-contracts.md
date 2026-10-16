@@ -489,6 +489,29 @@ extraction document are this client's decisions. The shape of each agent's
 session file is read from the formats as currently documented and may need
 adjusting against real files from newer agent versions.
 
+## Chat approvals
+
+| Route | Request and response |
+|---|---|
+| `GET /api/me/chat-identities` | `{"identities": [{"id", "provider": "slack\|teams", "workspace", "name", "dmOptOut"}]}` |
+| `GET /api/admin/chat/installations` | `{"installations": [{"id", "provider", "workspace", "status", "detail"?}]}`; `403` for a member |
+| `GET /api/admin/chat/reachability` | `{"eligible", "reachable"}`: approvers and how many can be reached in chat |
+| `GET /api/chat/link/{provider}/start` | a page: sign in to the chat app, then a passkey confirmation |
+| `GET /api/admin/approval-routes[/{id}]` | `{"routes": [ROUTE]}`, `{"route": ROUTE}`; readable by a personal CLI session |
+| `POST /api/admin/approval-routes/test` | `{"service", "tool", "risk", "source"?, "requester"?}` answers `{"route": {"name", "detail"}, "recipients": [{"kind", "name", "channel", "status": "mapped\|unmapped\|opted_out"}], "channels": [{"installation", "name", "warning"?}]}`; sends nothing |
+| `GET /api/approvals/{id}` | the approval object also carries `"notified": [{"channel": "slack\|teams\|email\|inbox", "target"?, "state": "pending\|delivered\|failed", "at"?}]` |
+
+```json
+ROUTE = {"id", "name", "priority", "default"?, "match": {"services", "tools", "risks", "sources", "routeHints"},
+         "targets": [{"kind": "dm_requester\|dm_group\|channel", "groupId"?, "installationId"?, "conversationId"?, "name"?}],
+         "restrictDeciders", "fourEyes", "detail": "preview\|keys\|digest", "reminders": [number]}
+```
+
+Source: chat approvals plan (routes, identity mapping, REST and CLI sections).
+The plan names the routes and the CLI commands; the `{"routes": ...}` wrappers,
+the shape of `notified`, `reachability`, the identities list and the link start
+path are this client's decisions.
+
 ## Automations
 
 | Route | Request and response |

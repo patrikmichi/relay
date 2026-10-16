@@ -224,6 +224,14 @@ carries the same value in `approval`.
 Leave the `env` kind out (`zuano sync --kind mcp,rules`) to keep an agent on
 your own session.
 
+## Chat
+
+When your organisation sends approvals to Slack or Teams, `zuano approvals show`
+lists where an approval was sent and how far it got. The card in chat only opens
+the approval page; the decision is still made there with your passkey.
+`zuano approvals routes list|show|test` reads the routing rules, and `zuano chat`
+shows and links your chat accounts. See [chat.md](chat.md).
+
 ## Environment
 
 | Variable | Purpose |

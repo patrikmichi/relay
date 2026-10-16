@@ -60,6 +60,15 @@ type approvalRecord struct {
 	GrantMinutes int    `json:"grant_minutes"`
 	Note         string `json:"note"`
 	ExecutedAt   string `json:"executed_at"`
+	// Notified says where the gateway sent the approval and how far it got.
+	Notified []notifiedChannel `json:"notified"`
+}
+
+type notifiedChannel struct {
+	Channel string `json:"channel"`
+	Target  string `json:"target"`
+	State   string `json:"state"`
+	At      string `json:"at"`
 }
 
 // sanitized returns the record with control characters removed from every
@@ -116,7 +125,7 @@ wait exit status
   11  expired
   12  still pending when the timeout ended`,
 	}
-	cmd.AddCommand(approvalsListCmd(), approvalsShowCmd(), approvalsDecideCmd(true), approvalsDecideCmd(false), approvalsWaitCmd())
+	cmd.AddCommand(approvalsListCmd(), approvalsShowCmd(), approvalsDecideCmd(true), approvalsDecideCmd(false), approvalsWaitCmd(), approvalsRoutesCmd())
 	return cmd
 }
 
@@ -320,6 +329,17 @@ func printApproval(out io.Writer, a approvalRecord) {
 	}
 	if a.ExecutedAt != "" {
 		fmt.Fprintf(out, "Executed:  %s\n", a.ExecutedAt)
+	}
+	for i, n := range a.Notified {
+		label := ""
+		if i == 0 {
+			label = "Sent to:"
+		}
+		line := fmt.Sprintf("%-10s %s", label, textsafe.Clean(n.Channel))
+		if n.Target != "" {
+			line += " " + textsafe.Clean(n.Target)
+		}
+		fmt.Fprintf(out, "%s: %s\n", line, orDash(textsafe.Clean(n.State)))
 	}
 }
 

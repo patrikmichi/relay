@@ -161,6 +161,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 	doctorPluginFeed(ctx, c, pluginLedger, add)
 	doctorPacks(ctx, c, add)
 	doctorAutomations(ctx, c, add)
+	doctorChat(ctx, c, add)
 	doctorPasskeys(ctx, c, add)
 	if os.Getenv("ZUANO_API_KEY") != "" {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
