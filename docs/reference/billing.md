@@ -56,6 +56,17 @@ Statuses 13 and 14 (step-up) are described in [approvals.md](approvals.md#exit-s
 and [step-up.md](step-up.md). `zuano call --wait` treats 402 as final: it does
 not retry.
 
+A Free organisation has daily caps on tool calls and trigger events on top of
+the period allowance. Hitting one is a `402` `quota_exceeded` with
+`reason: "daily_cap"` (exit 31, never a `429`) and says when the day resets:
+
+```
+$ zuano call github list_issues
+Daily tool call limit reached (quota_exceeded: daily_cap); resets 2026-10-17T00:00:00Z
+$ echo $?
+31
+```
+
 ```
 $ zuano call sandbox run_code
 run_code needs the Pro plan (plan_required, plan free, needs pro)

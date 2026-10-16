@@ -101,6 +101,29 @@ func TestQuotaExceededOn429IsExit31(t *testing.T) {
 	}
 }
 
+func TestDailyCapIsAQuotaWithAReasonAndAResetTime(t *testing.T) {
+	c := refusalServer(t, 402, nil, `{"error":"quota_exceeded","reason":"daily_cap","meter":"tool_calls","message":"Daily tool call limit reached","resets_at":"2026-10-17T00:00:00Z"}`)
+	_, err := c.Get("/x")
+	var e *EntitlementError
+	if !errors.As(err, &e) || e.ExitCode() != ExitUsageExhausted || e.Reason != "daily_cap" || e.ResetsAt != "2026-10-17T00:00:00Z" {
+		t.Fatalf("err = %v (%+v)", err, e)
+	}
+	for _, want := range []string{"Daily tool call limit reached", "quota_exceeded: daily_cap", "resets 2026-10-17T00:00:00Z"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q lacks %q", err, want)
+		}
+	}
+}
+
+func TestAnUnverifiedOrgGetsExit30(t *testing.T) {
+	c := refusalServer(t, 402, nil, `{"error":"verification_required","message":"Verify your organisation to raise this limit"}`)
+	_, err := c.Get("/x")
+	var e *EntitlementError
+	if !errors.As(err, &e) || e.ExitCode() != ExitPlanRequired {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestOtherResponsesPassThroughWithTheirBodies(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

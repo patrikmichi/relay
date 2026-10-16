@@ -26,7 +26,7 @@ const (
 var (
 	stepIDPattern       = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
 	automationStepKinds = map[string]bool{"tool": true, "agent": true, "skill": true, "code": true, "condition": true, "foreach": true, "approval": true, "notify": true}
-	automationTriggers  = map[string]bool{"webhook": true, "poll": true, "schedule": true, "event": true, "manual": true}
+	automationTriggers  = map[string]bool{"webhook": true, "poll": true, "schedule": true, "event": true, "manual": true, "trigger_type": true}
 	secretParamKey      = regexp.MustCompile(`(?i)(secret|token|password|api[_-]?key)`)
 )
 
@@ -53,7 +53,16 @@ func precheckAutomation(raw []byte) (map[string]any, []string) {
 		bad("title is required")
 	}
 	if tr, ok := m["trigger"].(map[string]any); !ok || !automationTriggers[fmt.Sprint(tr["kind"])] {
-		bad("trigger.kind must be one of webhook, poll, schedule, event, manual")
+		bad("trigger.kind must be one of webhook, poll, schedule, event, manual, trigger_type")
+	} else if tr["kind"] == "trigger_type" {
+		if t, _ := tr["type"].(string); t == "" {
+			bad("a trigger_type trigger needs the type of the trigger, such as github.issue_opened")
+		}
+		if cfg, present := tr["config"]; present {
+			if _, ok := cfg.(map[string]any); !ok {
+				bad("trigger.config must be an object")
+			}
+		}
 	}
 	steps, _ := m["steps"].([]any)
 	if len(steps) == 0 {

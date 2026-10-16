@@ -39,7 +39,7 @@ An id that starts with atm_ is an installed automation, one that starts with
 atr_ is one run of it. A template is named by its slug, with an optional
 @version.
 
-An agent session may list, show, read logs, install a draft, dry-run and run;
+An agent session may list, show, read logs, install or write a draft, dry-run and run;
 enable, preapprove, uninstall and a major upgrade are refused (exit 14).
 
 run and logs exit status
@@ -48,13 +48,14 @@ run and logs exit status
   11  a step's approval expired
   12  the run waits for an approval, or --wait ran out
   20  the run failed
+  16  'draft': the manifest has issues, listed one per line
   13  rate limited
   14  a person must do this in the browser
   30-33  the plan does not allow it, see 'zuano billing'`,
 	}
 	cmd.AddCommand(automationListCmd(), automationShowCmd(), automationInstallCmd(), automationRunCmd(), automationLogsCmd(),
 		automationEnableCmd(), automationPreapproveCmd(), automationPauseCmd("pause"), automationPauseCmd("disable"),
-		automationUpgradeCmd(), automationUninstallCmd(), automationValidateCmd(), automationPublishCmd())
+		automationUpgradeCmd(), automationUninstallCmd(), automationValidateCmd(), automationPublishCmd(), automationDraftCmd())
 	return cmd
 }
 

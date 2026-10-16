@@ -13,6 +13,7 @@ browser or on your phone with your passkey; zuano only opens the page.
 | `zuano automation list [--gallery] [--category C] [--service S] [--json]` | `GET /api/automations`, or with `--gallery` `GET /api/automations/templates` |
 | `zuano automation show <atm_id\|template[@version]> [--json]` | `GET /api/automations/{id}` and `/preapprovals`, or `GET /api/automations/templates/{slug}[/versions/{v}]` |
 | `zuano automation install <template>[@version] [--name N] [--param k=v] [--params-file F] [--bind service=org\|personal] [--run-as EMAIL] [--no-browser]` | `POST /api/automations`, then opens the returned page |
+| `zuano automation draft [goal] [--manifest F] [--name N] [--param k=v] [--params-file F] [--bind service=org\|personal] [--automation-id atm_...] [--no-browser]` | `POST /api/automations/draft`, then opens the returned page; `422` `invalid_manifest` prints the issues and exits 16 |
 | `zuano automation run <atm_id> [--dry-run\|--test --yes] [--sample N\|--event wev_...\|--input F] [--wait[=DUR]]` | `POST /api/automations/{id}/run`, then `GET /api/automations/runs/{run}` |
 | `zuano automation logs <atm_id\|atr_id> [--follow] [--step PATH] [--json]` | `GET /api/automations/{id}/runs`, `GET /api/automations/runs/{run}?after=` |
 | `zuano automation enable <atm_id>`, `preapprove <atm_id> [--step PATH]` | none: open `/automations/{id}/enable` and `/preapprove` |
@@ -47,8 +48,8 @@ and steps that need re-approval.
 
 ## Agents
 
-An agent session (`ZUANO_AGENT` set) may `list`, `show`, `logs`, `install` a
-draft and `run`; `enable`, `preapprove`, `uninstall` and an upgrade to a major
+An agent session (`ZUANO_AGENT` set) may `list`, `show`, `logs`, `install` or
+`draft` a draft and `run`; `enable`, `preapprove`, `uninstall` and an upgrade to a major
 version are refused with exit 14 and the gateway refuses them too.
 
 ## Exit statuses
@@ -57,14 +58,27 @@ version are refused with exit 14 and the gateway refuses them too.
 |---|---|
 | 0 | the run succeeded, or the change was made |
 | 1 | failed, or the run was cancelled or skipped |
-| 4 | a gateway request hit the time limit |
+| 17 | a gateway request hit the time limit |
 | 10 | a step was denied, or the command is refused for an agent session (publish) |
 | 11 | a step's approval expired |
 | 12 | the run waits for an approval (the link is printed), or `--wait` ran out |
 | 13 | rate limited |
 | 14 | a person must do this in the browser with a passkey |
+| 16 | `draft`: the manifest has issues, each printed on its own line |
 | 20 | the run failed |
 | 30-33 | the plan does not allow it; see [billing.md](billing.md) |
+
+## Drafting from a goal or a manifest
+
+`draft` saves a private automation that is not from a template: describe it in
+words and the gateway writes the manifest (with the organisation's model key, or
+its platform model where the plan has one), or pass a manifest you or an agent
+wrote. Either way the gateway checks it and returns the analysis (steps,
+permissions, risk, connections still to make, minimum plan) and the page where a
+person tests and enables it. The draft has no grants and no pre-approvals; a
+manifest that claims a lower risk than the tool's registered class gets the
+registered class. An invalid manifest is a `422` with every issue, printed one
+per line, exit 16, and nothing is saved.
 
 ## Authoring
 

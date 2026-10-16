@@ -62,9 +62,11 @@ type EntitlementError struct {
 	CurrentPlan  string
 	RequiredPlan string
 	UpgradeURL   string
-	ResetsAt     string
-	RetryAfter   string
-	RequestID    string
+	// Reason says which quota ran out, such as daily_cap, allowance_exhausted or meter_cap_reached.
+	Reason     string
+	ResetsAt   string
+	RetryAfter string
+	RequestID  string
 }
 
 // ExitCode is the process exit status for the refusal.
@@ -88,6 +90,9 @@ func (e *EntitlementError) Error() string {
 	}
 	b.WriteString(msg)
 	fmt.Fprintf(&b, " (%s", e.Code)
+	if e.Reason != "" {
+		fmt.Fprintf(&b, ": %s", textsafe.Clean(e.Reason))
+	}
 	if e.CurrentPlan != "" {
 		fmt.Fprintf(&b, ", plan %s", textsafe.Clean(e.CurrentPlan))
 	}
@@ -208,6 +213,7 @@ type refusalBody struct {
 	CurrentPlan  string          `json:"current_plan"`
 	RequiredPlan string          `json:"required_plan"`
 	UpgradeURL   string          `json:"upgrade_url"`
+	Reason       string          `json:"reason"`
 	ResetsAt     string          `json:"resets_at"`
 	StepUpURL    string          `json:"step_up_url"`
 	StepUpID     string          `json:"step_up_id"`
@@ -273,7 +279,7 @@ func refusalOf(resp *http.Response) error {
 			Status: resp.StatusCode, Code: b.Error, Message: b.Message, Feature: b.Feature,
 			Limit: rawText(b.Limit), Meter: b.Meter, Current: rawText(b.Current), Max: rawText(b.Max),
 			CurrentPlan: b.CurrentPlan, RequiredPlan: b.RequiredPlan, UpgradeURL: b.UpgradeURL,
-			ResetsAt: b.ResetsAt, RetryAfter: resp.Header.Get("Retry-After"), RequestID: id,
+			Reason: b.Reason, ResetsAt: b.ResetsAt, RetryAfter: resp.Header.Get("Retry-After"), RequestID: id,
 		}
 	}
 	return nil

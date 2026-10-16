@@ -37,8 +37,8 @@ its HTTP client, so no route needs to handle them separately.
 
 | Response | Client behaviour | Exit |
 |---|---|---|
-| `402` `{"error": CODE, "message", "feature"?, "limit"?, "meter"?, "current"?, "max"?, "current_plan", "required_plan", "upgrade_url", "resets_at"?}` with CODE `plan_required`, `limit_reached` or `verification_required` | prints the message, plans and `upgrade_url` | 30 |
-| `402` with CODE `quota_exceeded` or `spend_cap_reached` | same | 31 |
+| `402` `{"error": CODE, "message", "feature"?, "limit"?, "meter"?, "current"?, "max"?, "current_plan", "required_plan", "upgrade_url", "reason"?, "resets_at"?}` with CODE `plan_required`, `limit_reached` or `verification_required` | prints the message, plans and `upgrade_url` | 30 |
+| `402` with CODE `quota_exceeded` or `spend_cap_reached`; `reason` says which (`daily_cap`, `allowance_exhausted`, `meter_cap_reached`) | same, with the reason and when it resets | 31 |
 | `503` `{"error": "billing_unavailable", "message"}` with `Retry-After` | prints the message and the wait | 32 |
 | `403` `{"error": "org_suspended" \| "seat_suspended", "message"}` | prints the message | 33 |
 | `429` `{"error": "rate_limited", "message"}` with `Retry-After` | prints the message and the wait | 13 |
@@ -685,6 +685,7 @@ path are this client's decisions.
 | `GET /api/automations?owner=me` | `{"automations": [AUTOMATION]}`; `owner=me` limits the list to the caller's, for `doctor` |
 | `GET /api/automations/{id}` | `{"automation": AUTOMATION}` |
 | `POST /api/automations` | `{"template": slug, "version"?, "name", "params": {}, "bindings": {service: "org\|personal"}, "runAsEmail"?}` answers `201` `{"automation", "wizardUrl": "/automations/{id}/wizard?step=preapprove"}`; a path on the gateway's own origin |
+| `POST /api/automations/draft` | `{"goal"?, "manifest"?, "name"?, "params"?, "bindings"?, "automationId"?}`, at least one of goal and manifest; `201` `{"automationId", "customManifestId", "wizardUrl", "analysis": {"trigger", "steps", "derivedPermissions", "maxRisk", "preapprovableSteps", "missingConnections", "minimumPlan"}}`; `422` `{"error": "invalid_manifest", "issues": [{"path", "code", "message"}]}` (exit 16); an agent's draft may be held (`202`, exit 12) |
 | `GET /api/automations/templates?category=&service=` | `{"templates": [{"slug", "title", "summary", "category", "version", "ready"}]}` |
 | `GET /api/automations/templates/{slug}[/versions/{v}]` | `{"template": {...the list entry, "connectors": [slug], "minimumPlan", "permissions": [{"service", "tool", "risk"}], "preapprovableSteps": [path]}}` |
 | `POST /api/automations/templates/validate` | `{"manifest"}` answers `{"errors": [{"path", "message"}], "analysis": {"permissions", "minimumPlan", "preapprovableSteps"}}` |
