@@ -74,14 +74,14 @@ func TestConfigSetGateway_NormalizesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set-gateway: %v", err)
 	}
-	if !strings.Contains(out, "Gateway URL set to: https://Gateway.example.com") {
+	if !strings.Contains(out, "Gateway URL set to: https://gateway.example.com") {
 		t.Errorf("unexpected output: %q", out)
 	}
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.GatewayURL != "https://Gateway.example.com" {
+	if cfg.GatewayURL != "https://gateway.example.com" {
 		t.Errorf("persisted gateway = %q", cfg.GatewayURL)
 	}
 
@@ -89,7 +89,7 @@ func TestConfigSetGateway_NormalizesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get-gateway: %v", err)
 	}
-	if strings.TrimSpace(out) != "https://Gateway.example.com" {
+	if strings.TrimSpace(out) != "https://gateway.example.com" {
 		t.Errorf("get-gateway printed %q", out)
 	}
 }

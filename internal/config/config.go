@@ -299,7 +299,20 @@ func NormalizeGatewayURL(raw string) (string, error) {
 	default:
 		return "", fmt.Errorf("gateway URL %q has unsupported scheme %q — only https (or http for loopback) is allowed", raw, u.Scheme)
 	}
-	return u.Scheme + "://" + u.Host, nil
+	// The origin is a session and API-key binding key: two spellings of one
+	// host must not become two identities.
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return u.Scheme + "://" + host, nil
 }
 
 // IsLoopbackOrigin reports whether a normalized gateway origin is a local
@@ -331,7 +344,7 @@ func APIKeyOrigin() (string, error) {
 // is a literal loopback address — the sole exception to the HTTPS-only
 // transport policy, intended for local gateway development only.
 func isLoopbackHost(host string) bool {
-	if host == "localhost" {
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
