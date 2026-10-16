@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 type meanStat struct {
@@ -249,12 +251,12 @@ func pickKind(flag string, set evalSet) (string, error) {
 	case set.Counts.Trigger == 0 && set.Counts.Task > 0:
 		return "task", nil
 	case set.Counts.Trigger == 0:
-		return "", fmt.Errorf("set %s has no cases; add some with `relay skill evals case add`", set.Name)
+		return "", fmt.Errorf("set %s has no cases; add some with `zuano skill evals case add`", set.Name)
 	}
 	return "", fmt.Errorf("set %s has trigger and task cases; choose with --kind", set.Name)
 }
 
-// SkillEvalCmd returns `relay skill eval`.
+// SkillEvalCmd returns `zuano skill eval`.
 func SkillEvalCmd() *cobra.Command {
 	var f evalFlags
 	var o runOptions
@@ -265,7 +267,7 @@ func SkillEvalCmd() *cobra.Command {
 		Long: fmt.Sprintf(`Start an eval run: every case of a set is sent to the model with the skill, repeated
 --repeats times, and scored. A trigger run scores whether the model loads the
 skill; a task run grades the answers. Without --wait the run starts and its id
-is printed; with --wait relay polls and prints the scores.
+is printed; with --wait zuano polls and prints the scores.
 
 Exit status: 0 on success, %d when the run failed or was cancelled (with
 --fail-on-regression also when no case was scored or some ended in an error,
@@ -274,11 +276,11 @@ score dropped against the previous version or a variant got significantly
 worse than the baseline, 4 when --wait-timeout passed. Use --json for machine-readable output.
 
 Examples:
-  relay skill eval weekly-timesheet --wait
-  relay skill eval weekly-timesheet --set smoke --version 1.2.0 --repeats 5 --wait --json
-  relay skill eval weekly-timesheet --draft sdr_123 --wait
-  relay skill eval weekly-timesheet --run evr_123 --wait
-  relay skill eval weekly-timesheet --fail-on-regression    # in CI`, exitEvalFailed, exitEvalRegression),
+  zuano skill eval weekly-timesheet --wait
+  zuano skill eval weekly-timesheet --set smoke --version 1.2.0 --repeats 5 --wait --json
+  zuano skill eval weekly-timesheet --draft sdr_123 --wait
+  zuano skill eval weekly-timesheet --run evr_123 --wait
+  zuano skill eval weekly-timesheet --fail-on-regression    # in CI`, exitEvalFailed, exitEvalRegression),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if version != "" && draft != "" {
@@ -300,7 +302,7 @@ Examples:
 	return cmd
 }
 
-// SkillCompareCmd returns `relay skill compare`.
+// SkillCompareCmd returns `zuano skill compare`.
 func SkillCompareCmd() *cobra.Command {
 	var f evalFlags
 	var o runOptions
@@ -316,7 +318,7 @@ With --fail-on-regression the command exits %d when a variant is significantly
 worse than the baseline on validation.
 
 Example:
-  relay skill compare weekly-timesheet --versions 1.1.0,1.2.0 --wait`, exitEvalRegression),
+  zuano skill compare weekly-timesheet --versions 1.1.0,1.2.0 --wait`, exitEvalRegression),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			o.refs = versions
@@ -401,7 +403,7 @@ func runEval(cmd *cobra.Command, f evalFlags, skillRef string, o runOptions, com
 			if f.jsonOut {
 				return printIndented(out, raw)
 			}
-			fmt.Fprintf(out, "Started %s run %s on set %s.\nFollow it with: relay skill eval %s --run %s --wait\n", kind, runID, set.Name, a.label(), runID)
+			fmt.Fprintf(out, "Started %s run %s on set %s.\nFollow it with: zuano skill eval %s --run %s --wait\n", kind, runID, set.Name, a.label(), runID)
 			return nil
 		}
 	}
@@ -414,7 +416,7 @@ func runEval(cmd *cobra.Command, f evalFlags, skillRef string, o runOptions, com
 		return err
 	}
 	if waiting {
-		resume := fmt.Sprintf("relay skill eval %s --run %s --wait", a.label(), runID)
+		resume := brand.Cmd(fmt.Sprintf("skill eval %s --run %s --wait", a.label(), runID))
 		err = waitFor(ctx, o.waitTimeout, cmd.ErrOrStderr(), f.jsonOut, resume, func() (bool, string, error) {
 			if err := fetch(); err != nil {
 				return false, "", err

@@ -172,7 +172,7 @@ func TestStepUp_GivesUpAfterTheTimeout(t *testing.T) {
 	}
 }
 
-func TestStepUp_RelayCallExitsWith14WhenNobodyIsAtTheKeyboard(t *testing.T) {
+func TestStepUp_ZuanoCallExitsWith14WhenNobodyIsAtTheKeyboard(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, `{"error":"step_up_required","step_up_id":"su_9","step_up_url":"http://`+r.Host+`/stepup/su_9"}`)

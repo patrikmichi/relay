@@ -16,21 +16,22 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
-// SourceDir is where relay reads what to sync: ~/.config/zuano/sync for the
-// user scope and <project>/.relay for the project scope.
+// SourceDir is where zuano reads what to sync: ~/.config/zuano/sync for the
+// user scope and <project>/.zuano for the project scope.
 func SourceDir(env Env, scope Scope) string {
 	if scope == ScopeProject {
-		return filepath.Join(env.Project, ".zuano")
+		return filepath.Join(env.Project, "."+brand.Name)
 	}
-	return filepath.Join(env.Home, ".config", "zuano", "sync")
+	return filepath.Join(env.Home, ".config", brand.Name, "sync")
 }
 
 var safeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // MCPSource is the persisted list of MCP servers installed with
-// `relay mcp install`, plus the switch for the gateway server.
+// `zuano mcp install`, plus the switch for the gateway server.
 type MCPSource struct {
 	GatewayDisabled bool        `json:"gatewayDisabled,omitempty"`
 	Servers         []MCPServer `json:"servers,omitempty"`
@@ -44,7 +45,7 @@ func MCPSourcePath(env Env, scope Scope) string {
 type PathCheck func(path string) error
 
 // SourceCheck refuses source files that a symlink would redirect. A project's
-// .relay directory is untrusted: a link inside it could point at ~/.ssh or
+// .zuano directory is untrusted: a link inside it could point at ~/.ssh or
 // ~/.aws and have the file copied into agent configs, so no symlink is
 // followed below the project. The user's own source directory may be linked
 // by a dotfile manager, but only to somewhere under $HOME.

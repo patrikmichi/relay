@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/config"
 )
 
@@ -90,11 +91,11 @@ func (p Policy) Check(h http.Header, a Artifact) (signed bool, err error) {
 		return false, fmt.Errorf("the download is signed but names no key (%s)", HeaderKeyID)
 	}
 	if len(p.Keys) == 0 {
-		return false, errors.New("the download is signed but no signing key is pinned for this gateway; run `relay login`, or `relay config trust-key` to pin its keys")
+		return false, fmt.Errorf("the download is signed but no signing key is pinned for this gateway; run `%s`, or `%s` to pin its keys", brand.Cmd("login"), brand.Cmd("config trust-key"))
 	}
 	idx := slices.IndexFunc(p.Keys, func(k Key) bool { return k.KID == kid })
 	if idx < 0 {
-		return false, fmt.Errorf("the download is signed with key %q, which is not pinned for this gateway; if the gateway rotated its keys, review them with `relay config trust-key`", kid)
+		return false, fmt.Errorf("the download is signed with key %q, which is not pinned for this gateway; if the gateway rotated its keys, review them with `%s`", kid, brand.Cmd("config trust-key"))
 	}
 	pub, err := decodePublicKey(p.Keys[idx])
 	if err != nil {

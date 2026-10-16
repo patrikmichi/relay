@@ -68,7 +68,7 @@ func inspectMcpServer(parent context.Context, doer mcpListDoer, id string) (mcpI
 		return out, fmt.Errorf("MCP resource not found or access denied")
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return out, fmt.Errorf("authentication required; run relay login")
+		return out, fmt.Errorf("authentication required; run zuano login")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return out, fmt.Errorf("MCP inspection failed (HTTP %d)", resp.StatusCode)

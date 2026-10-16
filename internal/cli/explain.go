@@ -29,7 +29,7 @@ func (r explainResult) String() string {
 	return s
 }
 
-// ExplainCmd returns `relay explain`, which reports how a command would be treated without running it.
+// ExplainCmd returns `zuano explain`, which reports how a command would be treated without running it.
 func ExplainCmd() *cobra.Command {
 	explain := &cobra.Command{Use: "explain", Short: "Explain how a command would be treated without running it"}
 

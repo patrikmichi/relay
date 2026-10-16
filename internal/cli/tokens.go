@@ -12,7 +12,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/client"
 )
 
-// TokensCmd returns the `relay tokens` cobra command with list and revoke subcommands.
+// TokensCmd returns the `zuano tokens` cobra command with list and revoke subcommands.
 func TokensCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tokens",
@@ -22,7 +22,7 @@ func TokensCmd() *cobra.Command {
 	return cmd
 }
 
-// tokensListCmd returns `relay tokens list`.
+// tokensListCmd returns `zuano tokens list`.
 // Calls GET /api/cli/whoami and prints active session info.
 func tokensListCmd() *cobra.Command {
 	var gatewayURL string
@@ -54,7 +54,7 @@ func tokensListCmd() *cobra.Command {
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusUnauthorized {
-				return errors.New("token expired or revoked — run `relay login` to re-authenticate")
+				return errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 			}
 
 			if resp.StatusCode != http.StatusOK {
@@ -88,7 +88,7 @@ func tokensListCmd() *cobra.Command {
 			// The token value is never printed. Only a login session lives in
 			// the keychain; a ZUANO_API_KEY is read from the environment.
 			if c.Email() == "" {
-				fmt.Fprintln(cmd.OutOrStdout(), "Token:     ZUANO_API_KEY (not stored by relay)")
+				fmt.Fprintln(cmd.OutOrStdout(), "Token:     ZUANO_API_KEY (not stored by zuano)")
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
 			}
@@ -100,7 +100,7 @@ func tokensListCmd() *cobra.Command {
 	return cmd
 }
 
-// tokensRevokeCmd returns `relay tokens revoke`.
+// tokensRevokeCmd returns `zuano tokens revoke`.
 func tokensRevokeCmd() *cobra.Command {
 	var gatewayURL string
 

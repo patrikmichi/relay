@@ -70,7 +70,7 @@ func TestAgentMigrate_ClaudeToOpencodeAndBack(t *testing.T) {
 	}
 
 	// The original hand-written claude/reviewer.md (writeClaudeUserAgent)
-	// was never a Relay-managed artifact, and its content necessarily
+	// was never a Zuano-managed artifact, and its content necessarily
 	// differs from the round-tripped opencode->claude projection — Write
 	// now refuses to silently overwrite differing destination content
 	//. Remove it first: this test's purpose is the round-trip's

@@ -99,7 +99,7 @@ func resolveSkillRef(ctx context.Context, doer skillSearchDoer, ref string) (ski
 	if strings.HasPrefix(ref, "res_") {
 		return skillSearchEntry{ID: ref}, nil
 	}
-	return skillSearchEntry{}, fmt.Errorf("no skill %q in the catalog; try `relay skill search %s`", ref, ref)
+	return skillSearchEntry{}, fmt.Errorf("no skill %q in the catalog; try `zuano skill search %s`", ref, ref)
 }
 
 type requirementOpts struct {
@@ -153,7 +153,7 @@ func ensureSkillRequirements(cmd *cobra.Command, doer skillSearchDoer, id string
 
 	fmt.Fprintf(out, "This skill needs connectors you have not connected: %s\n", strings.Join(req.Missing, ", "))
 	if o.dryRun {
-		fmt.Fprintln(out, "dry run: nothing is connected; connect them with `relay connect <slug>` before installing")
+		fmt.Fprintln(out, "dry run: nothing is connected; connect them with `zuano connect <slug>` before installing")
 		return nil
 	}
 
@@ -165,7 +165,7 @@ func ensureSkillRequirements(cmd *cobra.Command, doer skillSearchDoer, id string
 			switch {
 			case o.yes:
 			case !interactive:
-				fmt.Fprintf(out, "Not asking to connect %s: no terminal. Pass --yes to connect, or run `relay connect %s`.\n", slug, slug)
+				fmt.Fprintf(out, "Not asking to connect %s: no terminal. Pass --yes to connect, or run `zuano connect %s`.\n", slug, slug)
 				continue
 			case !askYesNo(reader, out, fmt.Sprintf("Connect %s now?", slug)):
 				continue
@@ -188,10 +188,10 @@ func ensureSkillRequirements(cmd *cobra.Command, doer skillSearchDoer, id string
 		fmt.Fprintf(errOut, "warning: installing without the connectors it needs (%s); the skill will not work until they are connected\n", missing)
 		return nil
 	}
-	return fmt.Errorf("the skill needs connectors that are not connected: %s\nconnect them with `relay connect <slug>`, or install anyway with --ignore-requirements", missing)
+	return fmt.Errorf("the skill needs connectors that are not connected: %s\nconnect them with `zuano connect <slug>`, or install anyway with --ignore-requirements", missing)
 }
 
-// SkillInfoCmd returns `relay skill info <id|slug>`.
+// SkillInfoCmd returns `zuano skill info <id|slug>`.
 func SkillInfoCmd() *cobra.Command {
 	var gatewayURL string
 	var jsonOut bool
@@ -202,8 +202,8 @@ func SkillInfoCmd() *cobra.Command {
 them you have connected, and where it is installed on this machine.
 
 Examples:
-  relay skill info weekly-timesheet
-  relay skill info res_abc123 --json`,
+  zuano skill info weekly-timesheet
+  zuano skill info res_abc123 --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillInfo(cmd, args[0], gatewayURL, jsonOut)
@@ -319,7 +319,7 @@ func doSkillInfo(cmd *cobra.Command, ref, gatewayURL string, doc actionDoc) erro
 	if req.Satisfied {
 		fmt.Fprintln(out, "Status:      ready, every connector is connected")
 	} else {
-		fmt.Fprintf(out, "Status:      not ready, connect: %s (relay connect <slug>)\n", strings.Join(req.Missing, ", "))
+		fmt.Fprintf(out, "Status:      not ready, connect: %s (zuano connect <slug>)\n", strings.Join(req.Missing, ", "))
 	}
 	return nil
 }
@@ -396,7 +396,7 @@ func skillRequirementWarnings(from string, scopes []agentsync.Scope) []string {
 			}
 			if slugs := skillFrontmatterRequires(content); len(slugs) > 0 {
 				seen[ref.Name] = true
-				warns = append(warns, fmt.Sprintf("skill %q requires connectors %s; sync does not connect them, so link them with `relay connect <slug>` (`relay connectors --status` shows which are linked)", ref.Name, strings.Join(slugs, ", ")))
+				warns = append(warns, fmt.Sprintf("skill %q requires connectors %s; sync does not connect them, so link them with `zuano connect <slug>` (`zuano connectors --status` shows which are linked)", ref.Name, strings.Join(slugs, ", ")))
 			}
 		}
 	}

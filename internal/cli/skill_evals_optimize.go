@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 type optimizeCandidate struct {
@@ -63,7 +65,7 @@ type optimizeDoc struct {
 	Drafts []evalDraft `json:"drafts"`
 }
 
-// SkillOptimizeCmd returns `relay skill optimize`.
+// SkillOptimizeCmd returns `zuano skill optimize`.
 func SkillOptimizeCmd() *cobra.Command {
 	var f evalFlags
 	var set, kind, version, model, judge, jobID string
@@ -78,7 +80,7 @@ func SkillOptimizeCmd() *cobra.Command {
 the model only the failing train cases, asks for rewrites, scores each on
 train, scores the best one once on validation and keeps it as a draft when it
 beat the version on train. A draft is never published by itself: look at it
-with 'relay skill drafts show' and publish it with 'relay skill drafts promote'.
+with 'zuano skill drafts show' and publish it with 'zuano skill drafts promote'.
 
 --kind description rewrites the description (trigger cases); --kind
 instructions rewrites the SKILL.md (task cases). Without --wait the job starts
@@ -86,7 +88,7 @@ and its id is printed; --wait polls and prints the result. Exit status %d when
 the job failed or was cancelled, 4 when --wait-timeout passed.
 
 Example:
-  relay skill optimize weekly-timesheet --kind description --set smoke --wait`, exitEvalFailed),
+  zuano skill optimize weekly-timesheet --kind description --set smoke --wait`, exitEvalFailed),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := f.open(cmd, args[0])
@@ -145,7 +147,7 @@ Example:
 					if f.jsonOut {
 						return printIndented(out, raw)
 					}
-					fmt.Fprintf(out, "Started %s optimization job %s on set %s.\nFollow it with: relay skill optimize %s --job %s --wait\n", kind, jobID, s.Name, a.label(), jobID)
+					fmt.Fprintf(out, "Started %s optimization job %s on set %s.\nFollow it with: zuano skill optimize %s --job %s --wait\n", kind, jobID, s.Name, a.label(), jobID)
 					return nil
 				}
 			}
@@ -158,7 +160,7 @@ Example:
 				return err
 			}
 			if wait {
-				resume := fmt.Sprintf("relay skill optimize %s --job %s --wait", a.label(), jobID)
+				resume := brand.Cmd(fmt.Sprintf("skill optimize %s --job %s --wait", a.label(), jobID))
 				err = waitFor(ctx, waitTimeout, cmd.ErrOrStderr(), f.jsonOut, resume, func() (bool, string, error) {
 					if err := fetch(); err != nil {
 						return false, "", err
@@ -246,11 +248,11 @@ func renderOptimize(out io.Writer, skill string, d optimizeDoc) {
 		}
 	}
 	for _, dr := range d.Drafts {
-		fmt.Fprintf(out, "\nDraft %s (%s, %s) is waiting: relay skill drafts show %s %s\n", dr.ID, dr.Kind, dr.Status, skill, dr.ID)
+		fmt.Fprintf(out, "\nDraft %s (%s, %s) is waiting: zuano skill drafts show %s %s\n", dr.ID, dr.Kind, dr.Status, skill, dr.ID)
 	}
 }
 
-// SkillDraftsCmd returns `relay skill drafts`.
+// SkillDraftsCmd returns `zuano skill drafts`.
 func SkillDraftsCmd() *cobra.Command {
 	drafts := &cobra.Command{
 		Use:   "drafts",
@@ -432,7 +434,7 @@ func (p qualityPoint) version() string {
 	return p.VersionID
 }
 
-// SkillQualityCmd returns `relay skill quality`.
+// SkillQualityCmd returns `zuano skill quality`.
 func SkillQualityCmd() *cobra.Command {
 	var f evalFlags
 	var all bool
@@ -468,7 +470,7 @@ score), the latest score per kind and the score of every evaluated version.
 				return printIndented(out, raw)
 			}
 			if doc.Score == nil {
-				fmt.Fprintf(out, "%s has not been evaluated yet; run `relay skill eval %s --wait`\n", a.label(), a.label())
+				fmt.Fprintf(out, "%s has not been evaluated yet; run `zuano skill eval %s --wait`\n", a.label(), a.label())
 				return nil
 			}
 			fmt.Fprintf(out, "%s quality: %.0f/100\n", a.label(), *doc.Score)

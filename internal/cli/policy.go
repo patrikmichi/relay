@@ -34,7 +34,7 @@ type policyPreview struct {
 	} `json:"decision"`
 }
 
-// PolicyCmd returns `relay policy`: a read-only view of the organisation's
+// PolicyCmd returns `zuano policy`: a read-only view of the organisation's
 // risk policy. Changing it is done in the dashboard, where it needs a passkey.
 func PolicyCmd() *cobra.Command {
 	cmd := &cobra.Command{

@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // State is one node of the transaction state machine. It is stored on disk, so
@@ -35,19 +37,19 @@ const (
 	StateRestored   State = "restored"   // interrupted, then successfully compensated back to prior state
 )
 
-// terminal reports whether state needs no further action from `relay
+// terminal reports whether state needs no further action from `zuano
 // recover` — it's either fully done (Committed) or fully undone (Restored).
 func (s State) terminal() bool { return s == StateCommitted || s == StateRestored }
 
 // schemaVersion is bumped only if the on-disk Journal shape changes
-// incompatibly. A journal written by a newer relay binary must never be
+// incompatibly. A journal written by a newer zuano binary must never be
 // silently misinterpreted by an older one — CurrentSchema refuses to load
 // anything newer than itself (the same downgrade-safety rule the manifest
 // ledger follows).
 const schemaVersion = 1
 
-// ErrFutureSchema means the journal was written by a newer relay version.
-var ErrFutureSchema = errors.New("transaction journal uses a newer schema than this relay build supports")
+// ErrFutureSchema means the journal was written by a newer zuano version.
+var ErrFutureSchema = errors.New("transaction journal uses a newer schema than this " + brand.Name + " build supports")
 
 // ErrCorruptJournal means a journal file is not valid JSON.
 var ErrCorruptJournal = errors.New("transaction journal is corrupt")
@@ -100,7 +102,7 @@ type FileState struct {
 }
 
 // Journal is the durable record of one mutation. Op is a short human label
-// ("skill install", "agent migrate to codex") for `relay history`/`relay
+// ("skill install", "agent migrate to codex") for `zuano history`/`zuano
 // recover` output — never a secret, never file content.
 type Journal struct {
 	Schema    int         `json:"schema"`
@@ -112,7 +114,7 @@ type Journal struct {
 	CreatedAt time.Time   `json:"createdAt"`
 	UpdatedAt time.Time   `json:"updatedAt"`
 	// Err carries the last failure's message once State is Recovery, so
-	// `relay recover`/`relay history` can explain why an operation needed
+	// `zuano recover`/`zuano history` can explain why an operation needed
 	// manual attention without re-deriving it.
 	Err string `json:"err,omitempty"`
 	// Finalize is the replayable ledger update a committing journal owes.
@@ -128,7 +130,7 @@ func baseDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "zuano", "transactions")
+	dir := filepath.Join(home, ".config", brand.Name, "transactions")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create transactions dir %s: %w", dir, err)
 	}
@@ -233,7 +235,7 @@ func Load(id string) (*Journal, error) {
 	return &j, nil
 }
 
-// List returns every journal on disk, oldest first, for `relay history`.
+// List returns every journal on disk, oldest first, for `zuano history`.
 // A journal with a schema this build doesn't understand is still listed
 // (id, and an error note) rather than silently omitted — an operator must
 // be able to see that something is pending even if this binary can't act
@@ -258,7 +260,7 @@ func List() ([]Journal, error) {
 			note := fmt.Sprintf("(unreadable: %v)", err)
 			// A corrupt journal can never be recovered; set it aside so it
 			// stops being reported on every command. One written by a newer
-			// relay stays put for that version to recover.
+			// zuano stays put for that version to recover.
 			if errors.Is(err, ErrCorruptJournal) {
 				if os.Rename(filepath.Join(base, e.Name()), filepath.Join(base, e.Name()+".corrupt")) == nil {
 					note = fmt.Sprintf("(moved aside as %s.corrupt: %v)", e.Name(), err)
@@ -311,7 +313,7 @@ func Prune(id string) error {
 		return err
 	}
 	if !j.State.terminal() {
-		return fmt.Errorf("refusing to prune journal %s: state %q is not committed or restored (run `relay recover %s` first)", id, j.State, id)
+		return fmt.Errorf("refusing to prune journal %s: state %q is not committed or restored (run `%s` first)", id, j.State, brand.Cmd("recover "+id))
 	}
 	dir, err := Dir(id)
 	if err != nil {

@@ -180,7 +180,7 @@ func renderContentBlocks(blocks []json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-// callTool is the shared execution path for both `relay <service> <tool> [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and `relay call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
+// callTool is the shared execution path for both `zuano <service> <tool> [--arg key=value...]` (dynamic sub-commands, see buildToolCmd) and `zuano call <service> <tool> [--arg key=value...]` (CallCmd, call.go).
 func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut bool) error {
 	return callToolWithContext(context.Background(), c, service, tool, rawArgs, jsonOut, os.Stdout)
 }
@@ -281,7 +281,7 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("token expired or revoked — run `relay login` to re-authenticate")
+		return nil, errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 	}
 
 	env, envErr := decodeMCPEnvelope(respBody)
@@ -389,7 +389,7 @@ var reservedCommandNames = map[string]bool{"help": true, "completion": true}
 // commandNameCollides reports whether name already names (or aliases) a
 // top-level command on root, or is one of Cobra's own reserved names. The
 // live command tree is the single source of truth here — not a
-// hand-maintained name list, which silently drifts (cmd/relay/main.go's
+// hand-maintained name list, which silently drifts (cmd/zuano/main.go's
 // staticCommandNames omitted "recover" and "history" for exactly this
 // reason until this fix).
 func commandNameCollides(root *cobra.Command, name string) bool {
@@ -426,14 +426,14 @@ func BuildServiceCommands(root *cobra.Command, gatewayURL string) error {
 		}
 		serviceID := svc.ID
 		if commandNameCollides(root, serviceID) {
-			return fmt.Errorf("discovered service %q collides with an existing relay command name — refusing to register it; rename the service or contact your gateway operator", serviceID)
+			return fmt.Errorf("discovered service %q collides with an existing zuano command name — refusing to register it; rename the service or contact your gateway operator", serviceID)
 		}
 
 		svcCmd := &cobra.Command{
 			Use:   serviceID,
 			Short: fmt.Sprintf("Commands for the %s service", svc.Name),
 			Long: fmt.Sprintf(
-				"Auto-generated sub-commands for the %s gateway service.\n\nUse `relay %s <tool> --arg key=value` to call a tool.",
+				"Auto-generated sub-commands for the %s gateway service.\n\nUse `zuano %s <tool> --arg key=value` to call a tool.",
 				svc.Name, serviceID,
 			),
 		}

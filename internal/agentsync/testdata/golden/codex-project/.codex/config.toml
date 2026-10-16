@@ -1,5 +1,5 @@
-# >>> relay-managed:begin mcp >>>
-[mcp_servers.relay]
+# >>> zuano-managed:begin mcp >>>
+[mcp_servers.zuano]
 url = "https://gateway.example.com/api/mcp"
 bearer_token_env_var = "ZUANO_API_KEY"
 
@@ -9,4 +9,4 @@ args = ["-y", "@acme/docs-mcp"]
 
 [mcp_servers.docs.env]
 DOCS_REGION = "eu"
-# <<< relay-managed:end mcp <<<
+# <<< zuano-managed:end mcp <<<

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/client"
 )
 
@@ -35,7 +36,7 @@ func Whoami(ctx context.Context, c *client.Client, full bool) (*WhoamiResponse, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("token expired or revoked — run `relay login` to re-authenticate")
+		return nil, fmt.Errorf("token expired or revoked — run `%s` to re-authenticate", brand.Cmd("login"))
 	}
 
 	if resp.StatusCode != http.StatusOK {

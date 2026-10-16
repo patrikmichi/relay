@@ -3,8 +3,8 @@ model = "gpt-5"
 [features]
 hooks = true
 
-# >>> relay-managed:begin mcp >>>
-[mcp_servers.relay]
+# >>> zuano-managed:begin mcp >>>
+[mcp_servers.zuano]
 url = "https://gateway.example.com/api/mcp"
 bearer_token_env_var = "ZUANO_API_KEY"
 
@@ -14,9 +14,9 @@ args = ["-y", "@acme/docs-mcp"]
 
 [mcp_servers.docs.env]
 DOCS_REGION = "eu"
-# <<< relay-managed:end mcp <<<
+# <<< zuano-managed:end mcp <<<
 
-# >>> relay-managed:begin env >>>
+# >>> zuano-managed:begin env >>>
 [shell_environment_policy.set]
 ZUANO_AGENT = "1"
-# <<< relay-managed:end env <<<
+# <<< zuano-managed:end env <<<

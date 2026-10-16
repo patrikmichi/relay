@@ -1,6 +1,6 @@
 // Package agentport is a provider-agnostic Agent Skills manager engine.
 //
-// It is intentionally gateway-agnostic: no imports of relay's gateway
+// It is intentionally gateway-agnostic: no imports of zuano's gateway
 // client, auth, or config packages. This keeps it dependency-clean
 // (stdlib + gopkg.in/yaml.v3 only) so it can be extracted verbatim into a
 // standalone OSS module (github.com/agentport/agentport) later.

@@ -143,7 +143,7 @@ func TestPublishRejectsContradictoryAliasType(t *testing.T) {
 
 // publishCmdWithDoer's RunE resolves the gateway and authenticated
 // client unconditionally, before ever reaching the --dry-run branch inside
-// runPublish — so `relay skill publish --dry-run` fails without credentials
+// runPublish — so `zuano skill publish --dry-run` fails without credentials
 // even though the intended work is entirely local packaging/validation.
 func TestDryRunSucceedsWithoutCredentials(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json or keychain
@@ -257,7 +257,7 @@ func TestCallTool_JSONOutputPrintsRawEnvelopeAndPreservesErrorExitStatus(t *test
 	}
 }
 
-// TestAgentMigrateRefusesSecurityFieldLoss: `relay agent migrate --strict`
+// TestAgentMigrateRefusesSecurityFieldLoss: `zuano agent migrate --strict`
 // on a Claude agent carrying disallowedTools/permissionMode/hooks used to
 // exit 0 and print
 // "fidelity: no loss — all fields preserved" while writing only
@@ -467,7 +467,7 @@ func TestSecretExclusionCoversCommonCredentialFilenames(t *testing.T) {
 }
 
 // TestAuthorizeReturnsExplicitUnsupportedError:
-// `relay authorize <service>` used to run the generic device-code login
+// `zuano authorize <service>` used to run the generic device-code login
 // flow and then unconditionally print "Authorized <service>", even though
 // it never requested or verified any service-specific scope. Safe
 // behavior: until the real per-service grant flow exists, the command

@@ -8,7 +8,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
-// RecoverCmd returns `relay recover [id]` — inspects and completes or
+// RecoverCmd returns `zuano recover [id]` — inspects and completes or
 // rolls back a pending transaction journal left behind by an interrupted
 // skill/agent write. With no id, it recovers
 // every pending journal found; with an id, only that one. Recovery always
@@ -19,13 +19,13 @@ func RecoverCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recover [id]",
 		Short: "Inspect and resolve an interrupted skill/agent write",
-		Long: `An interrupted 'relay skill migrate/install' or 'relay agent migrate' can
+		Long: `An interrupted 'zuano skill migrate/install' or 'zuano agent migrate' can
 leave a pending transaction journal describing exactly what it staged and
 what was there before. This command finds and resolves it: a journal that
 never started writing is simply marked restored; a journal that was
 mid-write is compensated back to the artifact's state before the
 interrupted operation began. A journal that had written every file and was
-recording it in relay's ledger (state committing) is finished instead: the
+recording it in zuano's ledger (state committing) is finished instead: the
 files stay and the ledger update is replayed.
 
 With no id, every pending journal is recovered. With an id, only that one.`,

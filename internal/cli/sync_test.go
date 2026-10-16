@@ -282,8 +282,8 @@ func TestRunSync_401_Manifest(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on 401, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("401 error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("401 error should mention `zuano login`, got: %v", err)
 	}
 }
 
@@ -348,12 +348,12 @@ func TestResolveSyncDoer_NoToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when ZUANO_EMAIL is unset, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("error should mention `zuano login`, got: %v", err)
 	}
 }
 
-// TestSync_ToFlag_SyncsWithoutResolvingAGateway: `relay sync --to <agent>`
+// TestSync_ToFlag_SyncsWithoutResolvingAGateway: `zuano sync --to <agent>`
 // is local work, so it must succeed without any gateway or credentials.
 func TestSync_ToFlag_SyncsWithoutResolvingAGateway(t *testing.T) {
 	withNoGateway(t)
@@ -527,7 +527,7 @@ func TestRunSync_PathTraversal_ManifestName(t *testing.T) {
 	}
 }
 
-// Plugin endpoint returns 401 → error mentions `relay login`.
+// Plugin endpoint returns 401 → error mentions `zuano login`.
 func TestRunSync_401_Plugin(t *testing.T) {
 	// We need a manifest with one plugin and the /plugin/ endpoint to return 401.
 	// url.PathEscape("searcher-001") == "searcher-001" and "1.2.3" == "1.2.3",
@@ -545,8 +545,8 @@ func TestRunSync_401_Plugin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on plugin 401, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("plugin 401 error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("plugin 401 error should mention `zuano login`, got: %v", err)
 	}
 }
 

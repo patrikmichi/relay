@@ -80,17 +80,17 @@ func classifySyncItems(items []agentsync.Item) []doctorCheck {
 		case len(broken) > 0:
 			checks = append(checks, doctorCheck{name, false, "cannot sync: " + strings.Join(broken, "; ")})
 		case len(edited) > 0:
-			checks = append(checks, doctorCheck{name, false, "entries edited since relay wrote them: " + strings.Join(edited, ", ") + "; relay sync --force restores them"})
+			checks = append(checks, doctorCheck{name, false, "entries edited since zuano wrote them: " + strings.Join(edited, ", ") + "; zuano sync --force restores them"})
 		case drift > 0 || (fresh > 0 && inSync > 0):
-			checks = append(checks, doctorCheck{name, false, fmt.Sprintf("out of sync (%d pending); run `relay sync`", drift+fresh)})
+			checks = append(checks, doctorCheck{name, false, fmt.Sprintf("out of sync (%d pending); run `zuano sync`", drift+fresh)})
 		case fresh > 0:
-			checks = append(checks, doctorCheck{name, true, fmt.Sprintf("not synced yet (%d pending); run `relay sync`", fresh)})
+			checks = append(checks, doctorCheck{name, true, fmt.Sprintf("not synced yet (%d pending); run `zuano sync`", fresh)})
 		case len(unsupported) > 0 && inSync == 0:
 			checks = append(checks, doctorCheck{name, true, "unsupported: " + unsupported[0]})
 		default:
 			detail := fmt.Sprintf("in sync (%d entries)", inSync)
 			if len(owned) > 0 {
-				detail += fmt.Sprintf("; %d of yours block relay entries: %s", len(owned), strings.Join(owned, ", "))
+				detail += fmt.Sprintf("; %d of yours block zuano entries: %s", len(owned), strings.Join(owned, ", "))
 			}
 			checks = append(checks, doctorCheck{name, true, detail})
 		}

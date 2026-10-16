@@ -22,7 +22,7 @@ import (
 // syntheticKey assembles a placeholder credential at runtime so no
 // credential-shaped literal ever appears in source.
 func syntheticKey(parts ...string) string {
-	return strings.Join(append([]string{"relay", "test"}, parts...), "-")
+	return strings.Join(append([]string{"zuano", "test"}, parts...), "-")
 }
 
 // withAPIKeyGateway isolates HOME and authenticates every client.Resolve
@@ -273,7 +273,7 @@ func TestTokensList_PrintsSessionWithoutTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tokens list: %v", err)
 	}
-	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "ZUANO_API_KEY (not stored by relay)"} {
+	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "ZUANO_API_KEY (not stored by zuano)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -711,7 +711,7 @@ func TestBuildServiceCommands_RegistersCallableToolCommands(t *testing.T) {
 	t.Cleanup(srv.Close)
 	withAPIKeyGateway(t, srv)
 
-	root := &cobra.Command{Use: "relay"}
+	root := &cobra.Command{Use: "zuano"}
 	if err := BuildServiceCommands(root, srv.URL); err != nil {
 		t.Fatalf("BuildServiceCommands: %v", err)
 	}
@@ -734,7 +734,7 @@ func TestBuildServiceCommands_RegistersCallableToolCommands(t *testing.T) {
 
 func TestBuildServiceCommands_DegradesOnDiscoveryFailure(t *testing.T) {
 	withAPIKeyGateway(t, integrationsServer(t, http.StatusInternalServerError, nil))
-	root := &cobra.Command{Use: "relay"}
+	root := &cobra.Command{Use: "zuano"}
 	if err := BuildServiceCommands(root, os.Getenv("ZUANO_URL")); err != nil {
 		t.Fatalf("discovery failure must not abort startup: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestBuildServiceCommands_DegradesOnDiscoveryFailure(t *testing.T) {
 }
 
 func TestCommandNameCollides_MatchesAliases(t *testing.T) {
-	root := &cobra.Command{Use: "relay"}
+	root := &cobra.Command{Use: "zuano"}
 	root.AddCommand(&cobra.Command{Use: "skill", Aliases: []string{"skills"}})
 	for name, want := range map[string]bool{"skill": true, "skills": true, "completion": true, "clockify": false} {
 		if got := commandNameCollides(root, name); got != want {

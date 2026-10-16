@@ -23,13 +23,13 @@ func names[T any](items []T, name func(T) string) string {
 	return strings.Join(out, ",")
 }
 
-func TestReadRulesSkipsRelayBlocksAndFiles(t *testing.T) {
+func TestReadRulesSkipsZuanoBlocksAndFiles(t *testing.T) {
 	env := newEnv(t)
 	claude := filepath.Join(env.Home, ".claude", "CLAUDE.md")
 	writeFile(t, claude, "My own notes.\n")
 	syncAll(t, env, userBundle(fixtureBundle()), Options{Agents: []AgentID{Claude}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindRules}})
 	if !strings.Contains(readFile(t, claude), Marker) {
-		t.Fatal("setup: no relay block written")
+		t.Fatal("setup: no zuano block written")
 	}
 	b, _ := readAs(t, env, Claude, ScopeUser, KindRules)
 	if len(b.Rules) != 1 || b.Rules[0].Body != "My own notes." || strings.Contains(b.Rules[0].Body, "Prefer small functions") {
@@ -61,7 +61,7 @@ func TestReadCommandsFromMarkdownAndGeminiTOML(t *testing.T) {
 	}
 }
 
-func TestReadHooksSkipsTheOnesRelayWrote(t *testing.T) {
+func TestReadHooksSkipsTheOnesZuanoWrote(t *testing.T) {
 	env := newEnv(t)
 	settings := filepath.Join(env.Home, ".claude", "settings.json")
 	writeFile(t, settings, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/mine/guard.sh","timeout":5}]}]}}`)
@@ -84,7 +84,7 @@ func TestReadHooksSkipsTheOnesRelayWrote(t *testing.T) {
 	}
 }
 
-func TestReadMCPNormalisesEachAgentsSyntaxAndSkipsRelayEntries(t *testing.T) {
+func TestReadMCPNormalisesEachAgentsSyntaxAndSkipsZuanoEntries(t *testing.T) {
 	env := newEnv(t)
 	writeFile(t, filepath.Join(env.Home, ".cursor", "mcp.json"), `{"mcpServers":{"files":{"command":"npx","args":["-y","@acme/files","--root=${env:HOME}"],"env":{"ROOT":"${env:HOME}"}},"docs":{"url":"https://docs.example.com/mcp","headers":{"Authorization":"Bearer ${env:DOCS_TOKEN}"}}}}`)
 	syncAll(t, env, userBundle(fixtureBundle()), Options{Agents: []AgentID{Cursor}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindMCP}})
@@ -94,7 +94,7 @@ func TestReadMCPNormalisesEachAgentsSyntaxAndSkipsRelayEntries(t *testing.T) {
 	for _, s := range b.MCP {
 		got[s.Name] = s
 	}
-	if len(got) != 2 || got["relay"].Name != "" {
+	if len(got) != 2 || got["zuano"].Name != "" {
 		t.Fatalf("servers = %+v, want only files and docs", b.MCP)
 	}
 	if f := got["files"]; f.Command != "npx" || f.Env["ROOT"] != "${HOME}" || f.Args[2] != "--root=${HOME}" {

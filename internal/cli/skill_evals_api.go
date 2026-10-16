@@ -145,7 +145,7 @@ func (a *evalAPI) errorFor(method string, status int, raw []byte) error {
 	case status == http.StatusServiceUnavailable && doc.Code == "NOT_ENABLED":
 		msg = "this gateway has not enabled the hosted runtime, which evals and optimization need"
 	case doc.Code == "SKILL_REQUIREMENTS_UNMET" && len(doc.Missing) > 0:
-		msg += fmt.Sprintf("\nconnect %s with `relay connect <slug>` first", strings.Join(doc.Missing, ", "))
+		msg += fmt.Sprintf("\nconnect %s with `zuano connect <slug>` first", strings.Join(doc.Missing, ", "))
 	case status == http.StatusForbidden && doc.Code == "NO_USER":
 		msg += "\nthe account needs a user row on the gateway to run evals as"
 	}
@@ -254,7 +254,7 @@ func (a *evalAPI) resolveSet(ctx context.Context, ref string) (evalSet, error) {
 	if ref == "" {
 		switch len(doc.Sets) {
 		case 0:
-			return evalSet{}, fmt.Errorf("%s has no eval sets; create one with `relay skill evals sets create %s --name NAME` or import one", a.label(), a.label())
+			return evalSet{}, fmt.Errorf("%s has no eval sets; create one with `zuano skill evals sets create %s --name NAME` or import one", a.label(), a.label())
 		case 1:
 			return doc.Sets[0], nil
 		}
@@ -279,7 +279,7 @@ func (a *evalAPI) resolveSet(ctx context.Context, ref string) (evalSet, error) {
 	case 1:
 		return byName[0], nil
 	case 0:
-		return evalSet{}, fmt.Errorf("no eval set %q on %s; see `relay skill evals sets list %s`", ref, a.label(), a.label())
+		return evalSet{}, fmt.Errorf("no eval set %q on %s; see `zuano skill evals sets list %s`", ref, a.label(), a.label())
 	}
 	return evalSet{}, fmt.Errorf("several eval sets are named %q; use the id", ref)
 }

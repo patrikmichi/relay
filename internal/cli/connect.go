@@ -21,7 +21,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
-var errTokenRevoked = errors.New("token expired or revoked — run `relay login` to re-authenticate")
+var errTokenRevoked = errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 
 // openBrowserURL and connectPollInterval are variables so tests can stand in
 // for the browser and shorten the wait.
@@ -42,13 +42,13 @@ type connectFlags struct {
 	gatewayURL string
 }
 
-// ConnectCmd returns `relay connect <slug>`.
+// ConnectCmd returns `zuano connect <slug>`.
 func ConnectCmd() *cobra.Command {
 	var f connectFlags
 	cmd := &cobra.Command{
 		Use:   "connect <slug>",
 		Short: "Link your own account to a gateway connector",
-		Long: `Link your account for a connector listed by 'relay connectors'.
+		Long: `Link your account for a connector listed by 'zuano connectors'.
 
 API-key connectors prompt for each credential field without echoing it
 (or take --field KEY=@file, --field KEY=- from stdin, --field KEY=VALUE, or
@@ -57,16 +57,16 @@ store it on the gateway. OAuth connectors open the gateway's consent flow in
 your browser and wait until the connection shows up.
 
 Some gateways only accept connection changes from a signed-in browser
-session. relay detects that and opens the gateway's connection page instead,
+session. zuano detects that and opens the gateway's connection page instead,
 then waits for the account to be linked.
 
-Credentials are sent to your gateway only; relay never writes them to disk.
+Credentials are sent to your gateway only; zuano never writes them to disk.
 
 Examples:
-  relay connect clockify
-  relay connect notion --no-browser
-  relay connect intervals-icu --field INTERVALS_API_KEY=@key.txt --label coach
-  pass-cli get key | relay connect intervals-icu --field INTERVALS_API_KEY=-
+  zuano connect clockify
+  zuano connect notion --no-browser
+  zuano connect intervals-icu --field INTERVALS_API_KEY=@key.txt --label coach
+  pass-cli get key | zuano connect intervals-icu --field INTERVALS_API_KEY=-
 
 --field KEY=VALUE puts the value in this process's arguments, which other users
 can read with ps; prefer KEY=@file, KEY=- (stdin) or ZUANO_CONNECT_<KEY>.`,
@@ -158,7 +158,7 @@ func runConnect(cmd *cobra.Command, slug string, f connectFlags) error {
 	}
 	switch {
 	case svc == nil:
-		return fmt.Errorf("no connector %q on this gateway; see `relay connectors search %s`", slug, slug)
+		return fmt.Errorf("no connector %q on this gateway; see `zuano connectors search %s`", slug, slug)
 	case !svc.Accessible:
 		return fmt.Errorf("your account has no access to %s; ask a gateway admin to enable it", slug)
 	case !takesCredentials(*svc):
@@ -243,7 +243,7 @@ func connectInBrowser(ctx context.Context, cmd *cobra.Command, c *client.Client,
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%s is not connected yet; finish the flow in the browser, then check `relay connectors --status`", svc.ID)
+			return fmt.Errorf("%s is not connected yet; finish the flow in the browser, then check `zuano connectors --status`", svc.ID)
 		}
 		select {
 		case <-ctx.Done():

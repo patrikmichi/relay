@@ -11,27 +11,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // Config holds all persisted CLI settings.
 type Config struct {
 	GatewayURL string `json:"gatewayUrl,omitempty"`
-	// Email is the identity of the last successful `relay login` (or
-	// `relay login --device`), persisted so subsequent commands don't
+	// Email is the identity of the last successful `zuano login` (or
+	// `zuano login --device`), persisted so subsequent commands don't
 	// require the ZUANO_EMAIL environment variable to find the right
 	// keychain entry. ZUANO_EMAIL, when set, still takes precedence — see
 	// ResolveEmail — so multi-account users can override without
-	// re-running `relay login`.
+	// re-running `zuano login`.
 	Email string `json:"email,omitempty"`
-	// AgentEmail is the identity of the last `relay login --agent`, kept apart
+	// AgentEmail is the identity of the last `zuano login --agent`, kept apart
 	// from Email so an agent login never changes which person's session the
 	// unmarked commands use.
 	AgentEmail string `json:"agentEmail,omitempty"`
 	// SigningKeys are the gateway's content-signing public keys, pinned per
-	// gateway origin the first time they are seen (see `relay config
+	// gateway origin the first time they are seen (see `zuano config
 	// trust-key`).
 	SigningKeys map[string][]SigningKey `json:"signingKeys,omitempty"`
-	// Sync holds the saved routes `relay sync` follows.
+	// Sync holds the saved routes `zuano sync` follows.
 	Sync *SyncSettings `json:"sync,omitempty"`
 }
 
@@ -124,7 +126,7 @@ func configDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "zuano")
+	dir := filepath.Join(home, ".config", brand.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create config dir %s: %w", dir, err)
 	}
@@ -168,7 +170,7 @@ func Save(cfg Config) error {
 	return modify(func(c *Config) { *c = cfg }, false)
 }
 
-// modify applies fn to the stored config under the config lock, so two relay
+// modify applies fn to the stored config under the config lock, so two zuano
 // processes changing different fields never lose each other's update. load
 // reads the current file first; Save skips it because it replaces everything.
 func modify(fn func(*Config), load bool) error {
@@ -236,7 +238,7 @@ func writeConfig(path string, cfg Config) error {
 // internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
 //
 // A corrupt or unreadable config file is an error rather than "no gateway",
-// so relay never silently dials a different host than the configured one.
+// so zuano never silently dials a different host than the configured one.
 func GatewayURL() (string, error) {
 	if v := os.Getenv("ZUANO_URL"); v != "" {
 		return NormalizeGatewayURL(v)
@@ -345,8 +347,8 @@ func isLoopbackHost(host string) bool {
 }
 
 // SetEmail persists the given email as the current logged-in identity,
-// preserving any other existing config fields. Called by `relay login` /
-// `relay login --device` on success so later commands don't require
+// preserving any other existing config fields. Called by `zuano login` /
+// `zuano login --device` on success so later commands don't require
 // ZUANO_EMAIL to be set.
 func SetEmail(email string) error {
 	return modify(func(cfg *Config) { cfg.Email = email }, true)
@@ -364,7 +366,7 @@ func SetAgentEmail(email string) error {
 }
 
 // ResolveAgentEmail resolves the identity of the agent profile: ZUANO_EMAIL,
-// then the last `relay login --agent`, then the human identity, since an
+// then the last `zuano login --agent`, then the human identity, since an
 // agent normally acts for the person who is signed in.
 func ResolveAgentEmail() (string, error) {
 	if v := os.Getenv("ZUANO_EMAIL"); v != "" {
@@ -380,7 +382,7 @@ func ResolveAgentEmail() (string, error) {
 	if cfg.Email != "" {
 		return cfg.Email, nil
 	}
-	return "", errors.New("no agent session — run `relay login --agent`, or set ZUANO_EMAIL")
+	return "", errors.New("no agent session — run `" + brand.Cmd("login --agent") + "`, or set ZUANO_EMAIL")
 }
 
 // ResolveEmail resolves the current CLI identity used to look up the
@@ -388,12 +390,12 @@ func ResolveAgentEmail() (string, error) {
 //
 // Resolution order:
 //  1. ZUANO_EMAIL env var — explicit override (e.g. switching accounts
-//     without re-running `relay login`, or scripting against a specific
+//     without re-running `zuano login`, or scripting against a specific
 //     identity). Always wins when set.
-//  2. The email persisted by the most recent successful `relay login` /
-//     `relay login --device` (see SetEmail).
+//  2. The email persisted by the most recent successful `zuano login` /
+//     `zuano login --device` (see SetEmail).
 //
-// Returns an error (mentioning `relay login`) when neither is available.
+// Returns an error (mentioning `zuano login`) when neither is available.
 func ResolveEmail() (string, error) {
 	if v := os.Getenv("ZUANO_EMAIL"); v != "" {
 		return v, nil
@@ -403,10 +405,10 @@ func ResolveEmail() (string, error) {
 		return "", err
 	}
 	if cfg.Email == "" {
-		return "", errors.New("not logged in — run `relay login` first, or set ZUANO_EMAIL")
+		return "", errors.New("not logged in — run `" + brand.Cmd("login") + "` first, or set ZUANO_EMAIL")
 	}
 	return cfg.Email, nil
 }
 
-// Dir returns the relay config directory (~/.config/zuano), creating it if necessary.
+// Dir returns the zuano config directory (~/.config/zuano), creating it if necessary.
 func Dir() (string, error) { return configDir() }

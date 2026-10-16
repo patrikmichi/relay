@@ -15,9 +15,9 @@ import (
 // logout, authorize) surfaces this single message so the guidance is
 // consistent CLI-wide. Local-only verbs (skill install <path>, skill
 // migrate) never reference it.
-const offlineGuidance = "no gateway configured. Run `relay config set-gateway <url>` then `relay login` to install from the catalog. Local `relay skill install <path>` and `relay skill migrate` work offline"
+const offlineGuidance = "no gateway configured. Run `zuano config set-gateway <url>` then `zuano login` to install from the catalog. Local `zuano skill install <path>` and `zuano skill migrate` work offline"
 
-// OfflineGuidance exposes offlineGuidance to cmd/relay/main.go, which needs the exact same fail-closed message for one case this package's own commands can't produce it for: `relay --offline <unregistered-dynamic-command>`.
+// OfflineGuidance exposes offlineGuidance to cmd/zuano/main.go, which needs the exact same fail-closed message for one case this package's own commands can't produce it for: `zuano --offline <unregistered-dynamic-command>`.
 func OfflineGuidance() string { return offlineGuidance }
 
 // offlineFlag holds the process-wide state of the root `--offline`
@@ -30,7 +30,7 @@ func OfflineGuidance() string { return offlineGuidance }
 var offlineFlag bool
 
 // SetOffline sets the process-wide --offline state. Called once from
-// cmd/relay/main.go's root PersistentPreRunE.
+// cmd/zuano/main.go's root PersistentPreRunE.
 func SetOffline(v bool) { offlineFlag = v }
 
 // Offline reports whether --offline was passed at the root. Exported so

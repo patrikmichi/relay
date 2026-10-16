@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/catalog"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/config"
@@ -67,7 +68,7 @@ type syncDoer interface {
 
 // ---- SyncCmd ----
 
-// SyncCmd returns the `relay sync` cobra command.
+// SyncCmd returns the `zuano sync` cobra command.
 func SyncCmd() *cobra.Command {
 	return syncCmdWithDoer(nil) // nil → resolved at runtime from env/keychain
 }
@@ -88,31 +89,31 @@ func syncCmdWithDoer(doer gatewayDoer) *cobra.Command {
 		Use:   "sync",
 		Short: "Sync MCP servers, hooks, rules, commands, skills and subagents across coding agents",
 		Args:  cobra.NoArgs,
-		Long: `Write what relay manages into the config of every coding agent: Claude Code,
+		Long: `Write what zuano manages into the config of every coding agent: Claude Code,
 Codex, Cursor, OpenCode, Gemini CLI, Windsurf, Cline and GitHub Copilot.
 
 Sources
   MCP servers   the gateway (when configured) plus servers added with
-                'relay mcp install'
+                'zuano mcp install'
   hooks, rules, commands
                 ~/.config/zuano/sync/{hooks.json,rules/*.md,commands/*.md}
-                for the user scope and <project>/.relay/ for the project scope
+                for the user scope and <project>/.zuano/ for the project scope
   skills, subagents
                 everything installed for --from (default claude), copied to
-                the other agents through the same engine as 'relay skill
-                migrate' and 'relay agent migrate'
+                the other agents through the same engine as 'zuano skill
+                migrate' and 'zuano agent migrate'
 
 Agent profile
   The sync also sets ZUANO_AGENT=1 where an agent has an environment setting
   (Claude Code settings.json "env", Codex shell_environment_policy.set; the
   user scope, kind env) and in the environment of stdio MCP servers that run
-  relay. A relay the agent starts then uses the agent profile, whose writes
-  wait for approval, instead of your own session. Sign it in with 'relay login
+  zuano. A zuano the agent starts then uses the agent profile, whose writes
+  wait for approval, instead of your own session. Sign it in with 'zuano login
   --agent'. A login without --agent on the same machine stays unrestricted for
   anything that can run it: this narrows what agents do by default, it is not
   a sandbox. Leave the env kind out (--kind mcp,rules) to keep the old behaviour.
 
-What relay writes is recorded in a hash ledger (comment markers only show
+What zuano writes is recorded in a hash ledger (comment markers only show
 where a TOML or Markdown block begins and ends) so a later sync can update or
 remove it, and notices when you edited it.
 Entries you wrote are never replaced unless --force is given. Every write
@@ -120,22 +121,22 @@ is one transaction: a failure restores the files already changed.
 
 Without --to, every agent detected on this machine is synced. Kinds an agent
 has no format for are reported as unsupported, never skipped silently; see
-'relay sync --matrix'.
+'zuano sync --matrix'.
 
 --marketplace (or --dir) also pulls the gateway's Claude Code plugin
 marketplace into ~/.config/zuano/marketplace/<name>/.
 
 Examples:
-  relay sync --dry-run
-  relay sync --to claude,codex --scope all
-  relay sync --kind mcp,rules --to all`,
+  zuano sync --dry-run
+  zuano sync --to claude,codex --scope all
+  zuano sync --kind mcp,rules --to all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			if matrix {
 				return printSyncMatrix(out)
 			}
 			if !o.dryRun {
-				if err := refuseInAgentMode("relay sync"); err != nil {
+				if err := refuseInAgentMode(brand.Cmd("sync")); err != nil {
 					return err
 				}
 			}
@@ -187,7 +188,7 @@ Examples:
 			if o.dryRun {
 				return nil
 			}
-			if err := confirmAgentWrite(cmd, run, "relay sync", o.yes); err != nil {
+			if err := confirmAgentWrite(cmd, run, brand.Cmd("sync"), o.yes); err != nil {
 				if wantMarketplace {
 					return fmt.Errorf("the marketplace was pulled but the agent configuration was not written: %w", err)
 				}
@@ -210,7 +211,7 @@ Examples:
 	f.StringVar(&o.from, "from", "", "Provider whose skills and subagents are copied to the other agents (default: claude)")
 	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (the agent signs in with OAuth, which the gateway marks as an agent's), or api-key (references $ZUANO_API_KEY, which is not marked and bypasses approvals)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")
-	f.BoolVar(&o.force, "force", false, "Replace same-named entries relay does not manage")
+	f.BoolVar(&o.force, "force", false, "Replace same-named entries zuano does not manage")
 	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
@@ -344,7 +345,7 @@ func runSyncVerified(d syncDoer, customDir string, dryRun bool, verify *syncVeri
 		rawPlugin, header, err := fetchPlugin(d, id, rev)
 		if err != nil {
 			// Append retry guidance.
-			return fmt.Errorf("fetch plugin %s: %w — re-run `relay sync` to retry", id, err)
+			return fmt.Errorf("fetch plugin %s: %w — re-run `zuano sync` to retry", id, err)
 		}
 		if err := verify.check(header, rawPlugin, id, rev); err != nil {
 			return fmt.Errorf("plugin %s: %w", id, err)
@@ -421,7 +422,7 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return marketplaceManifest{}, nil, fmt.Errorf("not authenticated — run `relay login` first")
+		return marketplaceManifest{}, nil, fmt.Errorf("not authenticated — run `zuano login` first")
 	}
 	if resp.StatusCode != http.StatusOK {
 		// Cap error-body read too.
@@ -463,7 +464,7 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, http.Header, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, nil, fmt.Errorf("not authenticated — run `relay login` first")
+		return nil, nil, fmt.Errorf("not authenticated — run `zuano login` first")
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
@@ -479,7 +480,7 @@ func fetchPlugin(d syncDoer, id, rev string) ([]byte, http.Header, error) {
 }
 
 // syncTxnTimeout bounds how long a plugin bundle write waits for another
-// `relay sync` process's lock on the same plugin — local disk contention,
+// `zuano sync` process's lock on the same plugin — local disk contention,
 // never a network wait.
 const syncTxnTimeout = 30 * time.Second
 
@@ -561,7 +562,7 @@ func fetchManagedSettings(d syncDoer) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("not authenticated — run `relay login` first")
+		return nil, fmt.Errorf("not authenticated — run `zuano login` first")
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
@@ -614,7 +615,7 @@ func resolveLocalDir(customDir, marketplaceName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
-	return filepath.Join(home, ".config", "zuano", "marketplace", marketplaceName), nil
+	return filepath.Join(home, ".config", brand.Name, "marketplace", marketplaceName), nil
 }
 
 // pluginIDFromSource extracts the plugin ID from a source path like "./plugins/<id>".
@@ -658,7 +659,7 @@ func stalePluginDirs(localDir string, manifest marketplaceManifest) ([]string, e
 			continue
 		}
 		// With --dir the marketplace can be a directory that also holds the
-		// user's own plugins; only ones a sync recorded writing are relay's.
+		// user's own plugins; only ones a sync recorded writing are zuano's.
 		if _, err := os.Stat(ownedFilesPath(localDir, e.Name())); err != nil {
 			continue
 		}

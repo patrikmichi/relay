@@ -26,7 +26,7 @@ func seedClaudeArtifacts(t *testing.T, home, skillBody, agentBody string) {
 
 var skillArgs = []string{"--to", "claude,codex", "--kind", "skills,subagents"}
 
-func TestSyncPropagatesSourceChangesToRelayInstalledArtifacts(t *testing.T) {
+func TestSyncPropagatesSourceChangesToZuanoInstalledArtifacts(t *testing.T) {
 	home := syncHome(t)
 	seedClaudeArtifacts(t, home, "Say hello.", "Review carefully.")
 	writeTestFile(t, filepath.Join(home, ".claude", "skills", "hello", "scripts", "run.sh"), "echo hi\n")
@@ -73,27 +73,27 @@ func TestSyncPropagatesSourceChangesToRelayInstalledArtifacts(t *testing.T) {
 func TestSyncKeepsUserEditedAndForeignArtifacts(t *testing.T) {
 	home := syncHome(t)
 	seedClaudeArtifacts(t, home, "Say hello.", "Review carefully.")
-	// A skill the user already had on codex before relay ever ran.
+	// A skill the user already had on codex before zuano ever ran.
 	writeTestFile(t, codexSkillFile(t, "hello", "SKILL.md"), "---\nname: hello\ndescription: Mine\n---\nmy own\n")
 
 	out, err := runCommand(t, SyncCmd(), skillArgs...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "not installed by relay") {
+	if !strings.Contains(out, "not installed by zuano") {
 		t.Errorf("foreign skill not reported:\n%s", out)
 	}
 	if !strings.Contains(readTestFile(t, codexSkillFile(t, "hello", "SKILL.md")), "my own") {
 		t.Fatal("user skill overwritten")
 	}
 
-	// The subagent was installed by relay; the user then edits it.
+	// The subagent was installed by zuano; the user then edits it.
 	agentPath := filepath.Join(home, ".codex", "agents", "reviewer.toml")
 	edited := readTestFile(t, agentPath) + "# tweaked by me\n"
 	writeTestFile(t, agentPath, edited)
 	seedClaudeArtifacts(t, home, "Say hello.", "Review differently.")
 	out, _ = runCommand(t, SyncCmd(), skillArgs...)
-	if !strings.Contains(out, "edited since relay installed it") {
+	if !strings.Contains(out, "edited since zuano installed it") {
 		t.Errorf("edited subagent not reported:\n%s", out)
 	}
 	if readTestFile(t, agentPath) != edited {

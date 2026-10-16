@@ -1,14 +1,14 @@
-# Release config for the relay CLI (goreleaser v2). Builds only from the tagged
-# source with no gateway hostname: users point relay at a gateway at runtime
-# via `relay config set-gateway` or GATEWAY_URL.
+# Release config for the zuano CLI (goreleaser v2). Builds only from the tagged
+# source with no gateway hostname: users point zuano at a gateway at runtime
+# via `zuano config set-gateway` or ZUANO_URL.
 version: 2
 
-project_name: relay
+project_name: zuano
 
 release:
   github:
     owner: patrikmichi
-    name: relay
+    name: zuano
   prerelease: auto
 
 before:
@@ -16,9 +16,9 @@ before:
     - bash scripts/generate-completions.sh
 
 builds:
-  - id: relay
-    main: ./cmd/relay
-    binary: relay
+  - id: zuano
+    main: ./cmd/zuano
+    binary: zuano
     env:
       - CGO_ENABLED=0
     goos:
@@ -39,17 +39,16 @@ builds:
           output: true
 
 archives:
-  - id: relay
+  - id: zuano
     ids:
-      - relay
+      - zuano
     formats:
       - tar.gz
     format_overrides:
       - goos: windows
         formats:
           - zip
-    # Same asset names as v0.1.0 so the Scoop autoupdate URLs keep resolving.
-    name_template: "relay-{{ .Os }}-{{ .Arch }}"
+    name_template: "zuano-{{ .Os }}-{{ .Arch }}"
     files:
       - README.md
       - LICENSE
@@ -97,9 +96,9 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
 
 brews:
-  - name: relay
+  - name: zuano
     ids:
-      - relay
+      - zuano
     repository:
       owner: patrikmichi
       name: homebrew-tap
@@ -108,21 +107,21 @@ brews:
     commit_author:
       name: patrikmichi
       email: yay@patrikmichalicka.com
-    commit_msg_template: "relay {{ .Tag }}"
-    homepage: "https://github.com/patrikmichi/relay"
+    commit_msg_template: "zuano {{ .Tag }}"
+    homepage: "https://github.com/patrikmichi/zuano"
     description: "Manage AI agent skills and agents across providers"
     license: "Apache-2.0"
     install: |
-      bin.install "relay"
-      generate_completions_from_executable(bin/"relay", "completion")
+      bin.install "zuano"
+      generate_completions_from_executable(bin/"zuano", "completion")
     test: |
-      system "#{bin}/relay", "--version"
+      system "#{bin}/zuano", "--version"
     skip_upload: auto
 
 scoops:
-  - name: relay
+  - name: zuano
     ids:
-      - relay
+      - zuano
     repository:
       owner: patrikmichi
       name: scoop-bucket
@@ -131,8 +130,8 @@ scoops:
     commit_author:
       name: patrikmichi
       email: yay@patrikmichalicka.com
-    commit_msg_template: "relay {{ .Tag }}"
-    homepage: "https://github.com/patrikmichi/relay"
+    commit_msg_template: "zuano {{ .Tag }}"
+    homepage: "https://github.com/patrikmichi/zuano"
     description: "Manage AI agent skills and agents across providers"
     license: "Apache-2.0"
     skip_upload: auto

@@ -66,7 +66,7 @@ func TestProviderIDsOxfordOr(t *testing.T) {
 	}
 }
 
-// TestProvidersCmd_ListsSkillsAndAgentsColumns: `relay providers` must report
+// TestProvidersCmd_ListsSkillsAndAgentsColumns: `zuano providers` must report
 // both skill and agent support per provider, derived from the two adapter
 // registries.
 func TestProvidersCmd_ListsSkillsAndAgentsColumns(t *testing.T) {

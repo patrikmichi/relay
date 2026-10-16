@@ -97,7 +97,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 	claude := filepath.Join(home, ".claude.json")
 	writeTestFile(t, claude, strings.Replace(readTestFile(t, claude), "/api/mcp", "/api/other", 1))
 	checks, _ = doctorChecksByName(t)
-	if c := checks["sync:user:claude:mcp"]; c.OK || !strings.Contains(c.Detail, "edited since relay wrote") {
+	if c := checks["sync:user:claude:mcp"]; c.OK || !strings.Contains(c.Detail, "edited since zuano wrote") {
 		t.Errorf("edited entry: %+v", c)
 	}
 
@@ -143,10 +143,10 @@ func TestClassifySyncItems(t *testing.T) {
 		"partial":        {[]agentsync.Item{item("added", ""), item("unchanged", "")}, false, "out of sync (1 pending)"},
 		"updated":        {[]agentsync.Item{item("updated", "")}, false, "out of sync"},
 		"removed":        {[]agentsync.Item{item("removed", "")}, false, "out of sync"},
-		"edited":         {[]agentsync.Item{item("conflict", "edited since relay wrote it; --force overwrites")}, false, "edited since relay wrote them"},
+		"edited":         {[]agentsync.Item{item("conflict", "edited since zuano wrote it; --force overwrites")}, false, "edited since zuano wrote them"},
 		"unparseable":    {[]agentsync.Item{item("skipped", "not valid TOML (x); edit it by hand")}, false, "cannot sync"},
 		"unsupported":    {[]agentsync.Item{item("unsupported", "no hooks")}, true, "unsupported: no hooks"},
-		"user owned":     {[]agentsync.Item{item("conflict", "already defined and not managed by relay"), item("unchanged", "")}, true, "1 of yours block"},
+		"user owned":     {[]agentsync.Item{item("conflict", "already defined and not managed by zuano"), item("unchanged", "")}, true, "1 of yours block"},
 	}
 	for name, tc := range cases {
 		got := classifySyncItems(tc.items)

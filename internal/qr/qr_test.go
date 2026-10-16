@@ -155,7 +155,7 @@ func (r *bitReader) read(count int) int {
 
 func TestEncodeRoundTripsAcrossEveryVersion(t *testing.T) {
 	for _, n := range []int{1, 10, 17, 18, 32, 53, 78, 106, 134, 154, 192, 230, 271} {
-		text := strings.Repeat("https://relay.example/approvals/", 9)[:n]
+		text := strings.Repeat("https://zuano.example/approvals/", 9)[:n]
 		modules, err := Encode(text)
 		if err != nil {
 			t.Fatalf("%d bytes: %v", n, err)

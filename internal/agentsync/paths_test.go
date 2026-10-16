@@ -54,8 +54,8 @@ func TestCopilotCarriesNoCredentialsAndUsesAgentFrontmatter(t *testing.T) {
 	if strings.Contains(readFile(t, filepath.Join(env.Project, ".vscode", "mcp.json")), "Authorization") {
 		t.Error("copilot entry carries an Authorization header")
 	}
-	if got := statusOf(plan.Items, KindMCP, "relay"); got != StatusAdded {
-		t.Errorf("relay status = %q", got)
+	if got := statusOf(plan.Items, KindMCP, "zuano"); got != StatusAdded {
+		t.Errorf("zuano status = %q", got)
 	}
 	prompt := readFile(t, filepath.Join(env.Project, ".github", "prompts", "review.prompt.md"))
 	contains(t, prompt, "agent: agent")

@@ -167,7 +167,7 @@ func geminiMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 }
 
 // opencodeConfigPath prefers an existing opencode.jsonc over opencode.json,
-// which OpenCode reads too, so relay edits the file the user already keeps.
+// which OpenCode reads too, so zuano edits the file the user already keeps.
 func opencodeConfigPath(env Env, scope Scope) string {
 	dir := env.Project
 	if scope == ScopeUser {

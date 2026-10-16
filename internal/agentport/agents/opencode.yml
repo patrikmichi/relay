@@ -4,7 +4,7 @@
 # frontmatter + markdown body — at ~/.config/opencode/agents/<name>.md
 # (user, PLURAL "agents") or .opencode/agents/<name>.md (project). An
 # earlier config used the singular "agent" directory for both scopes, which
-# does not match the documented root, so Relay could not discover or
+# does not match the documented root, so Zuano could not discover or
 # install into a real opencode agent directory. The singular root is kept
 # below as an explicit READ-only compat fallback (role: compat) for any
 # pre-existing install under the old path — it is never a write or

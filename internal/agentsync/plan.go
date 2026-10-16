@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // Env locates the user's home and the project being synced. Tests point
@@ -92,7 +93,7 @@ type Ctx struct {
 	links  map[string]string
 }
 
-// unsafePathError marks a config path relay will not touch.
+// unsafePathError marks a config path zuano will not touch.
 type unsafePathError struct{ path, reason string }
 
 func (e *unsafePathError) Error() string { return e.path + ": " + e.reason }
@@ -101,7 +102,7 @@ func escapes(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// guard maps path to the file relay may edit. A project is untrusted input, so
+// guard maps path to the file zuano may edit. A project is untrusted input, so
 // a symlink anywhere below it is refused. A user config may be a dotfile-manager
 // symlink, followed only while it stays inside the home directory.
 func (c *Ctx) guard(scope Scope, path string) (string, error) {
@@ -122,7 +123,7 @@ func (c *Ctx) guard(scope Scope, path string) (string, error) {
 	target := path
 	if scope == ScopeProject {
 		if err := txn.VerifyNoSymlinks(rootReal, rel); err != nil {
-			return "", &unsafePathError{path, "a symlink below the project would redirect the write; relay does not follow project symlinks"}
+			return "", &unsafePathError{path, "a symlink below the project would redirect the write; zuano does not follow project symlinks"}
 		}
 	} else {
 		resolved := resolvePath(path)
@@ -318,7 +319,7 @@ func (p *Plan) Apply(ctx context.Context) error {
 	return tx.CommitWith(ledgerFinalizer, p.ledger.ops, p.ledger.Save)
 }
 
-// Ledger records the content hash of every JSON entry relay wrote, keyed by
+// Ledger records the content hash of every JSON entry zuano wrote, keyed by
 // real file path, so a later sync can tell an entry it may update or remove
 // from one the user edited or created.
 type Ledger struct {
@@ -360,7 +361,7 @@ func init() {
 }
 
 func LedgerPath(home string) string {
-	return filepath.Join(home, ".config", "zuano", "sync-ledger.json")
+	return filepath.Join(home, ".config", brand.Name, "sync-ledger.json")
 }
 
 func LoadLedger(home string) (*Ledger, error) { return readLedger(LedgerPath(home)) }

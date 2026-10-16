@@ -63,7 +63,7 @@ func TestOpenCodeHonoursXDGConfigHome(t *testing.T) {
 		t.Fatalf("detected = %v, want opencode found under XDG_CONFIG_HOME", got)
 	}
 	syncAll(t, env, userBundle(fixtureBundle()), Options{Agents: []AgentID{OpenCode}, Scopes: []Scope{ScopeUser}})
-	for _, rel := range []string{"opencode.json", "AGENTS.md", "commands/review.md", "plugins/relay-hooks.js"} {
+	for _, rel := range []string{"opencode.json", "AGENTS.md", "commands/review.md", "plugins/zuano-hooks.js"} {
 		if !fileExists(filepath.Join(xdg, "opencode", filepath.FromSlash(rel))) {
 			t.Errorf("%s not written under XDG_CONFIG_HOME", rel)
 		}

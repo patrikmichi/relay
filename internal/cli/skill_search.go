@@ -60,7 +60,7 @@ type skillSearchDoer interface {
 
 // searchTimeout bounds a single search request end to end — shorter than
 // catalog.downloadTimeout since a search payload is small and interactive
-// (a hanging gateway must not hang `relay skill search` forever). A
+// (a hanging gateway must not hang `zuano skill search` forever). A
 // package-level var so tests can shrink it.
 var searchTimeout = 30 * time.Second
 
@@ -76,15 +76,15 @@ func SkillSearchCmd() *cobra.Command {
 		Short: "Search the gateway catalog for installable skills",
 		Long: `Search the gateway catalog for skills by keyword (name/summary), printing
 each match's catalog id, slug, latest version, and trust score — feed the
-id/slug directly into 'relay skill install <catalog-id>'.
+id/slug directly into 'zuano skill install <catalog-id>'.
 
 Requires an authenticated gateway supporting the dedicated catalog search API.
 The aggregate MCP endpoint does not need to be enabled.
 
 Examples:
-  relay skill search
-  relay skill search "pr triage"
-  relay skill search --json triage`,
+  zuano skill search
+  zuano skill search "pr triage"
+  zuano skill search --json triage`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := ""
@@ -144,13 +144,13 @@ func searchSkills(parent context.Context, doer skillSearchDoer, query string) ([
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
-		return nil, fmt.Errorf("gateway does not support the dedicated skill search API; upgrade the gateway or use relay skill install <catalog-id>")
+		return nil, fmt.Errorf("gateway does not support the dedicated skill search API; upgrade the gateway or use zuano skill install <catalog-id>")
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("%s", offlineGuidance)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed (%d); retry later or use relay skill install <catalog-id>", resp.StatusCode)
+		return nil, fmt.Errorf("search failed (%d); retry later or use zuano skill install <catalog-id>", resp.StatusCode)
 	}
 	data, err := readLimitedResponse(resp.Body, maxSearchResponseBytes)
 	if err != nil {

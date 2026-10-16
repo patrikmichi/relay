@@ -48,7 +48,7 @@ func TestCall_HeldCallInAPersonalSessionExplainsItFollowsAgentApprovals(t *testi
 	if got := exitCodeOf(err); got != exitPending {
 		t.Fatalf("exit = %d (%v), want %d", got, err, exitPending)
 	}
-	for _, want := range []string{"apr_9", "Personal CLI sessions follow the same approvals as agents", "relay approvals approve apr_9"} {
+	for _, want := range []string{"apr_9", "Personal CLI sessions follow the same approvals as agents", "zuano approvals approve apr_9"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

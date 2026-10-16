@@ -131,7 +131,7 @@ func decisionGateway(t *testing.T, show func(http.ResponseWriter, map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.RequestURI())
 		if r.Method != http.MethodGet || r.URL.Path != "/api/approvals/apr_1" {
-			t.Errorf("a decision must be made in the browser, but relay sent %s %s", r.Method, r.URL.RequestURI())
+			t.Errorf("a decision must be made in the browser, but zuano sent %s %s", r.Method, r.URL.RequestURI())
 			w.WriteHeader(http.StatusTeapot)
 			return
 		}

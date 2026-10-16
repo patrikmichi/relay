@@ -51,7 +51,7 @@ func TestLedgerDoesNotPersistEmptyFileEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.entries("/cfg/untouched.json") // a read of a file relay never wrote
+	l.entries("/cfg/untouched.json") // a read of a file zuano never wrote
 	l.set("/cfg/a.json", "mcp:one", "h1")
 	l.drop("/cfg/a.json", "mcp:one")
 	l.set("/cfg/b.json", "mcp:two", "h2")
@@ -112,7 +112,7 @@ func TestCrashBetweenFilesAndLedgerIsRecoveredForward(t *testing.T) {
 			if !fileExists(filepath.Join(env.Home, ".claude.json")) {
 				t.Fatal("recovery rolled the files back")
 			}
-			// The ledger caught up, so the next sync sees relay's own entries,
+			// The ledger caught up, so the next sync sees zuano's own entries,
 			// not user entries it must treat as conflicts.
 			again := syncAll(t, env, userBundle(fixtureBundle()), opts)
 			for _, it := range again.Items {
@@ -124,7 +124,7 @@ func TestCrashBetweenFilesAndLedgerIsRecoveredForward(t *testing.T) {
 	}
 }
 
-func TestHandEditedHookIsStillTiedToRelaysEntry(t *testing.T) {
+func TestHandEditedHookIsStillTiedToZuanosEntry(t *testing.T) {
 	env := newEnv(t)
 	settings := filepath.Join(env.Home, ".claude", "settings.json")
 	opts := Options{Agents: []AgentID{Claude}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindHooks}}
@@ -143,7 +143,7 @@ func TestHandEditedHookIsStillTiedToRelaysEntry(t *testing.T) {
 		skipped = skipped || (it.Status == StatusSkipped && strings.Contains(it.Detail, "--force"))
 	}
 	got := readFile(t, settings)
-	if !skipped || !strings.Contains(got, `"timeout": 99`) || strings.Contains(got, "/opt/relay/context.sh") {
+	if !skipped || !strings.Contains(got, `"timeout": 99`) || strings.Contains(got, "/opt/zuano/context.sh") {
 		t.Fatalf("edited hook not kept and reported, or stale hooks left (skipped=%v):\n%s", skipped, got)
 	}
 

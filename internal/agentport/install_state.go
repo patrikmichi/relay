@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // InstallState says who owns an artifact already present at a destination.
@@ -14,10 +16,10 @@ type InstallState string
 const (
 	// InstallNone: nothing is installed there.
 	InstallNone InstallState = "none"
-	// InstallRelay: relay installed it and every file still matches the
+	// InstallZuano: zuano installed it and every file still matches the
 	// manifest, so replacing it loses nothing the user wrote.
-	InstallRelay InstallState = "relay"
-	// InstallEdited: relay installed it but a file was edited or removed.
+	InstallZuano InstallState = brand.Name
+	// InstallEdited: zuano installed it but a file was edited or removed.
 	InstallEdited InstallState = "edited"
 	// InstallForeign: files exist that no manifest entry accounts for.
 	InstallForeign InstallState = "foreign"
@@ -72,7 +74,7 @@ func ClassifyInstalled(name string, provider ProviderID, scope Scope, kind Artif
 			return InstallEdited
 		}
 	}
-	return InstallRelay
+	return InstallZuano
 }
 
 // droppedFiles lists files the last installation wrote that the new

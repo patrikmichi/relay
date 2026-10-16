@@ -37,8 +37,8 @@ func TestReauthRequiredIsReportedWithoutARefreshAttempt(t *testing.T) {
 	}
 	_, err = c.Get("/api/anything")
 	var reauth *client.ReauthRequiredError
-	if !errors.As(err, &reauth) || !strings.Contains(err.Error(), "relay login") {
-		t.Fatalf("err = %v, want a ReauthRequiredError that points at relay login", err)
+	if !errors.As(err, &reauth) || !strings.Contains(err.Error(), "zuano login") {
+		t.Fatalf("err = %v, want a ReauthRequiredError that points at zuano login", err)
 	}
 	if refreshes.Load() != 0 {
 		t.Errorf("refreshed %d times: the gateway rejected the session itself", refreshes.Load())

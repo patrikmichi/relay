@@ -130,7 +130,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 	}
 	c, err := client.Resolve(gateway)
 	if err != nil {
-		add("gateway", false, "authentication unavailable; run relay login")
+		add("gateway", false, "authentication unavailable; run zuano login")
 		return checks
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

@@ -7,7 +7,7 @@ import (
 )
 
 // seeds are the user-owned files each agent already has; the golden output
-// proves relay merged around them.
+// proves zuano merged around them.
 var seeds = map[AgentID]map[Scope]map[string]string{
 	Claude: {
 		ScopeUser: {

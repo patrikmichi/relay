@@ -3,6 +3,8 @@ package agentport
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 type OverrideDiagnostic struct {
@@ -23,9 +25,9 @@ func OverrideDiagnostics() []OverrideDiagnostic {
 		}
 		report := func(path, reason string) { out = append(out, OverrideDiagnostic{Path: path, Status: reason}) }
 		if home, err := os.UserHomeDir(); err == nil {
-			applyOverrideTier(configs, filepath.Join(home, ".config", "zuano", folder), hooks, codecs, kind, report)
+			applyOverrideTier(configs, filepath.Join(home, ".config", brand.Name, folder), hooks, codecs, kind, report)
 		}
-		dir := filepath.Join(".zuano", folder)
+		dir := filepath.Join("."+brand.Name, folder)
 		if AllowProjectProviderOverrides {
 			applyOverrideTier(configs, dir, hooks, codecs, kind, report)
 		} else if entries, err := os.ReadDir(dir); err == nil {

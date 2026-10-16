@@ -56,7 +56,7 @@ func TestSkillUninstall_RefusesWhenNotFound(t *testing.T) {
 }
 
 // TestSkillUninstall_DoesNotFallBackToOtherProviderDir is the regression
-// test for BLOCKER 2: `relay skill uninstall foo --from cursor` must not
+// test for BLOCKER 2: `zuano skill uninstall foo --from cursor` must not
 // resolve into ~/.claude/skills/foo just because cursorAdapter documents it
 // as a read-compatibility fallback directory. It must fail with "not found"
 // and leave the Claude-owned skill untouched.

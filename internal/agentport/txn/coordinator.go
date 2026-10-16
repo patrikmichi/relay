@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // ErrPending means a prior operation touching one of the same lock keys
@@ -42,7 +44,7 @@ type Tx struct {
 }
 
 // ID returns the transaction's journal id, for error messages pointing at
-// `relay recover <id>`.
+// `zuano recover <id>`.
 func (t *Tx) ID() string { return t.j.ID }
 
 // Begin acquires every lock key (sorted, deterministic order) and refuses
@@ -105,7 +107,7 @@ func checkPending(keys []string) error {
 	if len(pending) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: journal %s (op %q, state %s) — run `relay recover %s`", ErrPending, pending[0].ID, pending[0].Op, pending[0].State, pending[0].ID)
+	return fmt.Errorf("%w: journal %s (op %q, state %s) — run `%s`", ErrPending, pending[0].ID, pending[0].Op, pending[0].State, brand.Cmd("recover "+pending[0].ID))
 }
 
 // Abandon releases the locks and leaves the journal as it is, which is what
@@ -244,7 +246,7 @@ func (t *Tx) stageRemoval(root, rel string, before *Before) error {
 }
 
 // Persist durably writes the prepared journal — the point after which an
-// interrupted process leaves something `relay recover` can find and act
+// interrupted process leaves something `zuano recover` can find and act
 // on. Must be called after every Stage and before Apply.
 func (t *Tx) Persist() error {
 	if t.j.State == "" {
@@ -399,7 +401,7 @@ func (t *Tx) abortCommit(err error) error {
 		t.j.State = StateRecovery
 		t.j.Err = fmt.Sprintf("ledger update failed (%v) and compensation also failed (%v)", err, cerr)
 		_ = t.j.save()
-		return fmt.Errorf("ledger update failed and files could not be fully restored — run `relay recover %s`: %w", t.j.ID, err)
+		return fmt.Errorf("ledger update failed and files could not be fully restored — run `%s`: %w", brand.Cmd("recover "+t.j.ID), err)
 	}
 	t.j.State = StateRestored
 	_ = t.j.save()
@@ -422,7 +424,7 @@ func (t *Tx) Discard(applyErr error) error {
 		t.j.State = StateRecovery
 		t.j.Err = fmt.Sprintf("%v (compensation also failed: %v)", applyErr, cerr)
 		_ = t.j.save()
-		return fmt.Errorf("%w: run `relay recover %s`: %v", ErrPending, t.j.ID, applyErr)
+		return fmt.Errorf("%w: run `%s`: %v", ErrPending, brand.Cmd("recover "+t.j.ID), applyErr)
 	}
 	t.j.State = StateRestored
 	_ = t.j.save()
@@ -598,7 +600,7 @@ func finishCommit(j *Journal) (Journal, error) {
 	f := finalizers[j.Finalize.Kind]
 	finalizersMu.Unlock()
 	if f == nil {
-		return *j, fmt.Errorf("recover %s: this build cannot replay the %q ledger update; use the relay version that wrote it", j.ID, j.Finalize.Kind)
+		return *j, fmt.Errorf("recover %s: this build cannot replay the %q ledger update; use the %s version that wrote it", j.ID, j.Finalize.Kind, brand.Name)
 	}
 	if err := f(j.Finalize.Data); err != nil {
 		j.Err = err.Error()
@@ -612,7 +614,7 @@ func finishCommit(j *Journal) (Journal, error) {
 	return *j, nil
 }
 
-// RecoverAll recovers every non-terminal journal on disk — `relay
+// RecoverAll recovers every non-terminal journal on disk — `zuano
 // recover` with no id argument.
 func RecoverAll(ctx context.Context) ([]Journal, error) {
 	all, err := List()
@@ -638,11 +640,11 @@ func RecoverAll(ctx context.Context) ([]Journal, error) {
 // atomicWrite writes data to a unique temp file in dest's own directory
 // (never a shared predictable name) with mode already applied,
 // fsyncs it, then renames over dest. Rename within the same directory is
-// atomic on every filesystem relay supports, so a reader never observes a
+// atomic on every filesystem zuano supports, so a reader never observes a
 // partially-written destination file.
 func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
 	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".zuano-tmp-*")
+	tmp, err := os.CreateTemp(dir, "."+brand.Name+"-tmp-*")
 	if err != nil {
 		return fmt.Errorf("create temp file in %s: %w", dir, err)
 	}

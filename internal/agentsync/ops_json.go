@@ -22,7 +22,7 @@ func loadRoot(data []byte, exists bool, seed obj) (root *jnode, indent string, d
 	n, err := parseJSON(data)
 	if err != nil {
 		if _, jsoncErr := parseJSON(stripJSONC(data)); jsoncErr == nil {
-			return nil, "", "not plain JSON: it has comments or trailing commas (JSONC), which relay cannot edit without losing them; edit it by hand or remove them"
+			return nil, "", "not plain JSON: it has comments or trailing commas (JSONC), which zuano cannot edit without losing them; edit it by hand or remove them"
 		}
 		return nil, "", "not plain JSON (" + err.Error() + "); edit it by hand"
 	}
@@ -54,7 +54,7 @@ func container(root *jnode, objPath []string, create bool) (cur *jnode, blocked 
 	return cur, false
 }
 
-// pruneEmpty removes empty objects along objPath that relay emptied.
+// pruneEmpty removes empty objects along objPath that zuano emptied.
 func pruneEmpty(root *jnode, objPath []string) {
 	for depth := len(objPath); depth > 0; depth-- {
 		c, _ := container(root, objPath[:depth], false)
@@ -67,7 +67,7 @@ func pruneEmpty(root *jnode, objPath []string) {
 }
 
 // jsonKeysOp manages named entries inside a JSON object (mcpServers, mcp,
-// servers). An entry is relay's only while the ledger hash matches what is
+// servers). An entry is zuano's only while the ledger hash matches what is
 // on disk.
 type jsonKeysOp struct {
 	meta
@@ -141,9 +141,9 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 			items = append(items, o.item(e.name, real, StatusUpdated, ""))
 			changed = true
 		case managed:
-			items = append(items, o.item(e.name, real, StatusConflict, "edited since relay wrote it; --force overwrites"))
+			items = append(items, o.item(e.name, real, StatusConflict, "edited since zuano wrote it; --force overwrites"))
 		default:
-			items = append(items, o.item(e.name, real, StatusConflict, "already defined and not managed by relay; --force overwrites"))
+			items = append(items, o.item(e.name, real, StatusConflict, "already defined and not managed by zuano; --force overwrites"))
 		}
 	}
 
@@ -172,13 +172,13 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 			changed = true
 		default:
 			c.Ledger.drop(real, id)
-			items = append(items, o.item(name, real, StatusSkipped, "edited since relay wrote it; left in place and no longer managed"))
+			items = append(items, o.item(name, real, StatusSkipped, "edited since zuano wrote it; left in place and no longer managed"))
 		}
 	}
 
 	switch {
 	case changed && jsonc:
-		// The user's file stays, even when relay emptied the object it keeps.
+		// The user's file stays, even when zuano emptied the object it keeps.
 		out, err := editJSONC(data, o.objPath, muts, indent)
 		if err != nil {
 			return nil, fmt.Errorf("edit %s without losing its comments: %w", real, err)
@@ -206,7 +206,7 @@ func ownership(managed bool) string {
 	if managed {
 		return ""
 	}
-	return "identical entry already present, not managed by relay"
+	return "identical entry already present, not managed by zuano"
 }
 
 func hasPrefixKey(m map[string]string, prefix string) bool {
@@ -226,7 +226,7 @@ type eventItems struct {
 
 // jsonItemsOp manages array items under per-event keys (hooks). Items are
 // identified by content hash; an item the user edited stops being managed
-// and relay will not add a duplicate when an equivalent hook is present.
+// and zuano will not add a duplicate when an equivalent hook is present.
 type jsonItemsOp struct {
 	meta
 	path    string
@@ -319,11 +319,11 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 				changed = true
 				continue
 			}
-			// An item whose bytes no longer match what relay wrote but whose
-			// matcher and command still do is relay's hook, edited by hand.
+			// An item whose bytes no longer match what zuano wrote but whose
+			// matcher and command still do is zuano's hook, edited by hand.
 			if _, wasWritten := led[src]; wasWritten && !managed(led, id) && !wantSources[o.sourceKey(it)] {
 				if !c.Force {
-					items = append(items, o.item(ev, real, StatusSkipped, "a hook relay wrote was edited since; left in place, --force removes it"))
+					items = append(items, o.item(ev, real, StatusSkipped, "a hook zuano wrote was edited since; left in place, --force removes it"))
 				} else {
 					c.Ledger.drop(real, src)
 					items = append(items, o.item(ev, real, StatusRemoved, "edited hook removed (--force)"))
@@ -334,7 +334,7 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 			present[h] = true
 			kept = append(kept, it)
 		}
-		// Forget what relay wrote once no item carries it any more.
+		// Forget what zuano wrote once no item carries it any more.
 		keptSources := map[string]bool{}
 		for _, it := range kept {
 			keptSources[o.sourceKey(it)] = true
@@ -397,7 +397,7 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 }
 
 // hookSourcePrefix keys the ledger by what a hook is (its event, matcher and
-// commands) rather than by its bytes, so a hook relay wrote can still be
+// commands) rather than by its bytes, so a hook zuano wrote can still be
 // recognised after the person edits it.
 const hookSourcePrefix = "hooksrc:"
 
@@ -430,8 +430,8 @@ func (o *jsonItemsOp) userHas(existing []*jnode, want *jnode) bool {
 	return false
 }
 
-// emptyRoot reports a document holding nothing but the keys relay seeds into
-// new files, which is not worth keeping once relay removed its entries.
+// emptyRoot reports a document holding nothing but the keys zuano seeds into
+// new files, which is not worth keeping once zuano removed its entries.
 func emptyRoot(root *jnode, seed obj) bool {
 	seeded := map[string]string{}
 	for _, e := range seed {

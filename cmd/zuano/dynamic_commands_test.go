@@ -72,7 +72,7 @@ func TestPrepareDynamicCommandsSkipsDiscoveryWhenOffline(t *testing.T) {
 }
 
 // TestPrepareDynamicCommandsSkipsDiscoveryForBareHelp confirms
-// `relay --help` (or a bare `relay`) never dials the gateway — static help
+// `zuano --help` (or a bare `zuano`) never dials the gateway — static help
 // output must stay completely free of discovery.
 func TestPrepareDynamicCommandsSkipsDiscoveryForBareHelp(t *testing.T) {
 	dialed := false
@@ -92,7 +92,7 @@ func TestPrepareDynamicCommandsSkipsDiscoveryForBareHelp(t *testing.T) {
 		}
 	}
 	if dialed {
-		t.Fatal("relay --help (or a bare relay) must never dial the gateway")
+		t.Fatal("zuano --help (or a bare zuano) must never dial the gateway")
 	}
 }
 

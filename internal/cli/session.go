@@ -18,12 +18,12 @@ import (
 //
 // Returns an error instead of exiting so every caller's RunE propagates it
 // through cobra as the single source of truth for error reporting — only
-// cmd/relay/main.go prints an error and calls os.Exit.
+// cmd/zuano/main.go prints an error and calls os.Exit.
 func resolveClient(gatewayURL string) (*client.Client, error) {
 	c, err := client.Resolve(gatewayURL)
 	if err != nil {
 		if errors.Is(err, client.ErrNotLoggedIn) {
-			return nil, errors.New("not logged in. Run `relay login` first, or set ZUANO_API_KEY for non-interactive auth")
+			return nil, errors.New("not logged in. Run `zuano login` first, or set ZUANO_API_KEY for non-interactive auth")
 		}
 		return nil, err
 	}

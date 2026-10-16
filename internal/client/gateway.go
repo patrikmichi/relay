@@ -23,12 +23,12 @@ import (
 // ErrNotLoggedIn is returned by Resolve when neither ZUANO_API_KEY nor a
 // usable CLI session (ZUANO_EMAIL / persisted login email + a matching OS
 // keychain entry) can be found.
-var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or set ZUANO_API_KEY for non-interactive auth")
+var ErrNotLoggedIn = errors.New("not logged in — run `" + brand.Cmd("login") + "` first, or set ZUANO_API_KEY for non-interactive auth")
 
 // ErrAgentNotLoggedIn is returned by Resolve when ZUANO_AGENT selects the
 // agent profile and no agent session is stored. It never falls back to the
 // human session: that session is not held to approvals.
-var ErrAgentNotLoggedIn = errors.New("no agent session. Run `relay login --agent` (ZUANO_AGENT=1 selects the agent profile), or unset ZUANO_AGENT to use your own session")
+var ErrAgentNotLoggedIn = errors.New("no agent session. Run `" + brand.Cmd("login --agent") + "` (ZUANO_AGENT=1 selects the agent profile), or unset ZUANO_AGENT to use your own session")
 
 // ActiveProfile is the keychain profile this process uses: the agent
 // profile when ZUANO_AGENT is set, the human one otherwise.
@@ -57,7 +57,7 @@ type Client struct {
 	refreshToken  string
 	expiresAt     time.Time
 
-	// store/locker coordinate refresh across independently invoked `relay`
+	// store/locker coordinate refresh across independently invoked `zuano`
 	// processes sharing the same (gatewayOrigin, email) keychain entry —
 	// see refreshLocked. Defaulted by New/Resolve; overridable via
 	// WithSessionStore/WithSessionLocker for tests.
@@ -117,8 +117,8 @@ func gatewayHTTPClient() *http.Client {
 
 var clientVersion = "dev"
 
-// SetVersion sets the relay version reported in the User-Agent and
-// Relay-Client-Version headers of every gateway request.
+// SetVersion sets the zuano version reported in the User-Agent and
+// Zuano-Client-Version headers of every gateway request.
 func SetVersion(v string) {
 	if v != "" {
 		clientVersion = v
@@ -126,17 +126,17 @@ func SetVersion(v string) {
 }
 
 func userAgent() string {
-	return "relay/" + clientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
+	return brand.Name + "/" + clientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
 }
 
-// versionTransport adds the relay version headers to every request. These
-// two headers are the only client details relay sends.
+// versionTransport adds the zuano version headers to every request. These
+// two headers are the only client details zuano sends.
 type versionTransport struct{ base http.RoundTripper }
 
 func (t versionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	r := req.Clone(req.Context())
 	r.Header.Set("User-Agent", userAgent())
-	r.Header.Set("Relay-Client-Version", clientVersion)
+	r.Header.Set(brand.Product+"-Client-Version", clientVersion)
 	if t.base == nil {
 		return http.DefaultTransport.RoundTrip(r)
 	}
@@ -224,7 +224,7 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		case errors.As(err, &unavailable):
 			return nil, fmt.Errorf("keychain unavailable: %v. Use ZUANO_API_KEY for headless use", unavailable.Err)
 		default:
-			return nil, fmt.Errorf("%w; run `relay login` to replace the stored session", err)
+			return nil, fmt.Errorf("%w; run `%s` to replace the stored session", err, brand.Cmd("login"))
 		}
 	}
 
@@ -343,7 +343,7 @@ func (c *Client) refreshLocked(ctx context.Context) error {
 		ExpiresAt:    expiresAt.Unix(),
 		DPoPKey:      c.dpopKey,
 	}); err != nil {
-		fmt.Fprintf(persistWarning, "relay: WARNING: the session was refreshed but could not be saved to the OS keychain (%v). This process keeps working, but the next relay command will find a revoked token and ask you to run `relay login` again.\n", err)
+		fmt.Fprintf(persistWarning, "%s: WARNING: the session was refreshed but could not be saved to the OS keychain (%v). This process keeps working, but the next %s command will find a revoked token and ask you to run `%s` again.\n", brand.Name, err, brand.Name, brand.Cmd("login"))
 	}
 	return nil
 }

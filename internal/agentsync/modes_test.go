@@ -8,7 +8,7 @@ import (
 )
 
 // Agent JSON configs can hold environment values and hook commands, so a file
-// relay creates is private no matter which kind created it first.
+// zuano creates is private no matter which kind created it first.
 func TestCreatedConfigFilesArePrivateForEveryKind(t *testing.T) {
 	for _, kind := range []Kind{KindMCP, KindEnv, KindHooks} {
 		env := newEnv(t)

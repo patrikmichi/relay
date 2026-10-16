@@ -105,7 +105,7 @@ func Detected(env Env) []AgentID {
 }
 
 // Support reports why kind is unsupported for agent at scope, or "" when
-// relay can write it.
+// zuano can write it.
 func Support(env Env, id AgentID, kind Kind, scope Scope) string {
 	a, ok := agentByID(id)
 	if !ok {
@@ -129,7 +129,7 @@ func Support(env Env, id AgentID, kind Kind, scope Scope) string {
 
 func probe[T any](b builder[T], env Env, scope Scope) string {
 	if b == nil {
-		return "not supported by relay"
+		return "not supported by zuano"
 	}
 	_, reason := b(env, scope, nil)
 	return reason

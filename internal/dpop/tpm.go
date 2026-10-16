@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // The TPM 2.0 constants and structures this file needs, from the TCG TPM 2.0
@@ -90,7 +92,7 @@ func (k *tpmKey) Ref() string              { return backendTPM + ":" + k.id }
 // handle stays loaded for the life of the process; the TPM resource manager
 // drops it when the connection closes.
 func (k *tpmKey) derive() error {
-	unique := sha256.Sum256([]byte("relay dpop " + k.id))
+	unique := sha256.Sum256([]byte(brand.Name + " dpop " + k.id))
 	resp, err := k.tr.transmit(tpmCommand(tpmStSessions, tpmCCCreatePrimary, []uint32{tpmRHOwner}, tpmPasswordAuth(), createPrimaryParams(unique[:])))
 	if err != nil {
 		return err

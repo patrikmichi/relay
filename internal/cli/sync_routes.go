@@ -13,13 +13,14 @@ import (
 
 	"github.com/patrikmichi/zuano/internal/agentport"
 	"github.com/patrikmichi/zuano/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/config"
 )
 
-// relaySource is the "from" of a route that writes settings (mcp, env, hooks,
-// rules, commands): those come from the relay sync directory, not from
+// zuanoSource is the "from" of a route that writes settings (mcp, env, hooks,
+// rules, commands): those come from the zuano sync directory, not from
 // another agent's files.
-const relaySource = "relay"
+const zuanoSource = brand.Name
 
 var (
 	settingKinds = []string{"mcp", "env", "hooks", "rules", "commands"}
@@ -108,7 +109,7 @@ func normalizeTargets(values []string) ([]string, error) {
 
 // normalizeRoute validates a route and puts it in canonical form. A route
 // copies either skills and subagents from a provider, or settings from the
-// relay sync directory; the two read from different places, so mixing them
+// zuano sync directory; the two read from different places, so mixing them
 // in one route would give "from" two meanings.
 func normalizeRoute(r config.SyncRoute) (config.SyncRoute, error) {
 	kinds, err := normalizeKinds(r.Kinds)
@@ -137,9 +138,9 @@ func normalizeRoute(r config.SyncRoute) (config.SyncRoute, error) {
 		}
 	}
 	if setting {
-		if from == "" || from == relaySource {
+		if from == "" || from == zuanoSource {
 			if !skill {
-				from = relaySource
+				from = zuanoSource
 			}
 		} else {
 			ids, err := agentsync.ParseAgents([]string{from})
@@ -147,7 +148,7 @@ func normalizeRoute(r config.SyncRoute) (config.SyncRoute, error) {
 				return r, fmt.Errorf("unknown --from agent %q for settings (%s)", from, strings.Join(agentIDNames(), ", "))
 			}
 			if slices.Contains(kinds, "env") {
-				return r, fmt.Errorf("env is relay's agent profile, not something copied between agents; route it without --from")
+				return r, fmt.Errorf("env is zuano's agent profile, not something copied between agents; route it without --from")
 			}
 			if slices.Contains(to, string(ids[0])) {
 				return r, fmt.Errorf("a route cannot copy %s to itself", ids[0])
@@ -169,14 +170,14 @@ func agentIDNames() []string {
 }
 
 // routeCycle reports routes that copy a kind around in a circle (a to b and b
-// back to a). Relay-written content is never read back, so a cycle would not
+// back to a). Zuano-written content is never read back, so a cycle would not
 // loop, but it is almost certainly a mistake: each side would push the other's
 // own files to it.
 func routeCycle(routes []config.SyncRoute) error {
 	for _, kind := range settingKinds {
 		edges := map[string][]string{}
 		for _, r := range routes {
-			if r.From == relaySource || !slices.Contains(r.Kinds, kind) {
+			if r.From == zuanoSource || !slices.Contains(r.Kinds, kind) {
 				continue
 			}
 			from := r.From
@@ -247,12 +248,12 @@ func routeOptions(s config.SyncSettings, base agentSyncOpts) ([]routeOpt, []stri
 				skill = append(skill, k)
 			}
 		}
-		// Settings are read from an agent (or the relay sync directory),
+		// Settings are read from an agent (or the zuano sync directory),
 		// skills and subagents from a provider; one route may carry both.
 		if len(setting) > 0 {
 			o := base
 			o.to, o.kinds, o.from = r.To, setting, ""
-			if r.From != relaySource {
+			if r.From != zuanoSource {
 				o.settingsFrom = r.From
 			}
 			out = append(out, routeOpt{routeLabel(config.SyncRoute{From: r.From, To: r.To, Kinds: setting}), o})
@@ -284,7 +285,7 @@ func routeOptions(s config.SyncSettings, base agentSyncOpts) ([]routeOpt, []stri
 	for _, key := range keys {
 		o := base
 		o.to, o.kinds, o.from = targets[key], groups[key], ""
-		out = append(out, routeOpt{routeLabel(config.SyncRoute{From: relaySource, To: targets[key], Kinds: groups[key]}) + " [default]", o})
+		out = append(out, routeOpt{routeLabel(config.SyncRoute{From: zuanoSource, To: targets[key], Kinds: groups[key]}) + " [default]", o})
 	}
 
 	var uncovered []string
@@ -347,31 +348,31 @@ func planRoutedSync(base agentSyncOpts, s config.SyncSettings) (*agentSyncRun, e
 		}
 	}
 	if len(uncovered) > 0 {
-		merged.warns = append(merged.warns, "not synced, no route or default covers: "+strings.Join(uncovered, ", ")+" (see `relay sync routes list`; --to/--from/--kind run one sync without the saved routes)")
+		merged.warns = append(merged.warns, "not synced, no route or default covers: "+strings.Join(uncovered, ", ")+" (see `zuano sync routes list`; --to/--from/--kind run one sync without the saved routes)")
 	}
 	return merged, nil
 }
 
-// SyncRoutesCmd returns `relay sync routes`.
+// SyncRoutesCmd returns `zuano sync routes`.
 func SyncRoutesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "routes",
-		Short: "Show and change the saved routes relay sync follows",
-		Long: `Saved routes tell a plain 'relay sync' what to copy where. They live in the
+		Short: "Show and change the saved routes zuano sync follows",
+		Long: `Saved routes tell a plain 'zuano sync' what to copy where. They live in the
 "sync" key of ~/.config/zuano/config.json.
 
-  relay sync routes add --from claude --to cursor --kind skills,subagents
-  relay sync routes add --kind hooks,rules --to claude,codex
-  relay sync routes list
-  relay sync routes remove 1
+  zuano sync routes add --from claude --to cursor --kind skills,subagents
+  zuano sync routes add --kind hooks,rules --to claude,codex
+  zuano sync routes list
+  zuano sync routes remove 1
 
 A route with --from copies from that source: skills and subagents from a
 provider, and settings (mcp, hooks, rules, commands) from an agent's own
 config, reading only what you wrote there. Without --from, --kind names
 settings and --to the default agents that receive them when no route covers
-the kind; their source is the relay sync directory. With saved routes, a plain 'relay sync' follows
+the kind; their source is the zuano sync directory. With saved routes, a plain 'zuano sync' follows
 them and syncs nothing else; --to, --from or --kind run one ordinary sync
-instead. 'relay sync --dry-run' shows the plan per route.`,
+instead. 'zuano sync --dry-run' shows the plan per route.`,
 	}
 	cmd.AddCommand(syncRoutesListCmd(), syncRoutesAddCmd(), syncRoutesRemoveCmd())
 	return cmd
@@ -395,7 +396,7 @@ func syncRoutesListCmd() *cobra.Command {
 				return enc.Encode(s)
 			}
 			if len(s.Routes) == 0 && len(s.Defaults) == 0 {
-				fmt.Fprintln(out, "No saved routes: relay sync writes every kind to every detected agent. Add one with `relay sync routes add`.")
+				fmt.Fprintln(out, "No saved routes: zuano sync writes every kind to every detected agent. Add one with `zuano sync routes add`.")
 				return nil
 			}
 			for i, r := range s.Routes {
@@ -421,14 +422,14 @@ func syncRoutesAddCmd() *cobra.Command {
 		Short: "Add a route, or default targets for settings kinds",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := refuseInAgentMode("relay sync routes add"); err != nil {
+			if err := refuseInAgentMode(brand.Cmd("sync routes add")); err != nil {
 				return err
 			}
 			r, err := normalizeRoute(config.SyncRoute{From: from, To: to, Kinds: kinds})
 			if err != nil {
 				return err
 			}
-			asDefault := from == "" && r.From == relaySource
+			asDefault := from == "" && r.From == zuanoSource
 			err = config.UpdateSync(func(s *config.SyncSettings) error {
 				if asDefault {
 					if s.Defaults == nil {
@@ -459,7 +460,7 @@ func syncRoutesAddCmd() *cobra.Command {
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&from, "from", "", "Provider (skills, subagents) or agent (settings) to copy from; omit for settings from the relay sync directory")
+	fl.StringVar(&from, "from", "", "Provider (skills, subagents) or agent (settings) to copy from; omit for settings from the zuano sync directory")
 	fl.StringSliceVar(&to, "to", nil, "Agents that receive the kinds")
 	fl.StringSliceVar(&kinds, "kind", nil, "mcp, env, hooks, rules, commands, skills, subagents")
 	return cmd
@@ -471,7 +472,7 @@ func syncRoutesRemoveCmd() *cobra.Command {
 		Short: "Remove a route by its number, or the default targets of a kind",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := refuseInAgentMode("relay sync routes remove"); err != nil {
+			if err := refuseInAgentMode(brand.Cmd("sync routes remove")); err != nil {
 				return err
 			}
 			arg := strings.ToLower(strings.TrimSpace(args[0]))
@@ -532,7 +533,7 @@ func doctorRouteChecks(add func(name string, ok bool, detail string)) {
 				out = append(out, t)
 			}
 		}
-		if from != "" && from != relaySource && known[from] && !installed[from] {
+		if from != "" && from != zuanoSource && known[from] && !installed[from] {
 			out = append(out, from+" (source)")
 		}
 		return out
@@ -553,7 +554,7 @@ func doctorRouteChecks(add func(name string, ok bool, detail string)) {
 	}
 	for _, k := range settingKinds {
 		if t := s.Defaults[k]; len(t) > 0 {
-			check("sync-default:"+k, config.SyncRoute{From: relaySource, To: t, Kinds: []string{k}})
+			check("sync-default:"+k, config.SyncRoute{From: zuanoSource, To: t, Kinds: []string{k}})
 		}
 	}
 }

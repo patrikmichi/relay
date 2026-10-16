@@ -111,7 +111,7 @@ func (j *startedJob) pollID() string {
 }
 
 // handleStartedJob reports work the gateway started and, with --wait, follows
-// it to the end like 'relay runs wait'.
+// it to the end like 'zuano runs wait'.
 func handleStartedJob(parent context.Context, c *client.Client, j *startedJob, jsonOut bool, o callOpts, out io.Writer) error {
 	if !o.wait {
 		if !jsonOut {
@@ -244,7 +244,7 @@ func printJob(out io.Writer, id string, j jobDoc) {
 	}
 }
 
-// RunsCmd returns `relay runs`, the client for the gateway's durable jobs.
+// RunsCmd returns `zuano runs`, the client for the gateway's durable jobs.
 func RunsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "runs",
@@ -313,7 +313,7 @@ func runsListCmd() *cobra.Command {
 				return err
 			}
 			if list.NextCursor != nil && *list.NextCursor != "" {
-				fmt.Fprintf(out, "More: relay runs list --cursor %s\n", textsafe.Clean(*list.NextCursor))
+				fmt.Fprintf(out, "More: zuano runs list --cursor %s\n", textsafe.Clean(*list.NextCursor))
 			}
 			return nil
 		},

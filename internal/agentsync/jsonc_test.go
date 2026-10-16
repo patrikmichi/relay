@@ -97,7 +97,7 @@ func TestVSCodeMCPJSONWithCommentsIsEditedAndCleaned(t *testing.T) {
 	syncAll(t, env, map[Scope]Bundle{ScopeProject: fixtureBundle()}, opts)
 
 	got := readFile(t, path)
-	for _, want := range []string{"// my servers", "/* hand written */", `"mine"`, `"relay"`, `"docs"`} {
+	for _, want := range []string{"// my servers", "/* hand written */", `"mine"`, `"zuano"`, `"docs"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q:\n%s", want, got)
 		}
@@ -112,8 +112,8 @@ func TestVSCodeMCPJSONWithCommentsIsEditedAndCleaned(t *testing.T) {
 
 	syncAll(t, env, map[Scope]Bundle{ScopeProject: {}}, opts)
 	got = readFile(t, path)
-	if !strings.Contains(got, "// my servers") || !strings.Contains(got, `"mine"`) || strings.Contains(got, `"relay"`) || strings.Contains(got, `"docs"`) {
-		t.Errorf("removing relay's servers damaged the file:\n%s", got)
+	if !strings.Contains(got, "// my servers") || !strings.Contains(got, `"mine"`) || strings.Contains(got, `"zuano"`) || strings.Contains(got, `"docs"`) {
+		t.Errorf("removing zuano's servers damaged the file:\n%s", got)
 	}
 	if _, err := scanJSONC([]byte(got)); err != nil {
 		t.Errorf("result is not valid JSONC: %v\n%s", err, got)

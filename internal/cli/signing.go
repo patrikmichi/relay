@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/catalog"
 	"github.com/patrikmichi/zuano/internal/config"
 	"github.com/patrikmichi/zuano/internal/signing"
@@ -41,7 +42,7 @@ func signingOption(gatewayURL string, require bool) (catalog.Option, error) {
 // pinSigningKeys records the gateway's signing keys the first time they are
 // seen (trust on first use). A gateway that signs nothing yet leaves nothing
 // pinned. Keys that differ from the pinned ones are never adopted here: that
-// is a decision for `relay config trust-key`.
+// is a decision for `zuano config trust-key`.
 func pinSigningKeys(ctx context.Context, origin string, out io.Writer) {
 	keys, err := signing.FetchKeys(ctx, origin)
 	if errors.Is(err, signing.ErrNoKeys) {
@@ -65,7 +66,7 @@ func pinSigningKeys(ctx context.Context, origin string, out io.Writer) {
 		fmt.Fprintf(out, "Pinned %d signing key(s) for %s on first use:\n", len(keys), origin)
 		printKeys(out, keys)
 	case !signing.Same(pinned, keys):
-		fmt.Fprintf(out, "warning: the signing keys %s publishes differ from the ones pinned. Downloads signed with the new keys are refused until you review them with `relay config trust-key`.\n", origin)
+		fmt.Fprintf(out, "warning: the signing keys %s publishes differ from the ones pinned. Downloads signed with the new keys are refused until you review them with `zuano config trust-key`.\n", origin)
 	}
 }
 
@@ -90,12 +91,12 @@ func configTrustKeyCmd() *cobra.Command {
 		Long: `Fetch the signing keys the gateway publishes at /.well-known/relay-signing-keys,
 show their fingerprints and pin them, replacing the keys pinned before.
 
-relay pins the keys the first time you log in. A later change is refused until
+zuano pins the keys the first time you log in. A later change is refused until
 you run this, because a key that changed could mean the gateway was replaced.
 Compare the fingerprints with the ones your gateway's operator publishes.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := refuseInAgentMode("relay config trust-key"); err != nil {
+			if err := refuseInAgentMode(brand.Cmd("config trust-key")); err != nil {
 				return err
 			}
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)

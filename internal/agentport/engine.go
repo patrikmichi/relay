@@ -10,7 +10,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
-// lockAcquireTimeout bounds how long Write waits for another `relay`
+// lockAcquireTimeout bounds how long Write waits for another `zuano`
 // process to release its lock on the same (provider, scope, name,
 // project) artifact before giving up — this is local disk contention
 // between CLI invocations, never a network wait, so a short bound is
@@ -40,7 +40,7 @@ type Plan struct {
 	TargetPaths string // absolute directory the files would be written under (<dir>/<name>/)
 	// Overwrite lets Write replace files whose content differs. Callers set
 	// it only after ClassifyInstalled shows the destination is an unmodified
-	// relay installation (or the user passed --force); the replaced bytes are
+	// zuano installation (or the user passed --force); the replaced bytes are
 	// still backed up by the transaction.
 	Overwrite bool
 }
@@ -164,7 +164,7 @@ func Migrate(src *Skill, target Adapter, scope Scope) (*Plan, error) {
 // again immediately after (protects against a stale decision if another
 // process changed the ledger or destination between planning and
 // locking), and refuses to start at all if a prior interrupted write on
-// the same artifact left a pending journal (`relay recover` owns that
+// the same artifact left a pending journal (`zuano recover` owns that
 // case).
 func Write(plan *Plan) error {
 	if err := PreflightWrite(plan); err != nil {

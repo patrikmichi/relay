@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/relay/guard.sh",
+            "command": "/opt/zuano/guard.sh",
             "timeout": 10
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/relay/context.sh"
+            "command": "/opt/zuano/context.sh"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/relay/notify.sh"
+            "command": "/opt/zuano/notify.sh"
           }
         ]
       }

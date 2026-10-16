@@ -160,7 +160,7 @@ func TestAgentRollback_RejectsSkillKindID(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{entry.ID})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error rolling back a skill-kind entry via 'relay agent rollback'")
+		t.Fatalf("expected an error rolling back a skill-kind entry via 'zuano agent rollback'")
 	}
 }
 

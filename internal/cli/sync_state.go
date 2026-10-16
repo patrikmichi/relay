@@ -6,17 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // syncStateDir holds one small JSON file per plugin recording exactly
 // which relative paths the LAST successful sync wrote — the "owned file
 // set" stale-file removal needs to reconcile safely. Without it, a stale-file
-// removal pass has no way to tell a Relay-managed file the new bundle dropped
+// removal pass has no way to tell a Zuano-managed file the new bundle dropped
 // apart from a file the user added by hand next to it; only paths ever
 // recorded here are candidates for removal when a later sync's bundle no
 // longer includes them. Sibling to plugins/, not inside any individual plugin
 // directory, so it's never mistaken for plugin content.
-const syncStateDir = ".zuano-sync"
+const syncStateDir = "." + brand.Name + "-sync"
 
 func ownedFilesPath(localDir, pluginID string) string {
 	return filepath.Join(localDir, syncStateDir, pluginID+".json")

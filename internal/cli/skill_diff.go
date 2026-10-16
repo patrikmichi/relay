@@ -10,8 +10,8 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillDiffCmd returns the `relay skill diff <name>` cobra command — a
-// preview of `relay skill migrate` that writes nothing.
+// SkillDiffCmd returns the `zuano skill diff <name>` cobra command — a
+// preview of `zuano skill migrate` that writes nothing.
 func SkillDiffCmd() *cobra.Command {
 	var (
 		fromFlag  string
@@ -26,7 +26,7 @@ func SkillDiffCmd() *cobra.Command {
 		Long: `Load <name> from --from's directory (in the given --scope), project it
 to --to, and print the field-level differences plus the fidelity-loss
 report — without writing anything to --to's real skill directory or
-recording a manifest entry. This is a preview of 'relay skill migrate'.`,
+recording a manifest entry. This is a preview of 'zuano skill migrate'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillDiff(cmd, args[0], skillDiffOpts{from: fromFlag, to: toFlag, scope: scopeFlag, jsonOut: jsonFlag})
@@ -100,7 +100,7 @@ func doSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts, doc action
 	// Project into a scratch temp dir (never plan.TargetPaths) so we can
 	// re-Load it and report field-level differences without writing
 	// anything under the real target directory or touching the manifest.
-	tmp, err := os.MkdirTemp("", "relay-skill-diff-*")
+	tmp, err := os.MkdirTemp("", "zuano-skill-diff-*")
 	if err != nil {
 		return fmt.Errorf("create scratch dir: %w", err)
 	}

@@ -2,13 +2,13 @@
   "hooks": {
     "post_cascade_response": [
       {
-        "command": "/opt/relay/notify.sh",
+        "command": "/opt/zuano/notify.sh",
         "show_output": false
       }
     ],
     "pre_run_command": [
       {
-        "command": "/opt/relay/guard.sh",
+        "command": "/opt/zuano/guard.sh",
         "show_output": false
       }
     ]

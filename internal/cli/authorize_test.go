@@ -145,7 +145,7 @@ func TestAuthorizeRetriesTransientPollFailures(t *testing.T) {
 }
 
 func TestAuthorizeMapsRefusalsAndDoesNotRetryThem(t *testing.T) {
-	for status, want := range map[int]string{401: "relay login", 403: "denied (HTTP 403)", 404: "does not support", 422: "rejected (HTTP 422)"} {
+	for status, want := range map[int]string{401: "zuano login", 403: "denied (HTTP 403)", 404: "does not support", 422: "rejected (HTTP 422)"} {
 		srv, polls := authorizeServer(t, []int{status})
 		_, err := runAuthorize(t, srv)
 		if err == nil || !strings.Contains(err.Error(), want) {

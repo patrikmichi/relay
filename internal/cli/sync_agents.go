@@ -15,12 +15,13 @@ import (
 	"text/tabwriter"
 
 	"github.com/patrikmichi/zuano/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/config"
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 const (
-	gatewayServerName = "relay"
+	gatewayServerName = brand.Name
 	gatewayAPIKeyEnv  = "ZUANO_API_KEY"
 )
 
@@ -30,7 +31,7 @@ type agentSyncOpts struct {
 	kinds  []string
 	from   string
 	// settingsFrom names the agent whose own rules, commands, hooks and MCP
-	// servers are copied, instead of the relay sync directory.
+	// servers are copied, instead of the zuano sync directory.
 	settingsFrom string
 	mcpAuth      string
 	gatewayURL   string
@@ -170,19 +171,19 @@ func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, i
 	return s, changed, ignored, nil
 }
 
-// agentEnvVar selects the agent profile in relay itself: the CLI session
+// agentEnvVar selects the agent profile in zuano itself: the CLI session
 // marked as an agent's, held to approvals, instead of the person's own.
 const agentEnvVar = "ZUANO_AGENT"
 
-// markRelayServers returns servers with ZUANO_AGENT=1 in the environment of
-// every stdio server that runs relay, so a relay started by an agent uses the
+// markZuanoServers returns servers with ZUANO_AGENT=1 in the environment of
+// every stdio server that runs zuano, so a zuano started by an agent uses the
 // agent profile. The saved source is left as the user wrote it.
-func markRelayServers(servers []agentsync.MCPServer) []agentsync.MCPServer {
+func markZuanoServers(servers []agentsync.MCPServer) []agentsync.MCPServer {
 	out := make([]agentsync.MCPServer, len(servers))
 	for i, s := range servers {
 		out[i] = s
 		name := strings.TrimSuffix(filepath.Base(s.Command), ".exe")
-		if s.Command == "" || (name != "relay" && name != "gw") {
+		if s.Command == "" || name != brand.Name {
 			continue
 		}
 		if _, set := s.Env[agentEnvVar]; set {
@@ -209,7 +210,7 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 	}
 	if slices.Contains(kinds.file, agentsync.KindEnv) && len(user.Env) > 0 {
 		if cfg, err := config.Load(); err == nil && cfg.AgentEmail == "" {
-			warns = append(warns, "agents will run relay as the agent profile (ZUANO_AGENT=1) but no agent session exists; run `relay login --agent`")
+			warns = append(warns, "agents will run zuano as the agent profile (ZUANO_AGENT=1) but no agent session exists; run `zuano login --agent`")
 		}
 	}
 	return warns
@@ -244,7 +245,7 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayUR
 				b.MCP = append(b.MCP, *gw)
 			}
 		}
-		b.MCP = append(b.MCP, markRelayServers(src.Servers)...)
+		b.MCP = append(b.MCP, markZuanoServers(src.Servers)...)
 		if scope == agentsync.ScopeUser {
 			b.Env = []agentsync.EnvVar{{Name: agentEnvVar, Value: "1"}}
 		}
@@ -318,7 +319,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 			if err != nil {
 				return nil, err
 			}
-			b.MCP = markRelayServers(b.MCP)
+			b.MCP = markZuanoServers(b.MCP)
 			bundles[scope] = b
 			warns = append(warns, w...)
 		}
@@ -426,7 +427,7 @@ func printSyncReport(out io.Writer, run *agentSyncRun, dryRun, jsonOut bool) err
 	}
 	printRouteSummaries(out, run.routes)
 	if len(run.items) == 0 {
-		fmt.Fprintln(out, "nothing to sync: add rules, commands, hooks or MCP servers under the relay sync directory, or configure a gateway")
+		fmt.Fprintln(out, "nothing to sync: add rules, commands, hooks or MCP servers under the zuano sync directory, or configure a gateway")
 		return nil
 	}
 	items := append([]agentsync.Item(nil), run.items...)
@@ -457,7 +458,7 @@ func printSyncReport(out io.Writer, run *agentSyncRun, dryRun, jsonOut bool) err
 	}
 	fmt.Fprintf(out, "\n%s\n", strings.Join(parts, ", "))
 	if counts[agentsync.StatusConflict] > 0 {
-		fmt.Fprintln(out, "Conflicts are entries relay did not write; rerun with --force to replace them.")
+		fmt.Fprintln(out, "Conflicts are entries zuano did not write; rerun with --force to replace them.")
 	}
 
 	if dryRun && len(run.plans) > 0 {

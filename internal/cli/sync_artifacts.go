@@ -52,7 +52,7 @@ func compareFiles(dir string, files map[string][]byte) (same, conflict bool, err
 }
 
 // installDecision maps the destination's ownership to a sync outcome:
-// identical content is unchanged; a missing or relay-installed and unedited
+// identical content is unchanged; a missing or zuano-installed and unedited
 // artifact is added or updated; anything the user owns or edited is a
 // conflict that only --force replaces.
 func installDecision(same bool, state agentport.InstallState, force bool) (status, detail string, overwrite bool) {
@@ -61,14 +61,14 @@ func installDecision(same bool, state agentport.InstallState, force bool) (statu
 		return agentsync.StatusUnchanged, "", false
 	case state == agentport.InstallNone:
 		return agentsync.StatusAdded, "", false
-	case state == agentport.InstallRelay:
+	case state == agentport.InstallZuano:
 		return agentsync.StatusUpdated, "", true
 	case force:
 		return agentsync.StatusUpdated, "replaced with --force", true
 	case state == agentport.InstallEdited:
-		return agentsync.StatusConflict, "edited since relay installed it; --force overwrites", false
+		return agentsync.StatusConflict, "edited since zuano installed it; --force overwrites", false
 	}
-	return agentsync.StatusConflict, "exists and was not installed by relay; --force overwrites", false
+	return agentsync.StatusConflict, "exists and was not installed by zuano; --force overwrites", false
 }
 
 func lossSummary(loss []agentport.LossItem) string {

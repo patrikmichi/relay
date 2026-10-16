@@ -18,7 +18,7 @@ import (
 // process's stdin.
 var isInteractiveTerminalFn = isInteractiveTerminal
 
-// AgentMigrateCmd returns the `relay agent migrate <name>` cobra command —
+// AgentMigrateCmd returns the `zuano agent migrate <name>` cobra command —
 // the Agent-IR analogue of SkillMigrateCmd. It loads an agent by name from
 // --from's directory (in the given --scope), projects it to one or more
 // --to providers, prints a fidelity-loss report for each, and (unless
@@ -48,9 +48,9 @@ on this machine (excluding --from).
 Supported providers: %s.
 
 Examples:
-  relay agent migrate reviewer --from claude --to opencode
-  relay agent migrate reviewer --from opencode --scope project --dry-run
-  relay agent migrate reviewer --from claude --strict`, agentProviderIDsCSV()),
+  zuano agent migrate reviewer --from claude --to opencode
+  zuano agent migrate reviewer --from opencode --scope project --dry-run
+  zuano agent migrate reviewer --from claude --strict`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentMigrate(cmd, args[0], agentMigrateOpts{

@@ -252,11 +252,11 @@ func TestAgentUninstall_ManifestUpdateErrorPropagates(t *testing.T) {
 		t.Fatalf("RecordEntry: %v", err)
 	}
 
-	relayConfigDir := filepath.Join(home, ".config", "zuano")
-	if err := os.Chmod(relayConfigDir, 0o555); err != nil {
+	zuanoConfigDir := filepath.Join(home, ".config", "zuano")
+	if err := os.Chmod(zuanoConfigDir, 0o555); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(relayConfigDir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(zuanoConfigDir, 0o755) })
 
 	cmd := AgentUninstallCmd()
 	var buf bytes.Buffer

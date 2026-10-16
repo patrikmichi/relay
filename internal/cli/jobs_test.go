@@ -32,7 +32,7 @@ func TestRuns_ListPrintsATableAndTheNextCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ID", "job_01J9ZK3", "agent_run", "running", "job_01J9ZH8", "webhook_delivery", "dead", "relay runs list --cursor cur_2"} {
+	for _, want := range []string{"ID", "job_01J9ZK3", "agent_run", "running", "job_01J9ZH8", "webhook_delivery", "dead", "zuano runs list --cursor cur_2"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -139,7 +139,7 @@ func TestCall_AStartedJobIsReportedAndWaitFollowsItToTheEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a started job is not a failure: %v", err)
 	}
-	if !strings.Contains(out, "Started on the gateway: job_01J9ZK3 (queued)") || !strings.Contains(out, "relay runs show job_01J9ZK3") {
+	if !strings.Contains(out, "Started on the gateway: job_01J9ZK3 (queued)") || !strings.Contains(out, "zuano runs show job_01J9ZK3") {
 		t.Errorf("output:\n%s", out)
 	}
 

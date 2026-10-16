@@ -13,7 +13,7 @@ const (
 )
 
 // lockConfig takes an advisory lock that serializes read-modify-write cycles
-// of the config file across relay processes. The kernel drops it when the
+// of the config file across zuano processes. The kernel drops it when the
 // holder exits, so a crash never leaves it stuck.
 func lockConfig(dir string) (unlock func(), err error) {
 	path := filepath.Join(dir, "config.lock")
@@ -30,7 +30,7 @@ func lockConfig(dir string) (unlock func(), err error) {
 		if !isWouldBlock(err) || time.Now().After(deadline) {
 			_ = f.Close()
 			if isWouldBlock(err) {
-				return nil, fmt.Errorf("config is locked by another relay process (waited %s)", lockTimeout)
+				return nil, fmt.Errorf("config is locked by another zuano process (waited %s)", lockTimeout)
 			}
 			return nil, fmt.Errorf("lock config: %w", err)
 		}

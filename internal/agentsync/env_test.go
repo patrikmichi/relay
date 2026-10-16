@@ -61,7 +61,7 @@ func TestEnvIsUserScopeOnly(t *testing.T) {
 func TestForceNeverDuplicatesAUserTOMLTable(t *testing.T) {
 	env := newEnv(t)
 	config := filepath.Join(env.Home, ".codex", "config.toml")
-	writeFile(t, config, "[mcp_servers.relay]\ncommand = \"mine\"\n\n[shell_environment_policy.set]\nFOO = \"bar\"\n")
+	writeFile(t, config, "[mcp_servers.zuano]\ncommand = \"mine\"\n\n[shell_environment_policy.set]\nFOO = \"bar\"\n")
 
 	opts := userOpts(Codex)
 	opts.Force = true
@@ -71,7 +71,7 @@ func TestForceNeverDuplicatesAUserTOMLTable(t *testing.T) {
 		t.Errorf("env status = %q, want conflict", got)
 	}
 	got := readFile(t, config)
-	for _, header := range []string{"[mcp_servers.relay]", "[shell_environment_policy.set]"} {
+	for _, header := range []string{"[mcp_servers.zuano]", "[shell_environment_policy.set]"} {
 		if strings.Count(got, header) > 1 {
 			t.Errorf("%s defined twice:\n%s", header, got)
 		}

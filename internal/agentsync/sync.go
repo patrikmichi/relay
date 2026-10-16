@@ -11,13 +11,13 @@ type Options struct {
 	Scopes []Scope
 	// Kinds limits the plan; empty means every file kind.
 	Kinds []Kind
-	// Force lets relay overwrite same-named entries it does not manage.
+	// Force lets zuano overwrite same-named entries it does not manage.
 	Force bool
 }
 
 func runBuilder[T any](b builder[T], env Env, scope Scope, items []T) ([]Op, string) {
 	if b == nil {
-		return nil, "not supported by relay"
+		return nil, "not supported by zuano"
 	}
 	return b(env, scope, items)
 }
@@ -99,7 +99,7 @@ var (
 	subagentAgents = map[AgentID]bool{Claude: true, Codex: true, Cursor: true, OpenCode: true, Gemini: true}
 )
 
-// Matrix reports what relay can write for every agent, kind and scope.
+// Matrix reports what zuano can write for every agent, kind and scope.
 func Matrix(env Env) []MatrixRow {
 	var rows []MatrixRow
 	for _, a := range Agents() {

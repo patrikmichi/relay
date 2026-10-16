@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "relay": {
+    "zuano": {
       "serverUrl": "https://gateway.example.com/api/mcp",
       "headers": {
         "Authorization": "Bearer ${env:ZUANO_API_KEY}"

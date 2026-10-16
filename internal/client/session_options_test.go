@@ -227,8 +227,8 @@ func TestResolve_CorruptBoundSessionPointsAtLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := client.Resolve(origin)
-	if err == nil || !strings.Contains(err.Error(), "relay login") {
-		t.Fatalf("got %v, want an error pointing at relay login", err)
+	if err == nil || !strings.Contains(err.Error(), "zuano login") {
+		t.Fatalf("got %v, want an error pointing at zuano login", err)
 	}
 }
 

@@ -409,7 +409,7 @@ func TestCommit_LedgerAndCompensationFailure(t *testing.T) {
 
 	ledgerErr := errors.New("ledger down")
 	err := tx.Commit(func() error { return ledgerErr })
-	if !errors.Is(err, ledgerErr) || !strings.Contains(err.Error(), "relay recover "+tx.ID()) {
+	if !errors.Is(err, ledgerErr) || !strings.Contains(err.Error(), "zuano recover "+tx.ID()) {
 		t.Fatalf("Commit = %v, want ledger error with recover hint", err)
 	}
 	j, _ := Load(tx.ID())

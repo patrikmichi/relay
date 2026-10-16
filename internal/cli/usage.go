@@ -29,7 +29,7 @@ type orgUsage struct {
 	} `json:"metrics"`
 }
 
-// UsageCmd returns `relay usage`.
+// UsageCmd returns `zuano usage`.
 func UsageCmd() *cobra.Command {
 	var f approvalFlags
 	var from, to string
@@ -39,7 +39,7 @@ func UsageCmd() *cobra.Command {
 		Long: `Prints each quota metric with what the organisation used in its window, the
 soft limit that raises a warning and the hard limit that blocks. A metric at
 its hard limit refuses further use with exit status 13 (or 31 when billing
-refuses it); 'relay billing usage' shows metered usage and cost.`,
+refuses it); 'zuano billing usage' shows metered usage and cost.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			q := url.Values{}

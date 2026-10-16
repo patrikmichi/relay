@@ -13,10 +13,10 @@ import (
 
 // profileLabel says which session a command ran as, and why.
 func profileLabel(c *client.Client) string {
-	// A ZUANO_API_KEY is not a login session: relay cannot say whether the
+	// A ZUANO_API_KEY is not a login session: zuano cannot say whether the
 	// gateway treats it as a person's or an agent's, so it claims nothing.
 	if c.Email() == "" {
-		return "API key from ZUANO_API_KEY (relay does not know whether the gateway holds its writes for approval)"
+		return "API key from ZUANO_API_KEY (zuano does not know whether the gateway holds its writes for approval)"
 	}
 	if c.Profile() == keychain.ProfileAgent {
 		return "agent (ZUANO_AGENT=1; the gateway holds the writes of a session issued as an agent's for approval)"
@@ -24,7 +24,7 @@ func profileLabel(c *client.Client) string {
 	return "human (your own session; set ZUANO_AGENT=1 for the agent profile)"
 }
 
-// WhoamiCmd returns the `relay whoami` cobra command.
+// WhoamiCmd returns the `zuano whoami` cobra command.
 func WhoamiCmd() *cobra.Command {
 	var gatewayURL string
 	var full bool

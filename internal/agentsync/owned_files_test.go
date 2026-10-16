@@ -18,12 +18,12 @@ func TestFileWithTheMarkerButNoLedgerEntryIsTheUsers(t *testing.T) {
 		t.Fatalf("status = %q, want conflict", got)
 	}
 	if readFile(t, path) != own {
-		t.Fatal("a file relay never wrote was overwritten because it contained the marker")
+		t.Fatal("a file zuano never wrote was overwritten because it contained the marker")
 	}
 
 	plan = syncAll(t, env, userBundle(Bundle{}), userOpts(Claude))
 	if readFile(t, path) != own {
-		t.Fatal("a file relay never wrote was removed because it contained the marker")
+		t.Fatal("a file zuano never wrote was removed because it contained the marker")
 	}
 	if got := statusOf(plan.Items, KindCommands, "review"); got == StatusRemoved {
 		t.Fatalf("status = %q", got)
@@ -76,6 +76,6 @@ func TestForceAdoptsAnUnledgeredFile(t *testing.T) {
 	}
 	syncAll(t, env, userBundle(Bundle{}), userOpts(Claude))
 	if _, err := os.Stat(path); err == nil {
-		t.Fatal("a file relay wrote under --force was not removed once unwanted")
+		t.Fatal("a file zuano wrote under --force was not removed once unwanted")
 	}
 }

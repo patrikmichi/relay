@@ -77,7 +77,7 @@ func (a *agentConfigAdapter) loadTOML(path string) (*Agent, error) {
 	}
 	sort.Strings(extra)
 	for _, k := range extra {
-		fmt.Fprintf(os.Stderr, "agentport: %s: key %q is not supported by relay's TOML agent codec\n", path, k)
+		fmt.Fprintf(os.Stderr, "agentport: %s: key %q is not supported by zuano's TOML agent codec\n", path, k)
 		ag.UnmappedSecurityFields = append(ag.UnmappedSecurityFields, UnmappedSecurityField{Key: k, Raw: "unmapped execution setting"})
 	}
 
@@ -329,7 +329,7 @@ func parseFlatTOML(raw []byte) (values map[string]interface{}, warnings []string
 			continue
 		}
 		if strings.HasPrefix(line, "[") {
-			warnings = append(warnings, fmt.Sprintf("skipping table %s (not supported by relay's flat-TOML agent codec)", line))
+			warnings = append(warnings, fmt.Sprintf("skipping table %s (not supported by zuano's flat-TOML agent codec)", line))
 			break // everything after a table header is that table's content
 		}
 
@@ -341,7 +341,7 @@ func parseFlatTOML(raw []byte) (values map[string]interface{}, warnings []string
 		rest := strings.TrimSpace(line[eq+1:])
 
 		if strings.Contains(key, ".") {
-			warnings = append(warnings, fmt.Sprintf("skipping dotted key %q (not supported by relay's flat-TOML agent codec)", key))
+			warnings = append(warnings, fmt.Sprintf("skipping dotted key %q (not supported by zuano's flat-TOML agent codec)", key))
 			continue
 		}
 

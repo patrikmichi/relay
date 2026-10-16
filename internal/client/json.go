@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// MaxJSONBytes caps a gateway JSON response relay will buffer, so a hostile or
+// MaxJSONBytes caps a gateway JSON response zuano will buffer, so a hostile or
 // broken gateway cannot exhaust memory.
 const MaxJSONBytes = 4 << 20
 

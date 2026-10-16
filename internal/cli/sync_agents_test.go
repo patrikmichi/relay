@@ -39,7 +39,7 @@ func saveGateway(t *testing.T, url string) {
 	}
 }
 
-// syncHome isolates HOME, installs fake agent homes and relay sync sources.
+// syncHome isolates HOME, installs fake agent homes and zuano sync sources.
 func syncHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()

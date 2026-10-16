@@ -11,7 +11,7 @@ import (
 // TestAcquire_MutualExclusion exercises the real flock-backed file lock (not
 // a mock) across goroutines that each open their own file descriptor on the
 // same lock path — the kernel arbitrates this identically to two separate
-// `relay` processes. A counter incremented without a lock and observed by a
+// `zuano` processes. A counter incremented without a lock and observed by a
 // concurrent holder would show more than one holder active at once.
 func TestAcquire_MutualExclusion(t *testing.T) {
 	ctx := context.Background()

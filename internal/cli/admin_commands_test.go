@@ -21,7 +21,7 @@ func TestSessions_ListMarksTheCurrentSessionAndPrintsJSONUnchanged(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ses_browser1", "dashboard", "ses_cli1 (this one)", "cli_personal", "relay/0.3.0 (linux/amd64) 203.0.113.0/24"} {
+	for _, want := range []string{"ses_browser1", "dashboard", "ses_cli1 (this one)", "cli_personal", "zuano/0.3.0 (linux/amd64) 203.0.113.0/24"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

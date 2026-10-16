@@ -56,7 +56,7 @@ func (f auditFilter) query(extra url.Values) (url.Values, error) {
 	return q, nil
 }
 
-// AuditCmd returns `relay audit`, the client for the gateway's tamper-evident
+// AuditCmd returns `zuano audit`, the client for the gateway's tamper-evident
 // audit log. Both commands need an organisation admin.
 func AuditCmd() *cobra.Command {
 	cmd := &cobra.Command{

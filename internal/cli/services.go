@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ServicesCmd returns the `relay services` cobra command.
+// ServicesCmd returns the `zuano services` cobra command.
 func ServicesCmd() *cobra.Command {
 	var (
 		gatewayURL string
@@ -20,8 +20,8 @@ func ServicesCmd() *cobra.Command {
 
 Each service that takes credentials is followed by its connection status:
 connected, not connected, or not connected (admin) when an administrator
-manages the shared credentials. Link your own account with 'relay connect
-<slug>'; browse everything on offer with 'relay connectors'.`,
+manages the shared credentials. Link your own account with 'zuano connect
+<slug>'; browse everything on offer with 'zuano connectors'.`,
 		RunE: func(cmd *cobra.Command, _args []string) error {
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // pollInterval mirrors internal/client/sessionlock's flock retry cadence —
@@ -90,7 +92,7 @@ func lockPath(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".config", "zuano", "transaction-locks")
+	dir := filepath.Join(home, ".config", brand.Name, "transaction-locks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

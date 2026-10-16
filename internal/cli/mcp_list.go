@@ -18,7 +18,7 @@ import (
 const mcpCatalogPath = "/api/catalog?type=mcp_server"
 
 // mcpListTimeout bounds a single catalog-list request end to end, mirroring
-// skill_search.go's searchTimeout — a hanging gateway must not hang `relay
+// skill_search.go's searchTimeout — a hanging gateway must not hang `zuano
 // mcp list` forever.
 var mcpListTimeout = 30 * time.Second
 
@@ -77,14 +77,14 @@ func McpListCmd() *cobra.Command {
 		Long: `List catalog resources of type mcp_server: id, slug, name, registration
 source (builtin/url/repo), and current published version.
 
-Read-only — this command never writes any provider config. Use 'relay mcp
+Read-only — this command never writes any provider config. Use 'zuano mcp
 install' to register a server in your coding agents.
 
 Requires a reachable, authenticated gateway; fails closed offline.
 
 Examples:
-  relay mcp list
-  relay mcp list --json`,
+  zuano mcp list
+  zuano mcp list --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runMcpList(cmd, gatewayURL, jsonOut)

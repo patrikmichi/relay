@@ -376,7 +376,7 @@ func TestSkillRequirementWarnings_NameLocalSkillsThatNeedConnectors(t *testing.T
 	})
 
 	warns := skillRequirementWarnings("", []agentsync.Scope{agentsync.ScopeUser})
-	if len(warns) != 1 || !strings.Contains(warns[0], `"timesheet"`) || !strings.Contains(warns[0], "clockify") || !strings.Contains(warns[0], "relay connect") {
+	if len(warns) != 1 || !strings.Contains(warns[0], `"timesheet"`) || !strings.Contains(warns[0], "clockify") || !strings.Contains(warns[0], "zuano connect") {
 		t.Fatalf("warnings = %q", warns)
 	}
 }

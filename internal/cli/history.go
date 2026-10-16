@@ -9,10 +9,10 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
-// HistoryCmd returns `relay history` — lists every recorded write
+// HistoryCmd returns `zuano history` — lists every recorded write
 // transaction (committed, restored, or still pending recovery) with its
-// journal id, so an operator has a stable, usable id to pass to `relay
-// recover <id>` or `relay history prune <id>` (these ids are the same
+// journal id, so an operator has a stable, usable id to pass to `zuano
+// recover <id>` or `zuano history prune <id>` (these ids are the same
 // journal ids txn.Begin generates and persists, not re-derived or
 // recomputed at display time).
 func HistoryCmd() *cobra.Command {
@@ -44,7 +44,7 @@ func runHistoryList(cmd *cobra.Command) error {
 	return tw.Flush()
 }
 
-// historyPruneCmd returns `relay history prune <id>` — permanently
+// historyPruneCmd returns `zuano history prune <id>` — permanently
 // deletes a COMMITTED or RESTORED journal's backup/staged bytes. It
 // refuses a still-pending (prepared/applying/recovery) journal outright;
 // see txn.Prune.
@@ -54,7 +54,7 @@ func historyPruneCmd() *cobra.Command {
 		Short: "Delete a finished transaction's backup data",
 		Long: `Permanently deletes the backup and staged bytes for one COMMITTED or
 RESTORED transaction. A transaction still pending recovery is never
-prunable — run 'relay recover <id>' first.`,
+prunable — run 'zuano recover <id>' first.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := txn.Prune(args[0]); err != nil {

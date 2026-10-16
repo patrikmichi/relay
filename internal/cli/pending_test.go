@@ -53,7 +53,7 @@ func TestCall_HeldCallPrintsTheApprovalAndExitsPending(t *testing.T) {
 			if err.Error() != "" {
 				t.Errorf("the held call is reported on stdout, not as an error: %q", err)
 			}
-			for _, want := range []string{"apr_1", "stripe create_refund", tc.risk, "relay approvals wait apr_1"} {
+			for _, want := range []string{"apr_1", "stripe create_refund", tc.risk, "zuano approvals wait apr_1"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q:\n%s", want, out)
 				}

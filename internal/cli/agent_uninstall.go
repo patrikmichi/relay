@@ -9,7 +9,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// AgentUninstallCmd returns the `relay agent uninstall <name>` cobra
+// AgentUninstallCmd returns the `zuano agent uninstall <name>` cobra
 // command — removes an agent's flat "<name>.md" file from a provider's
 // directory and drops any matching Kind: agent manifest ledger entries.
 // The Agent-IR analogue of SkillUninstallCmd.

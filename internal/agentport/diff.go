@@ -8,7 +8,7 @@ import (
 
 // FieldDiff compares two Skills field-by-field (the common fields plus the
 // typed-optional provider-extension fields) and returns a human-readable
-// line for every field that differs. Used by `relay skill diff` to show
+// line for every field that differs. Used by `zuano skill diff` to show
 // what a migration would change or drop, alongside the LossItem report
 // (which only reports fields the TARGET FORMAT can't represent at all —
 // FieldDiff also catches anything else that changed in a round trip).

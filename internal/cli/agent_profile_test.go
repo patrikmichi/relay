@@ -65,7 +65,7 @@ func TestWhoami_AgentModeWithoutAgentSessionDoesNotUseTheHumanOne(t *testing.T) 
 	t.Setenv("ZUANO_AGENT", "1")
 
 	_, err := runCommand(t, WhoamiCmd(), "--gateway-url", srv.URL)
-	if err == nil || !strings.Contains(err.Error(), "relay login --agent") {
+	if err == nil || !strings.Contains(err.Error(), "zuano login --agent") {
 		t.Fatalf("err = %v, want the agent login hint", err)
 	}
 }
@@ -94,6 +94,6 @@ func TestLogout_AgentProfileRemovesOnlyTheAgentSession(t *testing.T) {
 
 func TestLogin_OffersTheAgentFlag(t *testing.T) {
 	if LoginCmd().Flags().Lookup("agent") == nil {
-		t.Fatal("relay login has no --agent flag")
+		t.Fatal("zuano login has no --agent flag")
 	}
 }

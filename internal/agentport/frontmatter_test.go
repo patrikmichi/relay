@@ -8,7 +8,7 @@ import (
 
 // TestLoadResources_SkipsSymlinks is the regression test for the
 // SUPPLY-CHAIN issue: a resource file that's actually a symlink (e.g.
-// scripts/x -> ~/.ssh/id_rsa in a malicious `relay skill install <path>`
+// scripts/x -> ~/.ssh/id_rsa in a malicious `zuano skill install <path>`
 // source package) must never have its target's content read into the
 // Resources map, and the skip must be reported rather than silently
 // dropped.

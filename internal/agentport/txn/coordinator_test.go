@@ -267,8 +267,8 @@ func TestDiscard_MidApplyFailureRestoresAppliedFile(t *testing.T) {
 
 // TestRecover_AfterProcessDeathMidApply is Discard's scenario but without
 // ever calling Discard — the process is simulated dying between the
-// partial Apply and any cleanup, exactly like a killed `relay` process.
-// A fresh Recover call (as `relay recover` would issue) must still
+// partial Apply and any cleanup, exactly like a killed `zuano` process.
+// A fresh Recover call (as `zuano recover` would issue) must still
 // compensate correctly.
 func TestRecover_AfterProcessDeathMidApply(t *testing.T) {
 	isolate(t)

@@ -21,7 +21,7 @@
       "idle_expires_at": "2026-10-16T19:59:00Z",
       "absolute_expires_at": "2026-10-22T09:00:00Z",
       "ip_prefix": "203.0.113.0/24",
-      "user_agent": "relay/0.3.0 (linux/amd64)",
+      "user_agent": "zuano/0.3.0 (linux/amd64)",
       "current": true
     }
   ]

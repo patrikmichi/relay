@@ -53,7 +53,7 @@ func TestRequestsCarryVersionHeaders(t *testing.T) {
 	var ua, rcv string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ua = r.Header.Get("User-Agent")
-		rcv = r.Header.Get("Relay-Client-Version")
+		rcv = r.Header.Get("Zuano-Client-Version")
 	}))
 	defer srv.Close()
 
@@ -62,11 +62,11 @@ func TestRequestsCarryVersionHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if want := "relay/v9.8.7 (" + runtime.GOOS + "/" + runtime.GOARCH + ")"; ua != want {
+	if want := "zuano/v9.8.7 (" + runtime.GOOS + "/" + runtime.GOARCH + ")"; ua != want {
 		t.Errorf("User-Agent = %q, want %q", ua, want)
 	}
 	if rcv != "v9.8.7" {
-		t.Errorf("Relay-Client-Version = %q, want v9.8.7", rcv)
+		t.Errorf("Zuano-Client-Version = %q, want v9.8.7", rcv)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/token", nil)
@@ -79,7 +79,7 @@ func TestRequestsCarryVersionHeaders(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 	if rcv != "v9.8.7" {
-		t.Errorf("token endpoint Relay-Client-Version = %q, want v9.8.7", rcv)
+		t.Errorf("token endpoint Zuano-Client-Version = %q, want v9.8.7", rcv)
 	}
 }
 

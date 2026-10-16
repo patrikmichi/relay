@@ -19,7 +19,7 @@ patterns=(
   '\([A-Z][0-9]{1,2}\)'
   '\b[CMNLTAms][0-9]{1,2} (regression|fix)\b'
   '\b(deep|Go|code) review\b'
-  'relay-(standalone|cli-completion)'
+  'zuano-(standalone|cli-completion)'
   'gateway/lib/'
   'app/api/'
   'inert until'

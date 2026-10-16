@@ -17,25 +17,25 @@ func userOpts(agents ...AgentID) Options {
 func TestUserOwnedMCPEntryIsNeverClobbered(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".claude.json")
-	own := "{\n  \"mcpServers\": {\n    \"relay\": {\n      \"command\": \"my-own-relay\"\n    }\n  }\n}\n"
+	own := "{\n  \"mcpServers\": {\n    \"zuano\": {\n      \"command\": \"my-own-zuano\"\n    }\n  }\n}\n"
 	writeFile(t, path, own)
 
 	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(Claude))
-	if got := statusOf(plan.Items, KindMCP, "relay"); got != StatusConflict {
-		t.Fatalf("relay status = %q, want conflict", got)
+	if got := statusOf(plan.Items, KindMCP, "zuano"); got != StatusConflict {
+		t.Fatalf("zuano status = %q, want conflict", got)
 	}
 	if got := statusOf(plan.Items, KindMCP, "docs"); got != StatusAdded {
 		t.Fatalf("docs status = %q, want added", got)
 	}
-	contains(t, readFile(t, path), "my-own-relay")
+	contains(t, readFile(t, path), "my-own-zuano")
 
 	forced := userOpts(Claude)
 	forced.Force = true
 	plan = syncAll(t, env, userBundle(fixtureBundle()), forced)
-	if got := statusOf(plan.Items, KindMCP, "relay"); got != StatusUpdated {
-		t.Fatalf("forced relay status = %q, want updated", got)
+	if got := statusOf(plan.Items, KindMCP, "zuano"); got != StatusUpdated {
+		t.Fatalf("forced zuano status = %q, want updated", got)
 	}
-	if strings.Contains(readFile(t, path), "my-own-relay") {
+	if strings.Contains(readFile(t, path), "my-own-zuano") {
 		t.Fatal("force did not replace the entry")
 	}
 }
@@ -63,8 +63,8 @@ func TestChangedSourceUpdatesManagedEntry(t *testing.T) {
 	b := fixtureBundle()
 	b.MCP[0].URL = "https://other.example.com/api/mcp"
 	plan := syncAll(t, env, userBundle(b), userOpts(Claude))
-	if got := statusOf(plan.Items, KindMCP, "relay"); got != StatusUpdated {
-		t.Fatalf("relay status = %q, want updated", got)
+	if got := statusOf(plan.Items, KindMCP, "zuano"); got != StatusUpdated {
+		t.Fatalf("zuano status = %q, want updated", got)
 	}
 	contains(t, readFile(t, path), "other.example.com")
 }
@@ -89,8 +89,8 @@ func TestStaleManagedEntriesAreRemovedAndUserEntriesKept(t *testing.T) {
 	}
 	got := snapshot(t, env.Home)
 	contains(t, got[".claude.json"], `"mine"`)
-	if strings.Contains(got[".claude.json"], "relay") {
-		t.Errorf("relay entry left behind:\n%s", got[".claude.json"])
+	if strings.Contains(got[".claude.json"], "zuano") {
+		t.Errorf("zuano entry left behind:\n%s", got[".claude.json"])
 	}
 	if got[".claude/CLAUDE.md"] != "# Mine\n" {
 		t.Errorf("CLAUDE.md = %q", got[".claude/CLAUDE.md"])
@@ -221,7 +221,7 @@ func TestOpenCodePrefersTheJSONCFileAndKeepsItsComments(t *testing.T) {
 		t.Error("a second opencode.json was created next to the user's opencode.jsonc")
 	}
 
-	// Removing relay's entries leaves the user's comments and settings.
+	// Removing zuano's entries leaves the user's comments and settings.
 	syncAll(t, env, userBundle(Bundle{}), userOpts(OpenCode))
 	got = readFile(t, filepath.Join(dir, "opencode.jsonc"))
 	if !strings.Contains(got, "// my theme") || strings.Contains(got, `"docs"`) {
@@ -245,14 +245,14 @@ func TestBrokenJSONIsSkippedWithItsParseError(t *testing.T) {
 func TestTOMLTableDefinedByUserIsNotDuplicated(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".codex", "config.toml")
-	own := "[mcp_servers.relay]\ncommand = \"mine\"\n"
+	own := "[mcp_servers.zuano]\ncommand = \"mine\"\n"
 	writeFile(t, path, own)
 	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(Codex))
-	if got := statusOf(plan.Items, KindMCP, "mcp_servers.relay"); got != StatusConflict {
-		t.Fatalf("relay table status = %q, want conflict", got)
+	if got := statusOf(plan.Items, KindMCP, "mcp_servers.zuano"); got != StatusConflict {
+		t.Fatalf("zuano table status = %q, want conflict", got)
 	}
 	got := readFile(t, path)
-	if strings.Count(got, "[mcp_servers.relay]") != 1 || !strings.Contains(got, "[mcp_servers.docs]") {
+	if strings.Count(got, "[mcp_servers.zuano]") != 1 || !strings.Contains(got, "[mcp_servers.docs]") {
 		t.Fatalf("unexpected config:\n%s", got)
 	}
 }
@@ -425,9 +425,9 @@ func TestUnmanagedFileWithSameNameIsKept(t *testing.T) {
 func TestEquivalentUserHookIsNotDuplicated(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".claude", "settings.json")
-	writeFile(t, path, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/opt/relay/guard.sh","timeout":99}]}]}}`)
+	writeFile(t, path, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/opt/zuano/guard.sh","timeout":99}]}]}}`)
 	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(Claude))
-	if got := statusOf(plan.Items, KindHooks, "pre-tool-use: /opt/relay/guard.sh"); got != StatusSkipped {
+	if got := statusOf(plan.Items, KindHooks, "pre-tool-use: /opt/zuano/guard.sh"); got != StatusSkipped {
 		t.Fatalf("status = %q, want skipped", got)
 	}
 	if strings.Count(readFile(t, path), "guard.sh") != 1 {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/config"
 	"github.com/patrikmichi/zuano/internal/dpop"
@@ -317,7 +318,7 @@ func pollDeviceTokenBound(ctx context.Context, gatewayURL, deviceCode string, in
 				return nil, hint
 			}
 			if dtr.Error == "expired_token" {
-				return nil, fmt.Errorf("device code expired — run `relay login --device` again")
+				return nil, fmt.Errorf("device code expired — run `%s` again", brand.Cmd("login --device"))
 			}
 			return nil, fmt.Errorf("device token error: %s — %s", dtr.Error, dtr.ErrorDescription)
 

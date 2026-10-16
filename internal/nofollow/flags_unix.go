@@ -1,6 +1,6 @@
 //go:build unix
 
-// Package nofollow holds the open(2) flags relay uses to read a file without
+// Package nofollow holds the open(2) flags zuano uses to read a file without
 // following a final symlink or blocking on a FIFO.
 package nofollow
 

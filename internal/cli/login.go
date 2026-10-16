@@ -11,7 +11,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// LoginCmd returns the `relay login` cobra command.
+// LoginCmd returns the `zuano login` cobra command.
 func LoginCmd() *cobra.Command {
 	var gatewayURL string
 	var deviceFlow, agent bool
@@ -28,8 +28,8 @@ is not available.
 --agent (or ZUANO_AGENT=1) signs in the agent profile: the gateway marks the
 session as an autonomous agent's, so its writes wait for approval. It is
 stored apart from your own session; set ZUANO_AGENT=1 for the process that an
-agent drives and relay uses it instead of your own. Approvals are decided
-with your own, unmarked session (relay approvals approve).`,
+agent drives and zuano uses it instead of your own. Approvals are decided
+with your own, unmarked session (zuano approvals approve).`,
 		RunE: func(cmd *cobra.Command, _args []string) error {
 			// login is a gateway command like any other catalog verb — it
 			// cannot succeed offline (there is nothing to authenticate
@@ -43,7 +43,7 @@ with your own, unmarked session (relay approvals approve).`,
 			}
 
 			// cmd.Context() carries the root command's signal-aware
-			// cancellation (see cmd/relay/main.go) — Login/DeviceLogin each
+			// cancellation (see cmd/zuano/main.go) — Login/DeviceLogin each
 			// narrow it further with their own operation-specific deadline.
 			ctx := cmd.Context()
 

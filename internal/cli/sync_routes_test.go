@@ -13,7 +13,7 @@ func mustRun(t *testing.T, args ...string) string {
 	t.Helper()
 	out, err := runCommand(t, SyncCmd(), args...)
 	if err != nil {
-		t.Fatalf("relay sync %s: %v\n%s", strings.Join(args, " "), err, out)
+		t.Fatalf("zuano sync %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return out
 }
@@ -66,7 +66,7 @@ func TestSyncRoutes_PlainSyncFollowsTheRoutesAndFlagsOverrideThem(t *testing.T) 
 	mustRun(t, "routes", "add", "--kind", "rules", "--to", "claude")
 
 	out := mustRun(t, "--dry-run")
-	if !strings.Contains(out, "Routes:") || !strings.Contains(out, "relay -> claude (rules) [default]") {
+	if !strings.Contains(out, "Routes:") || !strings.Contains(out, "zuano -> claude (rules) [default]") {
 		t.Errorf("dry run lacks the per-route plan:\n%s", out)
 	}
 	if !strings.Contains(out, "no route or default covers") {
@@ -106,12 +106,12 @@ func TestSyncRoutes_SkillRouteCopiesFromTheNamedProvider(t *testing.T) {
 func TestSyncRoutes_CopySettingsBetweenAgents(t *testing.T) {
 	home := syncHome(t)
 	saveGateway(t, "https://gateway.example.com")
-	// Claude's own content; the relay-managed blocks relay itself wrote must not come back.
+	// Claude's own content; the zuano-managed blocks zuano itself wrote must not come back.
 	writeTestFile(t, filepath.Join(home, ".claude", "CLAUDE.md"), "Always answer in French.\n")
 	writeTestFile(t, filepath.Join(home, ".claude", "commands", "ship.md"), "---\ndescription: Ship\n---\nShip $ARGUMENTS\n")
 	writeTestFile(t, filepath.Join(home, ".claude", "settings.json"), `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/mine/done.sh"}]}]}}`)
 	writeTestFile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"files":{"type":"stdio","command":"npx","args":["-y","files-mcp"],"env":{"MODE":"fast"}}}}`)
-	mustRun(t, "--kind", "rules,hooks", "--to", "claude", "--yes") // relay-written entries now sit beside the user's
+	mustRun(t, "--kind", "rules,hooks", "--to", "claude", "--yes") // zuano-written entries now sit beside the user's
 
 	mustRun(t, "routes", "add", "--from", "claude", "--to", "codex,gemini", "--kind", "rules,commands,hooks,mcp")
 
@@ -137,7 +137,7 @@ func TestSyncRoutes_CopySettingsBetweenAgents(t *testing.T) {
 	if !strings.Contains(hooks, "/mine/done.sh") || strings.Contains(hooks, "/opt/notify.sh") {
 		t.Errorf("codex hooks should hold claude's own hook only:\n%s", hooks)
 	}
-	if got := readTestFile(t, filepath.Join(home, ".codex", "config.toml")); !strings.Contains(got, "[mcp_servers.files]") || strings.Contains(got, "mcp_servers.relay") {
+	if got := readTestFile(t, filepath.Join(home, ".codex", "config.toml")); !strings.Contains(got, "[mcp_servers.files]") || strings.Contains(got, "mcp_servers.zuano") {
 		t.Errorf("codex MCP should carry claude's own server only:\n%s", got)
 	}
 
@@ -166,7 +166,7 @@ func TestSyncRoutes_TwoRoutesWritingOneFileAreRefused(t *testing.T) {
 	mustRun(t, "--dry-run")
 
 	if err := config.UpdateSync(func(s *config.SyncSettings) error {
-		s.Routes = append(s.Routes, config.SyncRoute{From: "relay", To: []string{"claude"}, Kinds: []string{"env"}})
+		s.Routes = append(s.Routes, config.SyncRoute{From: "zuano", To: []string{"claude"}, Kinds: []string{"env"}})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -180,8 +180,8 @@ func TestDoctor_ReportsRoutesToAgentsThatAreNotInstalled(t *testing.T) {
 	syncHome(t)
 	if err := config.UpdateSync(func(s *config.SyncSettings) error {
 		s.Routes = []config.SyncRoute{
-			{From: "relay", To: []string{"claude"}, Kinds: []string{"rules"}},
-			{From: "relay", To: []string{"cursor"}, Kinds: []string{"hooks"}},
+			{From: "zuano", To: []string{"claude"}, Kinds: []string{"rules"}},
+			{From: "zuano", To: []string{"cursor"}, Kinds: []string{"hooks"}},
 		}
 		return nil
 	}); err != nil {

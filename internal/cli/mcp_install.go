@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/zuano/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 type mcpInstallFlags struct {
@@ -35,19 +36,19 @@ func McpInstallCmd() *cobra.Command {
 OpenCode, Gemini CLI, Windsurf, Cline and GitHub Copilot, without touching
 servers you configured yourself.
 
-With just a name, <name> is a service in the gateway catalog (see 'relay
+With just a name, <name> is a service in the gateway catalog (see 'zuano
 connectors'). Catalog services are reached through the gateway's own MCP
 server, so this enables that server in every agent; authorize the service
-itself with 'relay connect <name>'.
+itself with 'zuano connect <name>'.
 
 With --url or --command the server is registered directly:
 
-  relay mcp install docs --url https://docs.example.com/mcp --bearer-env DOCS_TOKEN
-  relay mcp install files --command npx --arg -y --arg @acme/files-mcp --env ROOT='${HOME}'
+  zuano mcp install docs --url https://docs.example.com/mcp --bearer-env DOCS_TOKEN
+  zuano mcp install files --command npx --arg -y --arg @acme/files-mcp --env ROOT='${HOME}'
 
 Credentials are never written: --bearer-env and ${VAR} references name an
 environment variable the agent reads itself. Write a reference as ${VAR};
-relay translates it to the agent's own syntax (Claude Code and Gemini CLI
+zuano translates it to the agent's own syntax (Claude Code and Gemini CLI
 ${VAR}, Cursor and Windsurf ${env:VAR}, OpenCode {env:VAR}). Codex, Cline and
 GitHub Copilot do not expand references in MCP settings, so a server that uses
 one is skipped for them and reported. Without --to, every detected agent is
@@ -72,14 +73,14 @@ func McpRemoveCmd() *cobra.Command {
 	var f mcpInstallFlags
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove an MCP server relay registered in your coding agents' config",
-		Long: `Remove a server added with 'relay mcp install' from every agent config relay
-wrote it to, and from relay's own list so a later 'relay sync' does not add it
+		Short: "Remove an MCP server zuano registered in your coding agents' config",
+		Long: `Remove a server added with 'zuano mcp install' from every agent config zuano
+wrote it to, and from zuano's own list so a later 'zuano sync' does not add it
 back. Entries you edited or created yourself are left in place; --force
 removes them too. Use --scope project for a server installed at the project
 scope, and --dry-run to see the diff first.
 
-'relay mcp remove relay' stops syncing the gateway's own MCP server (user
+'zuano mcp remove zuano' stops syncing the gateway's own MCP server (user
 scope).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -96,7 +97,7 @@ func addMcpSyncFlags(cmd *cobra.Command, f *mcpInstallFlags) {
 	fl.StringVar(&f.scope, "scope", "user", "user or project")
 	fl.BoolVar(&f.dryRun, "dry-run", false, "Show the diff and write nothing")
 	fl.BoolVar(&f.jsonOut, "json", false, "Print the report as JSON")
-	fl.BoolVar(&f.force, "force", false, "Replace same-named entries relay does not manage")
+	fl.BoolVar(&f.force, "force", false, "Replace same-named entries zuano does not manage")
 	fl.BoolVar(&f.yes, "yes", false, "Write without asking when a local command is added (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	fl.StringVar(&f.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
 }
@@ -128,7 +129,7 @@ func parseEnvPairs(pairs []string) (map[string]string, error) {
 
 func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 	if !f.dryRun {
-		if err := refuseInAgentMode("relay mcp install"); err != nil {
+		if err := refuseInAgentMode(brand.Cmd("mcp install")); err != nil {
 			return err
 		}
 	}
@@ -159,7 +160,7 @@ func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 			return err
 		}
 		src.GatewayDisabled = false
-		fmt.Fprintf(out, "%s is served by the gateway MCP server %q; authorize it with `relay connect %s` if it needs credentials.\n", name, gatewayServerName, name)
+		fmt.Fprintf(out, "%s is served by the gateway MCP server %q; authorize it with `zuano connect %s` if it needs credentials.\n", name, gatewayServerName, name)
 	case f.url != "" && f.command != "":
 		return errors.New("use either --url or --command, not both")
 	default:
@@ -196,7 +197,7 @@ func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 
 func runMcpRemove(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 	if !f.dryRun {
-		if err := refuseInAgentMode("relay mcp remove"); err != nil {
+		if err := refuseInAgentMode(brand.Cmd("mcp remove")); err != nil {
 			return err
 		}
 	}
@@ -222,7 +223,7 @@ func runMcpRemove(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 			}
 		}
 		if len(kept) == len(src.Servers) {
-			return fmt.Errorf("no MCP server named %q was installed with relay at the %s scope", name, scope)
+			return fmt.Errorf("no MCP server named %q was installed with zuano at the %s scope", name, scope)
 		}
 		src.Servers = kept
 	}
@@ -246,7 +247,7 @@ func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope,
 	if f.dryRun {
 		return nil
 	}
-	if err := confirmAgentWrite(cmd, run, "relay mcp install", f.yes); err != nil {
+	if err := confirmAgentWrite(cmd, run, brand.Cmd("mcp install"), f.yes); err != nil {
 		return err
 	}
 	if err := run.apply(cmd.Context()); err != nil {
@@ -270,7 +271,7 @@ func requireCatalogService(cmd *cobra.Command, name, gatewayURL string) error {
 		return err
 	}
 	if info == nil {
-		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
+		return errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 	}
 	for _, s := range info.Services {
 		if s.ID == name {
@@ -280,5 +281,5 @@ func requireCatalogService(cmd *cobra.Command, name, gatewayURL string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("no service %q in the gateway catalog; see `relay connectors search %s`", name, name)
+	return fmt.Errorf("no service %q in the gateway catalog; see `zuano connectors search %s`", name, name)
 }

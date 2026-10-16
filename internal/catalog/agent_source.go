@@ -111,7 +111,7 @@ func FetchAgent(doer Doer, id, version, channel string, opts ...Option) (*agentp
 		return nil, fmt.Errorf("catalog: agent version missing or mismatched")
 	}
 
-	tmpDir, err := os.MkdirTemp("", "relay-catalog-agent-*")
+	tmpDir, err := os.MkdirTemp("", "zuano-catalog-agent-*")
 	if err != nil {
 		return nil, fmt.Errorf("catalog: create temp extraction dir: %w", err)
 	}

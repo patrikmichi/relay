@@ -73,7 +73,7 @@ type billingUsage struct {
 	} `json:"meters"`
 }
 
-// BillingCmd returns `relay billing`.
+// BillingCmd returns `zuano billing`.
 func BillingCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "billing",
@@ -83,7 +83,7 @@ the billing page in the browser. Changing the plan, paying and the customer
 portal are done there: the CLI holds no billing credential.
 
 A request the plan does not allow ends with an exit status of 30 to 33 and the
-link to upgrade, on every relay command:
+link to upgrade, on every zuano command:
   30  a feature or limit the plan does not include
   31  a metered allowance or the spend cap is used up
   32  billing could not be read; try again

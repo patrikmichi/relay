@@ -25,7 +25,7 @@ const (
 	transferRequest
 )
 
-// TimeoutError reports that a gateway request hit relay's client-side limit.
+// TimeoutError reports that a gateway request hit zuano's client-side limit.
 type TimeoutError struct {
 	Limit  time.Duration
 	Source string
@@ -116,7 +116,7 @@ type ExitError struct {
 func (e *ExitError) Error() string { return e.Msg }
 
 // ExitCode maps a command error to the process exit status: the code of an
-// ExitError, 4 when a gateway request hit relay's time limit, 1 for any other
+// ExitError, 4 when a gateway request hit zuano's time limit, 1 for any other
 // failure.
 func ExitCode(err error) int {
 	var exit *ExitError

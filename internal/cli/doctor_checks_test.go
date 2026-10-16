@@ -93,7 +93,7 @@ func TestDoctor_SessionChecks(t *testing.T) {
 		setupDoctor(t)
 		t.Setenv("ZUANO_URL", whoami().URL)
 		output, err := runDoctorJSON(t)
-		if c := doctorCheckNamed(t, output, "gateway"); err == nil || c.OK || !strings.Contains(c.Detail, "run relay login") {
+		if c := doctorCheckNamed(t, output, "gateway"); err == nil || c.OK || !strings.Contains(c.Detail, "run zuano login") {
 			t.Fatalf("%v %+v", err, c)
 		}
 	})

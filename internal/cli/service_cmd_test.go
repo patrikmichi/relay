@@ -294,7 +294,7 @@ func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testin
 	t.Setenv("ZUANO_EMAIL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 
-	root := &cobra.Command{Use: "relay"}
+	root := &cobra.Command{Use: "zuano"}
 	if err := BuildServiceCommands(root, "http://example.invalid"); err != nil {
 		t.Fatalf("BuildServiceCommands: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestBuildServiceCommandsRejectsCollisionWithStaticCommand(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	root := &cobra.Command{Use: "relay"}
+	root := &cobra.Command{Use: "zuano"}
 	root.AddCommand(&cobra.Command{Use: "login"}) // pre-registered static command
 
 	err := BuildServiceCommands(root, srv.URL)
@@ -359,7 +359,7 @@ func TestBuildServiceCommandsRejectsReservedName(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	root := &cobra.Command{Use: "relay"} // "help" not yet materialized in root.Commands()
+	root := &cobra.Command{Use: "zuano"} // "help" not yet materialized in root.Commands()
 	err := BuildServiceCommands(root, srv.URL)
 	if err == nil {
 		t.Fatal("expected a collision error when a discovered service is named \"help\"")
@@ -369,7 +369,7 @@ func TestBuildServiceCommandsRejectsReservedName(t *testing.T) {
 // ---- buildToolCmd offline fail-closed (Fix 1) ----
 
 // TestBuildToolCmd_OfflineFlag_FailsClosedWithoutNetworkCall confirms a
-// dynamic tool leaf command built by BuildServiceCommands (e.g. `relay
+// dynamic tool leaf command built by BuildServiceCommands (e.g. `zuano
 // clockify list_time_entries`) refuses to dial the gateway when --offline
 // is set — even though it already has a concrete, non-empty gatewayURL
 // closed over from discovery time. Points gatewayURL at a server that would

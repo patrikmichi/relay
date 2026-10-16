@@ -207,7 +207,7 @@ func TestAgentInstall_NoGatewayConfigured_FailsClosed(t *testing.T) {
 }
 
 // TestAgentInstall_OfflineFlag_FailsClosed mirrors
-// TestSkillInstall_CatalogID_OfflineFlag_FailsClosed for `relay agent
+// TestSkillInstall_CatalogID_OfflineFlag_FailsClosed for `zuano agent
 // install`.
 func TestAgentInstall_OfflineFlag_FailsClosed(t *testing.T) {
 	home := t.TempDir()

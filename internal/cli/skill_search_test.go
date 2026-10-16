@@ -95,8 +95,8 @@ func TestSkillSearch_AggregateDisabledDegradesWithGuidance(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an error when the aggregate MCP endpoint is disabled")
 	}
-	if !strings.Contains(err.Error(), "relay skill install") {
-		t.Errorf("expected guidance pointing at `relay skill install`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano skill install") {
+		t.Errorf("expected guidance pointing at `zuano skill install`, got: %v", err)
 	}
 }
 
@@ -180,7 +180,7 @@ func TestSearchSkills_EmptyContentReturnsNilNoError(t *testing.T) {
 }
 
 // TestSearchSkills_HangingServerBoundedByTimeout: a
-// gateway that never responds must not hang `relay skill search` forever —
+// gateway that never responds must not hang `zuano skill search` forever —
 // searchTimeout is shrunk for this test so it runs fast.
 func TestSearchSkills_HangingServerBoundedByTimeout(t *testing.T) {
 	orig := searchTimeout

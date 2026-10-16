@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/patrikmichi/zuano/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // ArtifactKind discriminates which canonical IR a ManifestEntry records —
@@ -28,7 +29,7 @@ const (
 
 // ManifestEntry records one migrate/install operation for later
 // uninstall/rollback. ID is assigned automatically by RecordEntry if left
-// empty — it's how `relay skill rollback <id>` (and RemoveEntry/FindEntry)
+// empty — it's how `zuano skill rollback <id>` (and RemoveEntry/FindEntry)
 // address a specific entry.
 type ManifestEntry struct {
 	ID   string `json:"id"`
@@ -53,7 +54,7 @@ type ManifestEntry struct {
 	// verifyProjectRollbackTarget in preflight.go.
 	ProjectRoot string `json:"projectRoot,omitempty"`
 	// TransactionID links this entry back to the txn.Journal that produced
-	// it — `relay history`/`relay recover` evidence, and the backup this
+	// it — `zuano history`/`zuano recover` evidence, and the backup this
 	// entry's bytes were staged from before being written (empty for
 	// entries recorded before the transaction engine existed).
 	TransactionID string `json:"transactionId,omitempty"`
@@ -64,16 +65,16 @@ type ManifestEntry struct {
 }
 
 // manifestSchemaVersion is bumped only when the on-disk Manifest shape
-// changes incompatibly. A manifest written by a newer relay build must
+// changes incompatibly. A manifest written by a newer zuano build must
 // never be silently misread (and then rewritten, corrupting it) by an
 // older one — LoadManifest refuses anything newer than this. Absent
 // (0) on disk means "schema v1, predates this field" — the same
 // zero-value-is-legacy convention Kind already uses.
 const manifestSchemaVersion = 1
 
-// ErrFutureManifestSchema means the manifest was written by a newer relay
+// ErrFutureManifestSchema means the manifest was written by a newer zuano
 // version than this build understands.
-var ErrFutureManifestSchema = errors.New("manifest uses a newer schema than this relay build supports — upgrade relay before running any mutating command")
+var ErrFutureManifestSchema = errors.New("manifest uses a newer schema than this " + brand.Name + " build supports — upgrade " + brand.Name + " before running any mutating command")
 
 // Manifest is the on-disk ledger shape: a flat, append-only list of
 // entries, plus its own schema version for the downgrade guard above.
@@ -101,7 +102,7 @@ func manifestPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	dir := filepath.Join(home, ".config", "zuano")
+	dir := filepath.Join(home, ".config", brand.Name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create config dir %s: %w", dir, err)
 	}
@@ -206,7 +207,7 @@ const (
 // its lock file, so without a staleness check a single crash would wedge
 // every future manifest write forever) and steal it. This is intentionally
 // NOT flock/unix-specific — a lock *file*, not an OS-level advisory lock —
-// so it needs no build tags and works identically on every platform relay
+// so it needs no build tags and works identically on every platform zuano
 // ships to.
 func withManifestLock(fn func() error) error {
 	lockPath, err := manifestLockPath()
@@ -263,7 +264,7 @@ func RecordEntry(entry ManifestEntry) error {
 }
 
 // Manifest updates a transaction owes are recorded in its journal, so a crash
-// between the files and the manifest is finished forward by `relay recover`.
+// between the files and the manifest is finished forward by `zuano recover`.
 // Replaying one must change nothing the second time.
 const (
 	recordFinalizer = "agentport-record"
@@ -341,7 +342,7 @@ func LastEntry(m Manifest) (ManifestEntry, bool) {
 
 // LastEntryOfKind returns the most recently recorded entry whose Kind
 // matches kind (scanning from the end), or ok=false if none match. Used by
-// `relay agent rollback --last` so it rolls back the most recent AGENT
+// `zuano agent rollback --last` so it rolls back the most recent AGENT
 // entry specifically, never a skill entry that happens to sort later in
 // the single shared ledger (one manifest file holds both kinds).
 func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
@@ -355,7 +356,7 @@ func LastEntryOfKind(m Manifest, kind ArtifactKind) (ManifestEntry, bool) {
 
 // LastEntryFor returns the most recent entry matching name+provider+scope+
 // kind (scanning from the end), or ok=false if none match. Used by
-// `relay skill list --provenance` to join manifest provenance onto
+// `zuano skill list --provenance` to join manifest provenance onto
 // discovered skills. Kind-aware: a skill entry and an agent
 // entry can legitimately share name+provider+scope (e.g. a "reviewer"
 // skill and a "reviewer" agent both targeting claude/user) without one

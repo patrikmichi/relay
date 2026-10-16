@@ -1,6 +1,6 @@
 package cli
 
-// White-box tests for the `relay publish status` / `relay publish --watch`
+// White-box tests for the `zuano publish status` / `zuano publish --watch`
 // polling logic added in publish.go. All tests use httptest.Server — no real
 // gateway is ever contacted.
 

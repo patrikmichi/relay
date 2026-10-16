@@ -10,7 +10,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/config"
 )
 
-// ConfigCmd returns the `relay config` cobra command group.
+// ConfigCmd returns the `zuano config` cobra command group.
 // Sub-commands: set-gateway, get-gateway, show.
 func ConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -27,7 +27,7 @@ func ConfigCmd() *cobra.Command {
 	return cmd
 }
 
-// configSetGatewayCmd returns `relay config set-gateway <url>`.
+// configSetGatewayCmd returns `zuano config set-gateway <url>`.
 func configSetGatewayCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set-gateway <url>",
@@ -35,7 +35,7 @@ func configSetGatewayCmd() *cobra.Command {
 		Long: `Save the gateway URL to ~/.config/zuano/config.json.
 
 Example:
-  relay config set-gateway https://gateway.example.com`,
+  zuano config set-gateway https://gateway.example.com`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url, err := config.NormalizeGatewayURL(args[0])
@@ -51,7 +51,7 @@ Example:
 	}
 }
 
-// configGetGatewayCmd returns `relay config get-gateway`.
+// configGetGatewayCmd returns `zuano config get-gateway`.
 func configGetGatewayCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get-gateway",
@@ -67,7 +67,7 @@ func configGetGatewayCmd() *cobra.Command {
 	}
 }
 
-// configShowCmd returns `relay config show`.
+// configShowCmd returns `zuano config show`.
 func configShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
@@ -83,7 +83,7 @@ func configShowCmd() *cobra.Command {
 			// Resolve the effective identity for display (ZUANO_EMAIL, when
 			// set, overrides the persisted login email — see
 			// config.ResolveEmail). Never errors on "not logged in" here —
-			// `relay config show` should always succeed; EffectiveEmail is
+			// `zuano config show` should always succeed; EffectiveEmail is
 			// just empty in that case.
 			effectiveEmail, _ := config.ResolveEmail()
 

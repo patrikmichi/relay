@@ -38,12 +38,12 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	begin, end := mdBegin(o.id), mdEnd(o.id)
 	if strings.Count(text, begin) > 1 || strings.Count(text, end) > 1 {
-		return []Item{o.item(o.id, real, StatusSkipped, "duplicate relay block markers; fix the file by hand")}, nil
+		return []Item{o.item(o.id, real, StatusSkipped, "duplicate zuano block markers; fix the file by hand")}, nil
 	}
 	bi := strings.Index(text, begin)
 	ei := strings.Index(text, end)
 	if (bi >= 0) != (ei >= 0) || (bi >= 0 && ei < bi) {
-		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced relay block markers; fix the file by hand")}, nil
+		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced zuano block markers; fix the file by hand")}, nil
 	}
 
 	ledgerID := "block:" + o.id
@@ -52,7 +52,7 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 	if bi >= 0 {
 		current = text[bi : ei+len(end)]
 	}
-	// A block whose text no longer matches what relay recorded was edited by hand.
+	// A block whose text no longer matches what zuano recorded was edited by hand.
 	edited := bi >= 0 && led[ledgerID] != "" && contentHash([]byte(current)) != led[ledgerID]
 
 	if o.body == "" {
@@ -61,7 +61,7 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 			return nil, nil
 		}
 		if edited && !c.Force {
-			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force removes it")}, nil
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since zuano wrote it; --force removes it")}, nil
 		}
 		rest := strings.TrimRight(text[:bi], "\n")
 		tail := strings.TrimLeft(text[ei+len(end):], "\n")
@@ -90,7 +90,7 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 			return []Item{o.item(o.id, real, StatusUnchanged, "")}, nil
 		}
 		if edited && !c.Force {
-			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force overwrites")}, nil
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since zuano wrote it; --force overwrites")}, nil
 		}
 		out, status = text[:bi]+block+text[ei+len(end):], StatusUpdated
 	case !exists || strings.TrimSpace(text) == "":
@@ -117,7 +117,7 @@ func withEOL(s, eol string) string {
 	return strings.ReplaceAll(s, "\n", eol)
 }
 
-// tomlTable is one table relay manages inside a TOML file. path is the key
+// tomlTable is one table zuano manages inside a TOML file. path is the key
 // path used to detect a user definition outside the managed block.
 type tomlTable struct {
 	header string
@@ -154,11 +154,11 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	begin, end := tomlBegin(o.id), tomlEnd(o.id)
 	if strings.Count(text, begin) > 1 || strings.Count(text, end) > 1 {
-		return []Item{o.item(o.id, real, StatusSkipped, "duplicate relay block markers; fix the file by hand")}, nil
+		return []Item{o.item(o.id, real, StatusSkipped, "duplicate zuano block markers; fix the file by hand")}, nil
 	}
 	bi, ei := strings.Index(text, begin), strings.Index(text, end)
 	if (bi >= 0) != (ei >= 0) || (bi >= 0 && ei < bi) {
-		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced relay block markers; fix the file by hand")}, nil
+		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced zuano block markers; fix the file by hand")}, nil
 	}
 	ledgerID := "block:" + o.id
 	if len(o.tables) == 0 && bi < 0 {
@@ -170,9 +170,9 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	if bi >= 0 {
 		oldBlock = text[bi : ei+len(end)]
 		outside = text[:bi] + text[ei+len(end):]
-		// A block whose text no longer matches what relay recorded was edited by hand.
+		// A block whose text no longer matches what zuano recorded was edited by hand.
 		if want := c.Ledger.entries(real)[ledgerID]; want != "" && contentHash([]byte(oldBlock)) != want && !c.Force {
-			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force overwrites")}, nil
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since zuano wrote it; --force overwrites")}, nil
 		}
 	}
 	var parsed map[string]any
@@ -195,7 +195,7 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	for _, t := range o.tables {
 		// Even under --force: a second definition of the same table makes the file invalid TOML.
 		if definedAt(parsed, t.path) {
-			items = append(items, tableItem(t, StatusConflict, "already defined and not managed by relay; --force is not supported for TOML tables, remove the existing table first"))
+			items = append(items, tableItem(t, StatusConflict, "already defined and not managed by zuano; --force is not supported for TOML tables, remove the existing table first"))
 			continue
 		}
 		bodies = append(bodies, strings.TrimRight(t.body, "\n"))
@@ -295,8 +295,8 @@ type ownedFile struct {
 	data []byte
 }
 
-// ownedFilesOp manages whole files in a directory that relay owns by name.
-// A file is relay's only while the ledger says relay wrote it and it still
+// ownedFilesOp manages whole files in a directory that zuano owns by name.
+// A file is zuano's only while the ledger says zuano wrote it and it still
 // holds those bytes: a same-named file the ledger does not know, or one the
 // user edited since, is never overwritten or removed, whatever text it
 // contains. Ledgered files that are no longer desired are removed.
@@ -309,7 +309,7 @@ type ownedFilesOp struct {
 }
 
 // ledgerFileID keys a whole file in the ledger; the value is the sha256 of
-// the bytes relay wrote.
+// the bytes zuano wrote.
 const ledgerFileID = "file"
 
 func contentHash(data []byte) string {
@@ -344,10 +344,10 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 		case c.Force:
 			items = append(items, o.item(f.name, real, StatusUpdated, ""))
 		case !ledgered:
-			items = append(items, o.item(f.name, real, StatusConflict, "file exists and is not managed by relay; --force overwrites"))
+			items = append(items, o.item(f.name, real, StatusConflict, "file exists and is not managed by zuano; --force overwrites"))
 			continue
 		case contentHash(data) != prev:
-			items = append(items, o.item(f.name, real, StatusConflict, "edited since relay wrote it; --force overwrites"))
+			items = append(items, o.item(f.name, real, StatusConflict, "edited since zuano wrote it; --force overwrites"))
 			continue
 		default:
 			items = append(items, o.item(f.name, real, StatusUpdated, ""))
@@ -381,7 +381,7 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 			continue
 		}
 		if contentHash(data) != c.Ledger.entries(real)[ledgerFileID] {
-			items = append(items, o.item(name, real, StatusConflict, "edited since relay wrote it; left in place"))
+			items = append(items, o.item(name, real, StatusConflict, "edited since zuano wrote it; left in place"))
 			continue
 		}
 		if err := c.remove(real); err != nil {

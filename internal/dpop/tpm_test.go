@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// fakeTPM answers the two commands relay sends the way a TPM 2.0 lays out its
+// fakeTPM answers the two commands zuano sends the way a TPM 2.0 lays out its
 // responses, and records every command so a test can check its bytes against
 // the specification's layout.
 type fakeTPM struct {
@@ -110,7 +110,7 @@ func TestTPMCreatePrimaryCommandMatchesTheSpecificationLayout(t *testing.T) {
 	if _, err := fakeBackend(f).create(id); err != nil {
 		t.Fatal(err)
 	}
-	unique := sha256.Sum256([]byte("relay dpop " + id))
+	unique := sha256.Sum256([]byte("zuano dpop " + id))
 
 	var public []byte
 	for _, h := range []string{

@@ -8,7 +8,7 @@ import (
 
 // TestEmbeddedConfigsValid asserts every embedded providers/*.yml parses
 // and validates cleanly — a malformed shipped config must fail CI, not a
-// user's first `relay providers` invocation.
+// user's first `zuano providers` invocation.
 func TestEmbeddedConfigsValid(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -116,7 +116,7 @@ frontmatter:
 }
 
 // TestLoadedProviderConfigs_ProjectOverrideGatedByFlag confirms
-// AllowProjectProviderOverrides defaults false and gates .relay/providers.
+// AllowProjectProviderOverrides defaults false and gates .zuano/providers.
 func TestLoadedProviderConfigs_ProjectOverrideGatedByFlag(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	origWd, err := os.Getwd()

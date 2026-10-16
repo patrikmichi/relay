@@ -11,7 +11,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// LogoutCmd returns the `relay logout` cobra command.
+// LogoutCmd returns the `zuano logout` cobra command.
 func LogoutCmd() *cobra.Command {
 	var gatewayURL string
 

@@ -44,7 +44,7 @@ jobs:
             echo "::error::$GITHUB_REF_NAME points at a commit that is not on main"
             exit 1
           fi
-          if ! grep -qx "module $MODULE" go.mod || [ ! -f cmd/relay/main.go ]; then
+          if ! grep -qx "module $MODULE" go.mod || [ ! -f cmd/zuano/main.go ]; then
             echo "::error::$GITHUB_REF_NAME does not contain the $MODULE source"
             exit 1
           fi
@@ -111,10 +111,10 @@ jobs:
           GOPROXY: direct
           GOBIN: ${{ runner.temp }}/bin
         run: |
-          go install "$MODULE/cmd/relay@$GITHUB_REF_NAME"
-          "$GOBIN/relay" --version | tee version.txt
+          go install "$MODULE/cmd/zuano@$GITHUB_REF_NAME"
+          "$GOBIN/zuano" --version | tee version.txt
           grep -qF "$GITHUB_REF_NAME " version.txt
-          bash "$GITHUB_WORKSPACE/.github/scripts/scan-denylist.sh" "$GOBIN/relay"
+          bash "$GITHUB_WORKSPACE/.github/scripts/scan-denylist.sh" "$GOBIN/zuano"
 
   release:
     name: goreleaser release

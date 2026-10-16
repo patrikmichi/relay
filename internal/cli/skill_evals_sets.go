@@ -15,7 +15,7 @@ import (
 
 const maxEvalDocumentBytes = 8 << 20
 
-// SkillEvalsCmd returns `relay skill evals`: manage the eval sets and cases a
+// SkillEvalsCmd returns `zuano skill evals`: manage the eval sets and cases a
 // skill is scored against.
 func SkillEvalsCmd() *cobra.Command {
 	evals := &cobra.Command{
@@ -24,7 +24,7 @@ func SkillEvalsCmd() *cobra.Command {
 		Long: `An eval set is a list of cases a skill is scored against: trigger cases ask
 whether a prompt should make the model load the skill, task cases run the
 skill and grade the answer. Cases are split into train and validation by a
-stable hash. Run a set with 'relay skill eval'.`,
+stable hash. Run a set with 'zuano skill eval'.`,
 	}
 	sets := &cobra.Command{Use: "sets", Short: "List, show, create, import, export and delete eval sets"}
 	sets.AddCommand(evalSetsListCmd(), evalSetsShowCmd(), evalSetsCreateCmd(), evalSetsImportCmd(), evalSetsExportCmd(), evalSetsDeleteCmd())
@@ -210,7 +210,7 @@ func evalSetsImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import <skill> <file|->",
 		Short: "Create an eval set from an exported document",
-		Long:  "Create a set and its cases from a relay.skill-evals/v1 document, as written by 'relay skill evals sets export'. Use - to read it from stdin.",
+		Long:  "Create a set and its cases from a relay.skill-evals/v1 document, as written by 'zuano skill evals sets export'. Use - to read it from stdin.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, err := readDocument(cmd, args[1])
@@ -391,11 +391,11 @@ func evalCaseAddCmd() *cobra.Command {
 		Long: `Add a trigger or a task case.
 
 A trigger case asks whether a prompt should make the model load the skill:
-  relay skill evals case add my-skill smoke --kind trigger --name "asks for an invoice" \
+  zuano skill evals case add my-skill smoke --kind trigger --name "asks for an invoice" \
     --input "Please invoice Acme for March" --should-trigger
 
 A task case runs the skill and grades the answer with assertions and/or a rubric:
-  relay skill evals case add my-skill smoke --kind task --name "invoice total" \
+  zuano skill evals case add my-skill smoke --kind task --name "invoice total" \
     --input "What is the total of invoice 42?" --contains "1 250" --rubric "States the currency"
 
 --file reads the whole case as JSON (use it for json_path and structured

@@ -22,7 +22,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
-// Exit statuses of `relay approvals wait` and of a call run with --wait.
+// Exit statuses of `zuano approvals wait` and of a call run with --wait.
 // 0 means approved and executed; any other failure is 1.
 const (
 	exitDenied  = 10
@@ -91,7 +91,7 @@ func (f *approvalFlags) bind(cmd *cobra.Command, jsonHelp string) {
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, jsonHelp)
 }
 
-// ApprovalsCmd returns `relay approvals`, the client for the gateway's
+// ApprovalsCmd returns `zuano approvals`, the client for the gateway's
 // approvals API.
 func ApprovalsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -174,7 +174,7 @@ func approvalError(status int, raw []byte) error {
 	}
 	switch status {
 	case http.StatusUnauthorized:
-		return errors.New("token expired or revoked — run `relay login` to re-authenticate")
+		return errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 	case http.StatusForbidden:
 		return fmt.Errorf("%s (HTTP 403): approvals are for an org owner, admin or listed approver using their own session, not the agent profile", msg)
 	}
@@ -332,7 +332,7 @@ type decideFlags struct {
 	waitTimeout string
 }
 
-// approvalsDecideCmd returns `relay approvals approve` or `deny`. Neither
+// approvalsDecideCmd returns `zuano approvals approve` or `deny`. Neither
 // decides anything: a decision is a passkey confirmation in a browser, on this
 // computer or a phone, so the command only takes the person to that page.
 func approvalsDecideCmd(approve bool) *cobra.Command {
@@ -347,13 +347,13 @@ func approvalsDecideCmd(approve bool) *cobra.Command {
 		Use:   decision + " <id>",
 		Short: short,
 		Long: `Opens the gateway's approval page for the held call in your browser. You review
-the whole call there and confirm with your passkey; relay sends no decision
+the whole call there and confirm with your passkey; zuano sends no decision
 itself, so nothing running as your user can approve a call through the CLI.
 
-With --no-browser, or in an agent session or a script, relay prints the link
+With --no-browser, or in an agent session or a script, zuano prints the link
 and a QR code instead: scan the code to decide with the passkey on your phone.
 
---wait then polls the approval until it is decided and exits like 'relay
+--wait then polls the approval until it is decided and exits like 'zuano
 approvals wait': 0 approved, 10 denied, 11 expired, 12 still pending when the
 timeout ended.`,
 		Args: cobra.ExactArgs(1),
@@ -656,7 +656,7 @@ func reportOutcome(out io.Writer, jsonOut bool, id string, raw []byte, o awaitOu
 		case o.Executed:
 			return &ExitError{Code: 1, Msg: fmt.Sprintf("approval %s was approved and the call failed: %s", id, o.Error)}
 		}
-		fmt.Fprintf(out, "Approved, but the call has not run yet: %s\nRun `relay approvals wait %s` again.\n", o.Message, id)
+		fmt.Fprintf(out, "Approved, but the call has not run yet: %s\nRun `zuano approvals wait %s` again.\n", o.Message, id)
 	case "denied":
 		who := "an approver"
 		if o.Approver != "" {
@@ -669,7 +669,7 @@ func reportOutcome(out io.Writer, jsonOut bool, id string, raw []byte, o awaitOu
 	case "expired":
 		fmt.Fprintln(out, "Expired: nobody decided within 15 minutes. Run the call again to ask anew.")
 	case "pending":
-		fmt.Fprintf(out, "Still pending (expires %s). Run `relay approvals wait %s` to keep waiting.\n", o.ExpiresAt, id)
+		fmt.Fprintf(out, "Still pending (expires %s). Run `zuano approvals wait %s` to keep waiting.\n", o.ExpiresAt, id)
 	default:
 		return &ExitError{Code: 1, Msg: fmt.Sprintf("approval %s not found, or it was made by another session; collect it with the ZUANO_AGENT setting of the session that made the call", id)}
 	}

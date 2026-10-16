@@ -1,7 +1,7 @@
 {
   "theme": "dark",
   "mcp": {
-    "relay": {
+    "zuano": {
       "type": "remote",
       "url": "https://gateway.example.com/api/mcp",
       "enabled": true,

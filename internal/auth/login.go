@@ -18,6 +18,7 @@ import (
 
 	"github.com/pkg/browser"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/config"
 	"github.com/patrikmichi/zuano/internal/dpop"
@@ -29,7 +30,7 @@ const (
 	// then bounds the token request on its own.
 	loginTimeout    = 120 * time.Second
 	exchangeTimeout = 30 * time.Second
-	cliClientID     = "zuano-cli"
+	cliClientID     = brand.Name + "-cli"
 )
 
 // openBrowser launches the system browser to the given URL. A package-level

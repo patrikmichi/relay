@@ -13,15 +13,17 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 // ReadAgent reads what the user keeps in one agent's own config and returns
-// it in relay's neutral model, so it can be written to other agents. It reads
-// only user-owned content: blocks, files and entries relay wrote (the ledger
-// and the relay markers say which) are left out, so syncing never feeds
-// relay's own output back in as a source.
+// it in zuano's neutral model, so it can be written to other agents. It reads
+// only user-owned content: blocks, files and entries zuano wrote (the ledger
+// and the zuano markers say which) are left out, so syncing never feeds
+// zuano's own output back in as a source.
 //
-// kinds limits what is read; env is never read, since it is relay's agent
+// kinds limits what is read; env is never read, since it is zuano's agent
 // profile and not something the user keeps per agent. Anything that cannot be
 // read or carried over is returned as a warning instead of dropped silently.
 func ReadAgent(env Env, agent AgentID, scope Scope, kinds []Kind) (Bundle, []string, error) {
@@ -104,9 +106,9 @@ func (r *agentReader) dir(dir, suffix string) []string {
 
 func (r *agentReader) ledgered(real string) map[string]string { return r.led.Files[real] }
 
-func relayOwned(data []byte) bool { return strings.Contains(string(data), Marker) }
+func zuanoOwned(data []byte) bool { return strings.Contains(string(data), Marker) }
 
-// stripBlocks removes every region relay manages (markdown and TOML block
+// stripBlocks removes every region zuano manages (markdown and TOML block
 // markers) and reports whether the markers were balanced.
 func stripBlocks(text string) (string, bool) {
 	var out []string
@@ -195,7 +197,7 @@ func (r *agentReader) rules() []Rule {
 		return r.blockRule(project(".github", "copilot-instructions.md")(r.env))
 	case Cursor:
 		if r.scope == ScopeUser {
-			r.warn("Cursor user rules live in Settings, not in a file relay can read")
+			r.warn("Cursor user rules live in Settings, not in a file zuano can read")
 			return nil
 		}
 		return r.ruleFiles(filepath.Join(r.env.Project, ".cursor", "rules"), ".mdc", func(fm readFrontmatter) ([]string, bool) {
@@ -229,7 +231,7 @@ func (r *agentReader) pick(user, proj func(Env) string) string {
 }
 
 // blockRule reads a single instructions file as one rule: everything outside
-// relay's own blocks.
+// zuano's own blocks.
 func (r *agentReader) blockRule(path string) []Rule {
 	data, _, ok := r.file(path)
 	if !ok {
@@ -237,7 +239,7 @@ func (r *agentReader) blockRule(path string) []Rule {
 	}
 	text, balanced := stripBlocks(string(data))
 	if !balanced {
-		r.warn("%s has an unbalanced relay block marker; read only the text before it", path)
+		r.warn("%s has an unbalanced zuano block marker; read only the text before it", path)
 	}
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
 	if text == "" {
@@ -254,7 +256,7 @@ func (r *agentReader) ruleFiles(dir, ext string, meta func(readFrontmatter) (glo
 		if !ok {
 			continue
 		}
-		if relayOwned(data) {
+		if zuanoOwned(data) {
 			continue
 		}
 		if !safeName.MatchString(name) {
@@ -306,7 +308,7 @@ func (r *agentReader) commandDir() (dir, ext string, ok bool) {
 	case Gemini:
 		return filepath.Join(root, ".gemini", "commands"), ".toml", true
 	}
-	r.warn("relay has no command format for this agent")
+	r.warn("zuano has no command format for this agent")
 	return "", "", false
 }
 
@@ -319,7 +321,7 @@ func (r *agentReader) commands() []Command {
 	for _, path := range r.dir(dir, ext) {
 		name := strings.TrimSuffix(filepath.Base(path), ext)
 		data, _, ok := r.file(path)
-		if !ok || relayOwned(data) {
+		if !ok || zuanoOwned(data) {
 			continue
 		}
 		if !safeName.MatchString(name) {
@@ -370,7 +372,7 @@ func (r *agentReader) hooks() []Hook {
 	case Cursor:
 		return r.jsonHooks(filepath.Join(root, ".cursor", "hooks.json"), invert(cursorEvents), false, nil)
 	}
-	r.warn("reading hooks is not supported for this agent (its hooks are not stored in a config file relay can map back)")
+	r.warn("reading hooks is not supported for this agent (its hooks are not stored in a config file zuano can map back)")
 	return nil
 }
 
@@ -414,7 +416,7 @@ func (r *agentReader) jsonHooks(path string, events map[string]string, grouped b
 				continue
 			}
 			if !known {
-				r.warn("hook for event %s skipped: relay has no neutral event for it", native)
+				r.warn("hook for event %s skipped: zuano has no neutral event for it", native)
 				continue
 			}
 			matcher := item.get("matcher").str()
@@ -438,7 +440,7 @@ func (r *agentReader) jsonHooks(path string, events map[string]string, grouped b
 				continue
 			}
 			for _, h := range inner.arr {
-				if h.get("name").str() == "relay" {
+				if h.get("name").str() == brand.Name {
 					continue
 				}
 				if t := h.get("type").str(); t != "" && t != "command" {
@@ -630,7 +632,7 @@ func (r *agentReader) codexMCP(path string) []MCPServer {
 	}
 	text, balanced := stripBlocks(string(data))
 	if !balanced {
-		r.warn("%s has an unbalanced relay block marker; read only the text before it", path)
+		r.warn("%s has an unbalanced zuano block marker; read only the text before it", path)
 	}
 	var doc struct {
 		Servers map[string]map[string]any `toml:"mcp_servers"`

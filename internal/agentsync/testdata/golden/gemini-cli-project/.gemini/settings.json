@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "relay": {
+    "zuano": {
       "httpUrl": "https://gateway.example.com/api/mcp",
       "headers": {
         "Authorization": "Bearer ${ZUANO_API_KEY}"
@@ -22,9 +22,9 @@
       {
         "hooks": [
           {
-            "name": "relay",
+            "name": "zuano",
             "type": "command",
-            "command": "/opt/relay/notify.sh"
+            "command": "/opt/zuano/notify.sh"
           }
         ]
       }
@@ -34,9 +34,9 @@
         "matcher": "run_shell_command",
         "hooks": [
           {
-            "name": "relay",
+            "name": "zuano",
             "type": "command",
-            "command": "/opt/relay/guard.sh",
+            "command": "/opt/zuano/guard.sh",
             "timeout": 10000
           }
         ]
@@ -46,9 +46,9 @@
       {
         "hooks": [
           {
-            "name": "relay",
+            "name": "zuano",
             "type": "command",
-            "command": "/opt/relay/ping.sh"
+            "command": "/opt/zuano/ping.sh"
           }
         ]
       }
@@ -57,9 +57,9 @@
       {
         "hooks": [
           {
-            "name": "relay",
+            "name": "zuano",
             "type": "command",
-            "command": "/opt/relay/context.sh"
+            "command": "/opt/zuano/context.sh"
           }
         ]
       }

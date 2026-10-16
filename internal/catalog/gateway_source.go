@@ -1,16 +1,16 @@
-// Package catalog implements relay's "GatewaySource" — the
+// Package catalog implements zuano's "GatewaySource" — the
 // gateway-backed counterpart to agentport.LoadGenericSkill's local-path
 // source. It downloads a governed skill bundle from the gateway catalog's
 // download endpoint, verifies it end to end (content hash + scan verdict),
 // path-safe extracts it, and loads it through the SAME
-// agentport.LoadGenericSkill code path a local `relay skill install <path>`
+// agentport.LoadGenericSkill code path a local `zuano skill install <path>`
 // uses — so everything downstream (Migrate/Write/manifest) is the same
 // code a local install runs.
 //
 // Deliberately NOT part of internal/agentport: that package is intentionally
 // gateway-agnostic (stdlib + gopkg.in/yaml.v3 only, see its package doc) so
 // it can later be extracted verbatim into a standalone OSS module. This
-// package is the only place relay-proprietary gateway/auth code meets the
+// package is the only place zuano-proprietary gateway/auth code meets the
 // skill-manager engine — see FetchSkill's Doer parameter.
 package catalog
 
@@ -31,7 +31,7 @@ import (
 )
 
 // Doer is the minimal HTTP interface FetchSkill needs to reach the gateway's
-// governed download endpoint. *client.Client (relay's auto-refreshing
+// governed download endpoint. *client.Client (zuano's auto-refreshing
 // OAuth/keychain-backed gateway client, or a ZUANO_API_KEY bearer client)
 // satisfies this directly — this package never imports internal/client, to
 // keep the dependency direction one-way (cli -> catalog -> agentport;
@@ -152,7 +152,7 @@ func FetchSkill(doer Doer, id, version, channel string, opts ...Option) (*agentp
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "relay-catalog-skill-*")
+	tmpDir, err := os.MkdirTemp("", "zuano-catalog-skill-*")
 	if err != nil {
 		return nil, fmt.Errorf("catalog: create temp extraction dir: %w", err)
 	}

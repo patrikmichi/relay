@@ -401,7 +401,7 @@ func TestWriteAgentFailsClosedWhenLedgerCorrupt(t *testing.T) {
 
 // TestPreflightWriteValidatesAllTargetsBeforeAnyWrite covers partial writes at
 // the engine level: a multi-
-// target migration (e.g. `relay skill migrate --to codex --to opencode`)
+// target migration (e.g. `zuano skill migrate --to codex --to opencode`)
 // must not write an earlier target when a later target fails preflight.
 // PreflightWrite is exported precisely so a multi-target caller can
 // validate every plan first — see preflight.go.

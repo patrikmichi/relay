@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "relay": {
+    "zuano": {
       "type": "streamableHttp",
       "url": "https://gateway.example.com/api/mcp",
       "disabled": false

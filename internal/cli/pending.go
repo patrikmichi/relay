@@ -92,7 +92,7 @@ func callOptsFor(cmd *cobra.Command, wait string) (callOpts, error) {
 }
 
 // handlePending reports a held call and exits with the code for "still
-// pending", or with --wait collects the result like `relay approvals wait`.
+// pending", or with --wait collects the result like `zuano approvals wait`.
 func handlePending(parent context.Context, c *client.Client, p *pendingApproval, jsonOut bool, o callOpts, out io.Writer) error {
 	if !o.wait {
 		if !jsonOut {

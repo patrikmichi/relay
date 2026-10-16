@@ -29,7 +29,7 @@ type genericFrontmatter struct {
 
 // LoadGenericSkill loads a skill from an arbitrary LOCAL directory (or a
 // direct path to a SKILL.md file) as a generic Agent-Skills skill — the
-// engine behind `relay skill install <path>`'s local-source path. It
+// engine behind `zuano skill install <path>`'s local-source path. It
 // recognizes the full union of frontmatter extension fields any of the 4
 // providers understand, plus the optional Codex agents/openai.yaml sidecar
 // (via loadCodexSidecar, shared with the codex-openai SidecarCodec — see

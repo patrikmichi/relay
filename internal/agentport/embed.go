@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 //go:embed providers/*.yml
@@ -25,10 +27,10 @@ func loadedProviderConfigs() map[string]ProviderConfig {
 	configs := mustParseEmbeddedConfigs(hookNames, codecNames)
 
 	if home, err := os.UserHomeDir(); err == nil {
-		applyOverrideTier(configs, filepath.Join(home, ".config", "zuano", "providers"), hookNames, codecNames, KindSkill)
+		applyOverrideTier(configs, filepath.Join(home, ".config", brand.Name, "providers"), hookNames, codecNames, KindSkill)
 	}
 	if AllowProjectProviderOverrides {
-		applyOverrideTier(configs, filepath.Join(".zuano", "providers"), hookNames, codecNames, KindSkill)
+		applyOverrideTier(configs, filepath.Join("."+brand.Name, "providers"), hookNames, codecNames, KindSkill)
 	}
 
 	return configs
@@ -68,7 +70,7 @@ func mustParseEmbeddedConfigs(hookNames, codecNames map[string]bool) map[string]
 
 // loadedAgentProviderConfigs is the Agent-IR analogue of
 // loadedProviderConfigs: embedded agents/*.yml defaults, overlaid by
-// ~/.config/zuano/agents/*.yml (user tier), overlaid by .relay/agents/*.yml
+// ~/.config/zuano/agents/*.yml (user tier), overlaid by .zuano/agents/*.yml
 // (project tier, gated by the SAME AllowProjectProviderOverrides flag skill
 // overrides use — one opt-in switch for both kinds). Deliberately not
 // memoized, for the same reasons as loadedProviderConfigs.
@@ -79,10 +81,10 @@ func loadedAgentProviderConfigs() map[string]ProviderConfig {
 	configs := mustParseEmbeddedAgentConfigs(hookNames, codecNames)
 
 	if home, err := os.UserHomeDir(); err == nil {
-		applyOverrideTier(configs, filepath.Join(home, ".config", "zuano", "agents"), hookNames, codecNames, KindAgent)
+		applyOverrideTier(configs, filepath.Join(home, ".config", brand.Name, "agents"), hookNames, codecNames, KindAgent)
 	}
 	if AllowProjectProviderOverrides {
-		applyOverrideTier(configs, filepath.Join(".zuano", "agents"), hookNames, codecNames, KindAgent)
+		applyOverrideTier(configs, filepath.Join("."+brand.Name, "agents"), hookNames, codecNames, KindAgent)
 	}
 
 	return configs

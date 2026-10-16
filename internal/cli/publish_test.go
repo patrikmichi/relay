@@ -566,7 +566,7 @@ func TestRunPublish_Error_403(t *testing.T) {
 	}
 }
 
-// TestRunPublish_Error_401 verifies that a 401 suggests `relay login`.
+// TestRunPublish_Error_401 verifies that a 401 suggests `zuano login`.
 func TestRunPublish_Error_401(t *testing.T) {
 	body := publishErrorBody{}
 	body.Error.Message = "unauthorized"
@@ -581,8 +581,8 @@ func TestRunPublish_Error_401(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on 401, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("401 error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("401 error should mention `zuano login`, got: %v", err)
 	}
 }
 
@@ -597,8 +597,8 @@ func TestResolvePublishDoer_NoToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when ZUANO_EMAIL is unset, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("error should mention `zuano login`, got: %v", err)
 	}
 }
 
@@ -889,7 +889,7 @@ func TestHandlePublishResponse_ErrorCodes(t *testing.T) {
 			name:       "401",
 			statusCode: http.StatusUnauthorized,
 			body:       map[string]string{},
-			wantSubstr: "relay login",
+			wantSubstr: "zuano login",
 		},
 		{
 			name:       "403",

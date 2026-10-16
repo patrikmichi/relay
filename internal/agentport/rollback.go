@@ -24,7 +24,7 @@ import (
 // never fabricating content that was never captured.
 //
 // Because this runs through txn.Begin/Stage/Persist/Apply/Commit like any
-// other mutation, an interrupted rollback is itself resumable via `relay
+// other mutation, an interrupted rollback is itself resumable via `zuano
 // recover`, and a concurrent write/rollback of the same artifact is
 // refused rather than raced.
 //

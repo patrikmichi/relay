@@ -10,16 +10,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/catalog"
 	"github.com/patrikmichi/zuano/internal/client"
 )
 
-// SkillInstallCmd returns the `relay skill install <path|catalog-id>` cobra
+// SkillInstallCmd returns the `zuano skill install <path|catalog-id>` cobra
 // command — loads a skill either from an arbitrary LOCAL directory (or a
 // direct path to a SKILL.md file), or from the gateway CATALOG by resource
 // id/slug, and projects it into one or more --to providers, printing a
 // fidelity-loss report for each. Unless --dry-run, files are written and a
-// manifest entry is recorded — the same engine as 'relay skill migrate'.
+// manifest entry is recorded — the same engine as 'zuano skill migrate'.
 //
 // If --to is omitted, installs to every provider detected as installed on
 // this machine.
@@ -46,7 +47,7 @@ to a SKILL.md file), or — when the argument is not an existing local path —
 from the gateway catalog by resource id (res_…) or slug, and project it into
 one or more --to providers, printing a fidelity-loss report for each. Unless
 --dry-run, files are written and a manifest entry is recorded — the same
-engine as 'relay skill migrate'.
+engine as 'zuano skill migrate'.
 
 Source disambiguation: if <path|catalog-id> exists on disk, it is treated as
 a LOCAL path (agentport.LoadGenericSkill). Otherwise it is treated as a
@@ -55,7 +56,7 @@ like a path (contains a path separator) but doesn't exist on disk is
 reported as a missing local path rather than guessed at as a catalog id.
 
 A catalog-id install requires a reachable, authenticated gateway
-(ZUANO_URL/ZUANO_API_KEY env vars, or a prior 'relay login') and fails
+(ZUANO_URL/ZUANO_API_KEY env vars, or a prior 'zuano login') and fails
 closed — no partial writes — on: no gateway configured / --offline, a
 content-hash mismatch, a missing/failed scan verdict, or a malformed bundle.
 
@@ -63,17 +64,17 @@ If --to is omitted, installs to every provider detected as installed on
 this machine.
 
 A catalog skill can declare the connectors it needs (requires.connectors).
-Before installing, relay asks the gateway which of them you have not
-connected and offers 'relay connect <slug>' for each, then checks again.
+Before installing, zuano asks the gateway which of them you have not
+connected and offers 'zuano connect <slug>' for each, then checks again.
 --yes connects without asking, --no-connect only reports. If something is
 still missing the install fails; --ignore-requirements installs anyway with
-a warning. 'relay skill info <id>' shows the same status without installing.
+a warning. 'zuano skill info <id>' shows the same status without installing.
 
 Examples:
-  relay skill install ./my-skill --to claude
-  relay skill install ./my-skill/SKILL.md --to codex --to cursor
-  relay skill install res_abc123 --to claude
-  relay skill install pr-triage --version 1.4.2 --channel beta --to claude`,
+  zuano skill install ./my-skill --to claude
+  zuano skill install ./my-skill/SKILL.md --to codex --to cursor
+  zuano skill install res_abc123 --to claude
+  zuano skill install pr-triage --version 1.4.2 --channel beta --to claude`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if reqs.yes && reqs.noConnect {
@@ -134,7 +135,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 
 func doSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts, rep *artifactReport) error {
 	if !opts.dryRun {
-		if err := refuseInAgentMode("relay skill install"); err != nil {
+		if err := refuseInAgentMode(brand.Cmd("skill install")); err != nil {
 			return err
 		}
 	}
@@ -240,9 +241,9 @@ func translateGatewayFetchError(catalogID string, err error) error {
 	case errors.Is(err, catalog.ErrNoAccess):
 		return fmt.Errorf("you don't have access to %q — request access via the catalog UI or gateway.request_access: %w", catalogID, err)
 	case errors.Is(err, catalog.ErrNotFound):
-		return fmt.Errorf("catalog resource %q not found (or no downloadable version) — try `relay skill search` or an explicit --version: %w", catalogID, err)
+		return fmt.Errorf("catalog resource %q not found (or no downloadable version) — try `zuano skill search` or an explicit --version: %w", catalogID, err)
 	case errors.Is(err, catalog.ErrNotDownloadable):
-		return fmt.Errorf("catalog resource %q's resolved version is not downloadable — try `relay skill search` or an explicit --version: %w", catalogID, err)
+		return fmt.Errorf("catalog resource %q's resolved version is not downloadable — try `zuano skill search` or an explicit --version: %w", catalogID, err)
 	case errors.Is(err, catalog.ErrUnauthorized):
 		return fmt.Errorf("%w — %s", err, offlineGuidance)
 	default:

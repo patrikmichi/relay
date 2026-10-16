@@ -3,7 +3,7 @@
     "mine": {
       "url": "https://example.com/mcp"
     },
-    "relay": {
+    "zuano": {
       "url": "https://gateway.example.com/api/mcp",
       "headers": {
         "Authorization": "Bearer ${env:ZUANO_API_KEY}"

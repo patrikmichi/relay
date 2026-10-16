@@ -27,7 +27,7 @@ type sessionDoc struct {
 	Current           bool   `json:"current"`
 }
 
-// SessionsCmd returns `relay sessions`, the person's browser and CLI sessions
+// SessionsCmd returns `zuano sessions`, the person's browser and CLI sessions
 // on the gateway.
 func SessionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -36,7 +36,7 @@ func SessionsCmd() *cobra.Command {
 		Long: `The gateway keeps a server-side session for every browser sign-in and every
 CLI login. These commands list them, revoke one, or sign you out everywhere.
 Signing out everywhere also revokes your CLI and OAuth refresh tokens, this
-session included, and needs a passkey confirmation: relay opens the page for it.`,
+session included, and needs a passkey confirmation: zuano opens the page for it.`,
 	}
 	cmd.AddCommand(sessionsListCmd(), sessionsRevokeCmd(), sessionsRevokeAllCmd())
 	return cmd

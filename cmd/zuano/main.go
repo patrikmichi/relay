@@ -1,4 +1,4 @@
-// Package main is the entrypoint for the relay CLI (gateway client).
+// Package main is the entrypoint for the zuano CLI (gateway client).
 // Auth subcommands: login, logout, whoami, authorize.
 // Service subcommands: call, services, connectors, connect, tokens, config, help-tools.
 // Agent subcommands: sync, skill, agent, mcp.
@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/patrikmichi/zuano/internal/brand"
 	"github.com/patrikmichi/zuano/internal/cli"
 	"github.com/patrikmichi/zuano/internal/client"
 	"github.com/patrikmichi/zuano/internal/config"
@@ -84,7 +85,7 @@ func shouldBuildDynamicCommands(cmdName, topName string, offline bool) bool {
 
 // discoveryCandidate returns the first non-flag argument — the word Cobra
 // would try to resolve as a top-level command — along with whether one was
-// found at all. A bare `relay`, `relay --help`, or `relay --offline` all
+// found at all. A bare `zuano`, `zuano --help`, or `zuano --offline` all
 // have no candidate, so callers correctly skip discovery for them without
 // needing a separate "is this a help/offline invocation" check.
 //
@@ -162,8 +163,8 @@ func rewriteOfflineUnknownCommandErr(err error, args []string) error {
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:     "relay",
-		Short:   "Gateway CLI — unified access to integrated services",
+		Use:     brand.Name,
+		Short:   brand.Product + " CLI from " + brand.Company + " — unified access to integrated services",
 		Version: buildVersionString(moduleVersion(version, readBuildInfo()), commit, date),
 		// Don't print usage on error (cleaner output for auth errors), and
 		// don't let cobra print the error itself — main() below prints it

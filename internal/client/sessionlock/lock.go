@@ -1,6 +1,6 @@
 // Package sessionlock provides a cross-process advisory file lock scoped to
 // one (gateway, account) pair — used by internal/client to serialize OAuth
-// refresh-token rotation across independently invoked `relay` processes.
+// refresh-token rotation across independently invoked `zuano` processes.
 //
 // Liveness comes from the kernel's flock(2) semantics, never from
 // inspecting a lock file's age or contents: an advisory lock is released
@@ -37,7 +37,7 @@ type Lock struct {
 // is done, whichever happens first. Each call opens its own file
 // descriptor, so contention is enforced by the kernel exactly the same way
 // whether the two callers are goroutines in this process or two separate
-// `relay` invocations on the same machine.
+// `zuano` invocations on the same machine.
 func Acquire(ctx context.Context, gatewayOrigin, account string) (*Lock, error) {
 	path, err := lockPath(gatewayOrigin, account)
 	if err != nil {

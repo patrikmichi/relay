@@ -20,7 +20,7 @@ import (
 )
 
 // linkProbeTimeout bounds the per-service credential probes behind the
-// connection status column; a slow gateway must not stall `relay services`.
+// connection status column; a slow gateway must not stall `zuano services`.
 const linkProbeTimeout = 10 * time.Second
 
 const linkProbeWorkers = 6
@@ -306,7 +306,7 @@ func addConnectorsFlags(cmd *cobra.Command, f *connectorsFlags) {
 	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 }
 
-// ConnectorsCmd returns `relay connectors`: browse the gateway's service
+// ConnectorsCmd returns `zuano connectors`: browse the gateway's service
 // catalog.
 func ConnectorsCmd() *cobra.Command {
 	var f connectorsFlags
@@ -315,14 +315,14 @@ func ConnectorsCmd() *cobra.Command {
 		Short: "Browse the gateway's connector catalog",
 		Long: `List the services the gateway offers: built-in integrations, declarative
 connectors and catalog MCP servers, with category and how each one
-authenticates. Narrow the list with 'relay connectors search <query>' or
---category. Use 'relay connect <slug>' to link your own account.
+authenticates. Narrow the list with 'zuano connectors search <query>' or
+--category. Use 'zuano connect <slug>' to link your own account.
 
 Examples:
-  relay connectors
-  relay connectors --category CRM
-  relay connectors search invoice
-  relay connectors --categories`,
+  zuano connectors
+  zuano connectors --category CRM
+  zuano connectors search invoice
+  zuano connectors --categories`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runConnectors(cmd, "", f)
@@ -409,7 +409,7 @@ func runConnectors(cmd *cobra.Command, query string, f connectorsFlags) error {
 		fmt.Fprintln(tw, line)
 	}
 	_ = tw.Flush()
-	fmt.Fprintf(out, "\n%d connectors. Link your account with `relay connect <slug>`.\n", len(matches))
+	fmt.Fprintf(out, "\n%d connectors. Link your account with `zuano connect <slug>`.\n", len(matches))
 	return nil
 }
 

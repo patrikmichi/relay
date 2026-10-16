@@ -13,7 +13,7 @@
 # only `model` is mapped here (no Agent IR field exists for reasoning
 # effort/sandbox mode/MCP servers/skills config; adding one is an IR
 # extension out of scope for this pass, so those keys are simply never
-# emitted and, on Load, fall through relay's flat-TOML parser's
+# emitted and, on Load, fall through zuano's flat-TOML parser's
 # table/dotted-key skip path with a recorded warning rather than an error —
 # see agent_toml.go's parseFlatTOML doc comment).
 #

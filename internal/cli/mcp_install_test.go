@@ -94,8 +94,8 @@ func TestMcpInstallAndRemoveEmitOneJSONDocument(t *testing.T) {
 
 func TestMcpSourceRefusesDuplicateNamesAndTheGatewaysName(t *testing.T) {
 	home := syncHome(t)
-	if _, err := runCommand(t, McpInstallCmd(), "relay", "--url", "https://docs.example.com/mcp", "--to", "claude"); err == nil || !strings.Contains(err.Error(), "gateway's own") {
-		t.Errorf("installing a server named relay = %v, want a refusal", err)
+	if _, err := runCommand(t, McpInstallCmd(), "zuano", "--url", "https://docs.example.com/mcp", "--to", "claude"); err == nil || !strings.Contains(err.Error(), "gateway's own") {
+		t.Errorf("installing a server named zuano = %v, want a refusal", err)
 	}
 	writeTestFile(t, filepath.Join(home, ".config", "zuano", "sync", "mcp.json"),
 		`{"servers":[{"name":"docs","url":"https://a.example.com/mcp"},{"name":"docs","url":"https://b.example.com/mcp"}]}`)
@@ -173,7 +173,7 @@ func TestMcpInstallCatalogServiceEnablesGatewayServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "relay connect clockify") {
+	if !strings.Contains(out, "zuano connect clockify") {
 		t.Errorf("no connect hint:\n%s", out)
 	}
 	got := readTestFile(t, filepath.Join(home, ".claude.json"))
@@ -184,7 +184,7 @@ func TestMcpInstallCatalogServiceEnablesGatewayServer(t *testing.T) {
 	if out, err := runCommand(t, McpInstallCmd(), "fakturoid", "--to", "claude"); err != nil || !strings.Contains(out, "no access") {
 		t.Errorf("inaccessible service: %v\n%s", err, out)
 	}
-	if _, err := runCommand(t, McpInstallCmd(), "nonexistent", "--to", "claude"); err == nil || !strings.Contains(err.Error(), "relay connectors search") {
+	if _, err := runCommand(t, McpInstallCmd(), "nonexistent", "--to", "claude"); err == nil || !strings.Contains(err.Error(), "zuano connectors search") {
 		t.Errorf("unknown service: %v", err)
 	}
 }
@@ -203,7 +203,7 @@ func TestMcpRemoveGatewayStopsSyncingIt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".claude.json")); err != nil {
 		t.Fatal("gateway server was not synced")
 	}
-	if _, err := runCommand(t, McpRemoveCmd(), "relay", "--to", "claude"); err != nil {
+	if _, err := runCommand(t, McpRemoveCmd(), "zuano", "--to", "claude"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp"); err != nil {

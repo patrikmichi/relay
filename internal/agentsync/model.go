@@ -1,4 +1,4 @@
-// Package agentsync writes relay-managed MCP servers, hooks, rules and
+// Package agentsync writes zuano-managed MCP servers, hooks, rules and
 // commands into the config files of each supported coding agent without
 // touching entries the user owns.
 package agentsync
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
 type Scope string
@@ -45,10 +47,10 @@ const (
 	Copilot  AgentID = "copilot"
 )
 
-// Marker labels the files and blocks relay writes, and delimits a block. It
+// Marker labels the files and blocks zuano writes, and delimits a block. It
 // does not decide ownership: the hash ledger does, so a file or block is
-// relay's only while it still holds the bytes the ledger recorded.
-const Marker = "relay-managed"
+// zuano's only while it still holds the bytes the ledger recorded.
+const Marker = brand.Name + "-managed"
 
 // Status values reported per managed entry.
 const (

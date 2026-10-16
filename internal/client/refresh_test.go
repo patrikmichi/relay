@@ -93,7 +93,7 @@ func TestResolve_UsesPersistedLoginEmail(t *testing.T) {
 	}
 }
 
-func TestResolve_RelayEmailOverridesPersistedEmail(t *testing.T) {
+func TestResolve_ZuanoEmailOverridesPersistedEmail(t *testing.T) {
 	withTempHome(t)
 	t.Setenv("ZUANO_API_KEY", "")
 

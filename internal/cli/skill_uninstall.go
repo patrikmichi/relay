@@ -9,7 +9,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillUninstallCmd returns the `relay skill uninstall <name>` cobra
+// SkillUninstallCmd returns the `zuano skill uninstall <name>` cobra
 // command — removes a skill's files from a provider's directory and drops
 // any matching manifest ledger entries.
 func SkillUninstallCmd() *cobra.Command {

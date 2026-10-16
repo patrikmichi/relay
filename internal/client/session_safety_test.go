@@ -295,7 +295,7 @@ func TestSharedClientConcurrentRequestsRefreshOnce(t *testing.T) {
 // TestRealLockAdoptsWinnerAcrossTwoClients uses the REAL cross-process
 // file lock (internal/client/sessionlock, not a mock of it) to prove the
 // generation-aware adoption path in refreshLocked: two independent Clients
-// (simulating two separate `relay` processes) share one gatewayOrigin/email
+// (simulating two separate `zuano` processes) share one gatewayOrigin/email
 // identity and one backing store. The first to acquire the real lock
 // performs the actual HTTP refresh and persists the winning result; the
 // second — released only once the first is done — must see the store's

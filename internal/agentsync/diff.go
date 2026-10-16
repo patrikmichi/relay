@@ -48,7 +48,7 @@ func secretName(key string) bool {
 type redactor struct{ afterFlag bool }
 
 // redactLine masks values of secret-looking keys unless the value is an
-// environment reference, which is what relay itself writes.
+// environment reference, which is what zuano itself writes.
 func redactLine(line string) string { return (&redactor{}).line(line) }
 
 func (r *redactor) line(line string) string {

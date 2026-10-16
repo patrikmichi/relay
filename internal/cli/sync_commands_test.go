@@ -77,7 +77,7 @@ func TestRunSync_ErrorPaths(t *testing.T) {
 	}{
 		{"manifest not json", map[string]http.HandlerFunc{"/api/marketplace/manifest": text(200, "{")}, "decode manifest"},
 		{"manifest without name", map[string]http.HandlerFunc{"/api/marketplace/manifest": text(200, `{"plugins":[]}`)}, "manifest has no name field"},
-		{"plugin server error", map[string]http.HandlerFunc{"/api/marketplace/plugin/": text(500, " exploded ")}, "returned 500: exploded — re-run `relay sync` to retry"},
+		{"plugin server error", map[string]http.HandlerFunc{"/api/marketplace/plugin/": text(500, " exploded ")}, "returned 500: exploded — re-run `zuano sync` to retry"},
 		{"plugin not json", map[string]http.HandlerFunc{"/api/marketplace/plugin/": text(200, "nope")}, "decode plugin bundle"},
 		{"plugin unsafe path", map[string]http.HandlerFunc{"/api/marketplace/plugin/": text(200, `{"files":{"../evil":"x"}}`)}, "unsafe path"},
 		{"plugin absolute path", map[string]http.HandlerFunc{"/api/marketplace/plugin/": text(200, `{"files":{"/etc/passwd":"x"}}`)}, "unsafe path"},

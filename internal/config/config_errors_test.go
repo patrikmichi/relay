@@ -82,8 +82,8 @@ func TestResolveEmail(t *testing.T) {
 		withTempHome(t)
 		t.Setenv("ZUANO_EMAIL", "")
 		_, err := config.ResolveEmail()
-		if err == nil || !strings.Contains(err.Error(), "relay login") {
-			t.Fatalf("expected a not-logged-in error naming `relay login`, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "zuano login") {
+			t.Fatalf("expected a not-logged-in error naming `zuano login`, got %v", err)
 		}
 	})
 	t.Run("corrupt config is an error", func(t *testing.T) {

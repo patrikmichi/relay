@@ -111,7 +111,7 @@ func toNode(v any) *jnode {
 var trailingComma = regexp.MustCompile(`,(\s*[}\]])`)
 
 // stripJSONC removes comments and trailing commas. It only tells JSONC from
-// broken JSON: relay never writes the stripped text.
+// broken JSON: zuano never writes the stripped text.
 func stripJSONC(data []byte) []byte {
 	var out []byte
 	inString := false

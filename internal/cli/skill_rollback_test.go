@@ -96,7 +96,7 @@ func TestSkillRollback_LastSkipsNewerAgentEntry(t *testing.T) {
 }
 
 // TestSkillRollback_RejectsAgentKindID confirms an explicit manifest entry
-// id that resolves to an AGENT entry is rejected by `relay skill rollback`
+// id that resolves to an AGENT entry is rejected by `zuano skill rollback`
 // — the reverse of TestAgentRollback_RejectsSkillKindID.
 func TestSkillRollback_RejectsAgentKindID(t *testing.T) {
 	home := t.TempDir()
@@ -121,7 +121,7 @@ func TestSkillRollback_RejectsAgentKindID(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{entry.ID})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected an error rolling back an agent-kind entry via 'relay skill rollback'")
+		t.Fatalf("expected an error rolling back an agent-kind entry via 'zuano skill rollback'")
 	}
 }
 

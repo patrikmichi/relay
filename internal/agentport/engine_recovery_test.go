@@ -17,7 +17,7 @@ import (
 // manifest entry for a write that didn't fully land (changed files with
 // no ledger record). The interrupted
 // transaction itself must be left in a terminal (Restored) state, not
-// silently discarded, so `relay history` can still show it happened.
+// silently discarded, so `zuano history` can still show it happened.
 func TestWrite_PartialFailureLeavesNothingBehind(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -70,7 +70,7 @@ func TestWrite_PartialFailureLeavesNothingBehind(t *testing.T) {
 
 // TestWrite_RefusesWhilePriorJournalPending proves an interrupted journal
 // blocks new writes: a manually-injected pending journal for the same artifact
-// (standing in for a crashed prior `relay` process) makes a fresh Write
+// (standing in for a crashed prior `zuano` process) makes a fresh Write
 // refuse outright rather than silently proceeding alongside it.
 func TestWrite_RefusesWhilePriorJournalPending(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

@@ -25,7 +25,7 @@ func TestSync_SetsTheAgentProfileWhereAgentsHaveAnEnvironment(t *testing.T) {
 	if !strings.Contains(codex, "[shell_environment_policy.set]") || !strings.Contains(codex, `ZUANO_AGENT = "1"`) {
 		t.Errorf("Codex config:\n%s", codex)
 	}
-	if !strings.Contains(out, "no agent session exists; run `relay login --agent`") {
+	if !strings.Contains(out, "no agent session exists; run `zuano login --agent`") {
 		t.Errorf("missing the agent login warning:\n%s", out)
 	}
 	if !strings.Contains(out, "gemini-cli") || !strings.Contains(out, "unsupported") {
@@ -42,7 +42,7 @@ func TestSync_NoLoginWarningOnceAnAgentSessionExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "relay login --agent") {
+	if strings.Contains(out, "zuano login --agent") {
 		t.Errorf("unexpected warning:\n%s", out)
 	}
 }
@@ -66,9 +66,9 @@ func TestSync_OtherKindsLeaveTheEnvironmentAlone(t *testing.T) {
 	}
 }
 
-func TestSync_MarksStdioRelayServersWithoutChangingTheSavedSource(t *testing.T) {
+func TestSync_MarksStdioZuanoServersWithoutChangingTheSavedSource(t *testing.T) {
 	home := syncHome(t)
-	if _, err := runCommand(t, McpInstallCmd(), "bridge", "--command", "/usr/local/bin/relay", "--arg", "mcp", "--to", "claude", "--yes"); err != nil {
+	if _, err := runCommand(t, McpInstallCmd(), "bridge", "--command", "/usr/local/bin/zuano", "--arg", "mcp", "--to", "claude", "--yes"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runCommand(t, McpInstallCmd(), "files", "--command", "npx", "--arg", "-y", "--to", "claude", "--yes"); err != nil {
@@ -79,14 +79,14 @@ func TestSync_MarksStdioRelayServersWithoutChangingTheSavedSource(t *testing.T) 
 	var bridge, files string
 	for _, part := range strings.SplitAfter(claude, "}") {
 		switch {
-		case strings.Contains(part, `"/usr/local/bin/relay"`):
+		case strings.Contains(part, `"/usr/local/bin/zuano"`):
 			bridge = part
 		case strings.Contains(part, `"npx"`):
 			files = part
 		}
 	}
 	if !strings.Contains(bridge, `"ZUANO_AGENT": "1"`) {
-		t.Errorf("relay stdio server is not marked:\n%s", claude)
+		t.Errorf("zuano stdio server is not marked:\n%s", claude)
 	}
 	if strings.Contains(files, "ZUANO_AGENT") {
 		t.Errorf("an unrelated server was marked:\n%s", claude)
@@ -97,16 +97,16 @@ func TestSync_MarksStdioRelayServersWithoutChangingTheSavedSource(t *testing.T) 
 	}
 }
 
-func TestMarkRelayServers(t *testing.T) {
+func TestMarkZuanoServers(t *testing.T) {
 	in := []agentsync.MCPServer{
-		{Name: "a", Command: "relay"},
-		{Name: "b", Command: `C:\tools\relay.exe`},
-		{Name: "c", Command: "/usr/bin/gw", Env: map[string]string{"X": "1"}},
-		{Name: "d", Command: "relay", Env: map[string]string{agentEnvVar: "0"}},
-		{Name: "e", Command: "relayctl"},
+		{Name: "a", Command: "zuano"},
+		{Name: "b", Command: `C:\tools\zuano.exe`},
+		{Name: "c", Command: "/usr/bin/zuano", Env: map[string]string{"X": "1"}},
+		{Name: "d", Command: "zuano", Env: map[string]string{agentEnvVar: "0"}},
+		{Name: "e", Command: "zuanoctl"},
 		{Name: "f", URL: "https://example.com/mcp"},
 	}
-	out := markRelayServers(in)
+	out := markZuanoServers(in)
 	for i, want := range map[int]string{0: "1", 2: "1", 3: "0", 4: "", 5: ""} {
 		if got := out[i].Env[agentEnvVar]; got != want {
 			t.Errorf("%s: %s = %q, want %q", in[i].Name, agentEnvVar, got, want)

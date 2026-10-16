@@ -11,9 +11,11 @@ import (
 	"fmt"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/patrikmichi/zuano/internal/brand"
 )
 
-const serviceName = "zuano-cli"
+const serviceName = brand.Name + "-cli"
 
 // schemaVersion tags the shape of a persisted session: bound to a gateway
 // identity.

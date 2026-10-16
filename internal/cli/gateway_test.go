@@ -153,7 +153,7 @@ func TestCall_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 // ---- root --offline flag must fail closed regardless of a configured gateway ----
 
 // withOffline simulates the root --offline persistent flag being set (what
-// cmd/relay/main.go's PersistentPreRunE does after parsing --offline),
+// cmd/zuano/main.go's PersistentPreRunE does after parsing --offline),
 // restoring the previous value on cleanup. A configured, reachable gateway
 // (env var) is set up alongside it so these tests prove --offline wins even
 // when a gateway URL would otherwise resolve successfully.

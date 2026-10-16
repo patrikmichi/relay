@@ -8,9 +8,9 @@
 #        COVERAGE_PACKAGE_MIN (default 80)
 #
 # Excluded from both floors:
-#   - cmd/relay/main.go: main() is process wiring (signal context, os.Exit)
+#   - cmd/zuano/main.go: main() is process wiring (signal context, os.Exit)
 #     that only runs inside the built binary; the helpers it calls are
-#     tested in cmd/relay and internal/cli.
+#     tested in cmd/zuano and internal/cli.
 #   - generated files (a "// Code generated ... DO NOT EDIT." line): their
 #     source of truth is the generator, not hand-written code.
 set -euo pipefail
@@ -35,7 +35,7 @@ if [ -z "$module" ]; then
   exit 2
 fi
 
-excluded=("$module/cmd/relay/main.go")
+excluded=("$module/cmd/zuano/main.go")
 while IFS= read -r file; do
   rel="${file#"$module"/}"
   if [ -f "$rel" ] && grep -qE '^// Code generated .* DO NOT EDIT\.$' "$rel"; then

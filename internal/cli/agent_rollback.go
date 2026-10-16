@@ -8,7 +8,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// AgentRollbackCmd returns the `relay agent rollback` cobra command —
+// AgentRollbackCmd returns the `zuano agent rollback` cobra command —
 // reverses a Kind: agent manifest-recorded install/migrate. The Agent-IR
 // analogue of SkillRollbackCmd.
 func AgentRollbackCmd() *cobra.Command {
@@ -26,7 +26,7 @@ file that has changed since, unless --force) and drop the manifest entry.
 
 Use --last to roll back the most recently recorded AGENT entry (never a
 skill entry, even if one sorts later in the shared manifest ledger), or
-pass a manifest entry id (see 'relay agent list --provenance' or inspect
+pass a manifest entry id (see 'zuano agent list --provenance' or inspect
 ~/.config/zuano/agentport-manifest.json) to roll back a specific one.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,7 +79,7 @@ func doAgentRollback(cmd *cobra.Command, opts agentRollbackOpts, doc actionDoc) 
 			return fmt.Errorf("no manifest entry with id %q", opts.id)
 		}
 		if entry.Kind != agentport.KindAgent {
-			return fmt.Errorf("manifest entry %q is a %s entry, not an agent — use 'relay skill rollback' instead", opts.id, entry.Kind)
+			return fmt.Errorf("manifest entry %q is a %s entry, not an agent — use 'zuano skill rollback' instead", opts.id, entry.Kind)
 		}
 	}
 

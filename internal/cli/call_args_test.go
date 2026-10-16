@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// relay call must find <service> <tool> wherever the flags sit.
+// zuano call must find <service> <tool> wherever the flags sit.
 func TestCallFindsServiceAndToolRegardlessOfFlagOrder(t *testing.T) {
 	isolate(t)
 	cases := map[string][]string{

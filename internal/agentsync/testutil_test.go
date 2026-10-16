@@ -50,15 +50,15 @@ func readFile(t *testing.T, path string) string {
 func fixtureBundle() Bundle {
 	return Bundle{
 		MCP: []MCPServer{
-			{Name: "relay", URL: "https://gateway.example.com/api/mcp", BearerEnv: "ZUANO_API_KEY"},
+			{Name: "zuano", URL: "https://gateway.example.com/api/mcp", BearerEnv: "ZUANO_API_KEY"},
 			{Name: "docs", Command: "npx", Args: []string{"-y", "@acme/docs-mcp"}, Env: map[string]string{"DOCS_REGION": "eu"}},
 		},
 		Env: []EnvVar{{Name: "ZUANO_AGENT", Value: "1"}},
 		Hooks: []Hook{
-			{Event: EventPreToolUse, Matcher: "Bash", Command: "/opt/relay/guard.sh", Timeout: 10},
-			{Event: EventSessionStart, Command: "/opt/relay/context.sh"},
-			{Event: EventStop, Command: "/opt/relay/notify.sh"},
-			{Event: EventNotification, Command: "/opt/relay/ping.sh"},
+			{Event: EventPreToolUse, Matcher: "Bash", Command: "/opt/zuano/guard.sh", Timeout: 10},
+			{Event: EventSessionStart, Command: "/opt/zuano/context.sh"},
+			{Event: EventStop, Command: "/opt/zuano/notify.sh"},
+			{Event: EventNotification, Command: "/opt/zuano/ping.sh"},
 		},
 		Rules: []Rule{
 			{Name: "style", Description: "Code style", Always: true, Body: "Prefer small functions."},
@@ -90,7 +90,7 @@ func statusOf(items []Item, kind Kind, name string) string {
 }
 
 // snapshot returns every regular file under root keyed by slash path,
-// skipping relay's own state.
+// skipping zuano's own state.
 func snapshot(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}

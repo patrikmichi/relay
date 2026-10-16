@@ -12,7 +12,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillMigrateCmd returns the `relay skill migrate <name>` cobra command —
+// SkillMigrateCmd returns the `zuano skill migrate <name>` cobra command —
 // the flagship agentport command. It loads a skill by name from --from's
 // directory (in the given --scope), projects it to one or more --to
 // providers, prints a fidelity-loss report for each, and (unless --dry-run)
@@ -41,9 +41,9 @@ machine (excluding --from).
 Supported providers: %s.
 
 Examples:
-  relay skill migrate my-skill --from claude --to codex
-  relay skill migrate my-skill --from cursor --scope project --dry-run
-  relay skill migrate my-skill --from claude --strict`, providerIDsCSV()),
+  zuano skill migrate my-skill --from claude --to codex
+  zuano skill migrate my-skill --from cursor --scope project --dry-run
+  zuano skill migrate my-skill --from claude --strict`, providerIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillMigrate(cmd, args[0], skillMigrateOpts{
