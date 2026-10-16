@@ -523,6 +523,23 @@ func TestCompare_RunsSeveralVariantsAndFlagsASignificantLoss(t *testing.T) {
 	}
 }
 
+func TestCompare_KeepsTheOrderTheUserGaveSoTheBaselineIsTheFirst(t *testing.T) {
+	g := newEvalGateway(t)
+	if _, err := evalCmd(t, g, SkillCompareCmd(), "evskill", "--versions", "sdr_1,1.0.0,1.1.0"); err != nil {
+		t.Fatal(err)
+	}
+	variants, _ := g.body("POST /evals/runs")["variants"].([]any)
+	if len(variants) != 3 {
+		t.Fatalf("variants = %v", variants)
+	}
+	first, _ := variants[0].(map[string]any)
+	second, _ := variants[1].(map[string]any)
+	third, _ := variants[2].(map[string]any)
+	if first["draftId"] != "sdr_1" || second["label"] != "1.0.0" || third["label"] != "1.1.0" {
+		t.Errorf("order changed: %v", variants)
+	}
+}
+
 const optimizeResultJSON = `{"baseline":{"train":0.5,"validation":0.6},"candidates":[
  {"index":0,"text":"a","draftId":"sdr_1","train":0.8,"trainGain":0.3,"validation":0.7,"validationGain":0.1,"overfit":false},
  {"index":1,"text":"b","train":0.6,"trainGain":0.1,"overfit":false}],

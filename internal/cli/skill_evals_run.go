@@ -143,10 +143,12 @@ func waitFor(ctx context.Context, timeout time.Duration, progress io.Writer, qui
 }
 
 type runOptions struct {
-	set       string
-	kind      string
-	versions  []string
-	drafts    []string
+	set  string
+	kind string
+	// refs are the variants in the order the user gave them: a version
+	// (semver or rev_ id, empty for the current one) or a draft (sdr_ id).
+	// The first is the baseline a comparison measures against.
+	refs      []string
 	repeats   int
 	splits    []string
 	model     string
@@ -179,7 +181,11 @@ func (o *runOptions) addFlags(cmd *cobra.Command) {
 // variants builds the run's variant list.
 func (o *runOptions) variants(ctx context.Context, a *evalAPI) ([]map[string]any, error) {
 	var out []map[string]any
-	for _, ref := range o.versions {
+	for _, ref := range o.refs {
+		if strings.HasPrefix(ref, "sdr_") {
+			out = append(out, map[string]any{"draftId": ref, "label": "draft " + ref})
+			continue
+		}
 		v, err := a.resolveVersion(ctx, ref)
 		if err != nil {
 			return nil, err
@@ -189,9 +195,6 @@ func (o *runOptions) variants(ctx context.Context, a *evalAPI) ([]map[string]any
 			label = v.ID
 		}
 		out = append(out, map[string]any{"versionId": v.ID, "label": label})
-	}
-	for _, id := range o.drafts {
-		out = append(out, map[string]any{"draftId": id, "label": "draft " + id})
 	}
 	return out, nil
 }
@@ -243,10 +246,10 @@ Examples:
 				return fmt.Errorf("--version and --draft cannot be used together")
 			}
 			if version != "" {
-				o.versions = []string{version}
+				o.refs = []string{version}
 			}
 			if draft != "" {
-				o.drafts = []string{draft}
+				o.refs = []string{draft}
 			}
 			return runEval(cmd, f, args[0], o, false)
 		},
@@ -277,13 +280,7 @@ Example:
   relay skill compare weekly-timesheet --versions 1.1.0,1.2.0 --wait`, exitEvalRegression),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			for _, v := range versions {
-				if strings.HasPrefix(v, "sdr_") {
-					o.drafts = append(o.drafts, v)
-				} else {
-					o.versions = append(o.versions, v)
-				}
-			}
+			o.refs = versions
 			if len(versions) < 2 && o.runID == "" {
 				return fmt.Errorf("--versions needs at least two versions or drafts, for example --versions 1.1.0,1.2.0")
 			}
@@ -326,8 +323,8 @@ func runEval(cmd *cobra.Command, f evalFlags, skillRef string, o runOptions, com
 		if err != nil {
 			return err
 		}
-		if len(o.versions)+len(o.drafts) == 0 {
-			o.versions = []string{""}
+		if len(o.refs) == 0 {
+			o.refs = []string{""}
 		}
 		variants, err := o.variants(ctx, a)
 		if err != nil {
