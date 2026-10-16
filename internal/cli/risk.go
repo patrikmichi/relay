@@ -42,6 +42,20 @@ func decisionForRisk(risk string) string {
 	return "ask"
 }
 
+// approvalForRisk says what an agent session needs before a tool of this risk
+// runs: an approval of the call, or a time-boxed write grant for the service.
+// Reads, and tools the catalog does not list, need nothing that is known here;
+// an org rule can still hold any call.
+func approvalForRisk(risk string) string {
+	switch risk {
+	case "destructive", "outward":
+		return "approval"
+	case "write":
+		return "grant"
+	}
+	return ""
+}
+
 func (c *riskCatalog) lookup(service, tool string) string {
 	if c != nil {
 		for _, e := range c.Tools {
