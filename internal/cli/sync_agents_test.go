@@ -83,7 +83,7 @@ func TestSyncDetectsAgentsWritesAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestSyncUsesAPIKeyEnvReferenceWhenKeyIsSet(t *testing.T) {
+func TestSyncReferencesTheAPIKeyOnlyWhenAsked(t *testing.T) {
 	home := syncHome(t)
 	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
@@ -91,8 +91,18 @@ func TestSyncUsesAPIKeyEnvReferenceWhenKeyIsSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := readTestFile(t, filepath.Join(home, ".claude.json"))
-	if !strings.Contains(got, "Bearer ${GATEWAY_API_KEY}") || strings.Contains(got, "gw-secret-value") {
-		t.Errorf("config must reference the variable, never embed the key:\n%s", got)
+	if strings.Contains(got, "GATEWAY_API_KEY") || strings.Contains(got, "gw-secret-value") || strings.Contains(got, "Authorization") {
+		t.Errorf("auto must use OAuth even when a key is set:\n%s", got)
+	}
+
+	for _, mode := range []string{"api-key", "apikey"} {
+		if _, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", mode, "--force"); err != nil {
+			t.Fatal(err)
+		}
+		got = readTestFile(t, filepath.Join(home, ".claude.json"))
+		if !strings.Contains(got, "Bearer ${GATEWAY_API_KEY}") || strings.Contains(got, "gw-secret-value") {
+			t.Errorf("--mcp-auth %s must reference the variable, never embed the key:\n%s", mode, got)
+		}
 	}
 }
 

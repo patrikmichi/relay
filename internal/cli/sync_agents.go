@@ -127,13 +127,11 @@ func gatewayMCPServer(mode string) (*agentsync.MCPServer, error) {
 	}
 	s := &agentsync.MCPServer{Name: gatewayServerName, URL: strings.TrimRight(gw, "/") + "/api/mcp"}
 	switch mode {
-	case "", "auto":
-		if os.Getenv(gatewayAPIKeyEnv) != "" {
-			s.BearerEnv = gatewayAPIKeyEnv
-		}
-	case "api-key":
+	case "", "auto", "oauth":
+		// The gateway marks every OAuth session as an agent's, so its writes
+		// wait for approval; an API key carries no such marker.
+	case "api-key", "apikey":
 		s.BearerEnv = gatewayAPIKeyEnv
-	case "oauth":
 	default:
 		return nil, fmt.Errorf("invalid --mcp-auth %q: use auto, oauth or api-key", mode)
 	}
@@ -173,7 +171,7 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 	if slices.Contains(kinds.file, agentsync.KindMCP) {
 		for _, s := range user.MCP {
 			if s.Name == gatewayServerName && s.BearerEnv != "" {
-				warns = append(warns, fmt.Sprintf("the gateway MCP entry authenticates with $%s, which is not marked as an agent's, so its calls are not held for approval; use --mcp-auth oauth", s.BearerEnv))
+				warns = append(warns, fmt.Sprintf("the gateway MCP entry authenticates with the API key in $%s, which is not marked as an agent's: calls through it bypass approvals; use --mcp-auth oauth", s.BearerEnv))
 			}
 		}
 	}

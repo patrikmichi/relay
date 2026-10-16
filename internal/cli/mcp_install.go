@@ -86,7 +86,7 @@ func addMcpSyncFlags(cmd *cobra.Command, to *[]string, scope *string, dryRun, fo
 	fl.StringVar(scope, "scope", "user", "user or project")
 	fl.BoolVar(dryRun, "dry-run", false, "Show the diff and write nothing")
 	fl.BoolVar(force, "force", false, "Replace same-named entries relay does not manage")
-	fl.StringVar(auth, "mcp-auth", "auto", "Gateway MCP credentials: auto, oauth or api-key")
+	fl.StringVar(auth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
 }
 
 func parseSingleScope(s string) (agentsync.Scope, error) {

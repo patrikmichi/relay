@@ -127,22 +127,51 @@ func TestSync_WarnsWhenTheGatewayEntryUsesAnAPIKey(t *testing.T) {
 	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
 
-	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp")
+	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", "api-key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "$GATEWAY_API_KEY, which is not marked as an agent's") {
+	if !strings.Contains(out, "$GATEWAY_API_KEY, which is not marked as an agent's: calls through it bypass approvals") {
 		t.Errorf("missing the API key warning:\n%s", out)
 	}
 	if strings.Contains(out, "gw-secret-value") {
 		t.Error("the key itself must never be printed")
 	}
 
-	out, err = runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", "oauth")
+	for _, mode := range []string{"auto", "oauth"} {
+		out, err = runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", mode, "--force")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "bypass approvals") {
+			t.Errorf("--mcp-auth %s: OAuth entries are marked by the gateway; unexpected warning:\n%s", mode, out)
+		}
+	}
+}
+
+func TestSync_AgentsWithoutOAuthGetNoCredentialAndAHowTo(t *testing.T) {
+	home := syncHome(t)
+	for _, d := range []string{".cline"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestFile(t, filepath.Join(home, "proj", ".vscode", "mcp.json"), "{}")
+	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
+
+	out, err := runCommand(t, SyncCmd(), "--to", "cline,copilot", "--kind", "mcp", "--scope", "user,project")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "not marked as an agent's") {
-		t.Errorf("OAuth entries are marked by the gateway; unexpected warning:\n%s", out)
+	if strings.Contains(out, "gw-secret-value") {
+		t.Error("the key must never be printed")
+	}
+	if !strings.Contains(out, "authenticate the server in Cline") {
+		t.Errorf("no Cline authorization hint:\n%s", out)
+	}
+	cline := readTestFile(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
+	if strings.Contains(cline, "Authorization") || strings.Contains(cline, "GATEWAY_API_KEY") {
+		t.Errorf("Cline entry carries a credential:\n%s", cline)
 	}
 }

@@ -30,8 +30,9 @@ reported.
 
 Remote MCP entries never contain a credential. Where the agent documents
 environment-variable references in headers or token fields relay writes the
-reference (for example `Bearer ${GATEWAY_API_KEY}`); otherwise it writes none
-and the agent signs in with OAuth.
+reference (for example `Bearer ${GATEWAY_API_KEY}`) only when asked with
+`--mcp-auth api-key`; otherwise it writes none and the agent signs in with
+OAuth, which the gateway marks as an agent's.
 
 ## Claude Code
 

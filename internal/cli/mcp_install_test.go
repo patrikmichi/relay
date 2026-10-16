@@ -123,7 +123,7 @@ func TestMcpInstallCatalogServiceEnablesGatewayServer(t *testing.T) {
 		t.Errorf("no connect hint:\n%s", out)
 	}
 	got := readTestFile(t, filepath.Join(home, ".claude.json"))
-	if !strings.Contains(got, srv.URL+"/api/mcp") || !strings.Contains(got, "Bearer ${GATEWAY_API_KEY}") {
+	if !strings.Contains(got, srv.URL+"/api/mcp") || strings.Contains(got, "GATEWAY_API_KEY") {
 		t.Errorf("gateway server not written:\n%s", got)
 	}
 

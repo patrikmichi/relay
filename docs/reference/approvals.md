@@ -134,9 +134,11 @@ carries the same value in `approval`.
   their `env` in each agent's config. The server list saved by `relay mcp
   install` is not changed.
 - The gateway MCP entry authenticates with OAuth, whose sessions the gateway
-  always marks as an agent's. With `GATEWAY_API_KEY` set, the default
-  `--mcp-auth auto` writes a reference to that key instead, which carries no
-  marker; the sync warns, and `--mcp-auth oauth` avoids it.
+  always marks as an agent's. `--mcp-auth auto` (the default) and `oauth` use
+  it even when `GATEWAY_API_KEY` is set; Cline and GitHub Copilot cannot sign
+  in from the file, so no credential is written and the report tells you to
+  authorize the server in the app. Only `--mcp-auth api-key` references the
+  key, which carries no marker and bypasses approvals; the sync warns.
 - The sync warns when it sets `RELAY_AGENT` before any `relay login --agent`.
   Until then relay run by an agent reports `no agent session`.
 

@@ -163,7 +163,7 @@ func clineMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 		})...)
 	}
 	for _, s := range servers {
-		if s.remote() && s.BearerEnv != "" {
+		if s.remote() {
 			ops = append(ops, noteOp{m.item(s.Name, "", StatusSkipped, "Cline cannot read tokens from the environment; no Authorization header written, authenticate the server in Cline")})
 		}
 	}
@@ -186,7 +186,7 @@ func copilotMCP(env Env, scope Scope, servers []MCPServer) ([]Op, string) {
 	// references, so remote entries carry no header and VS Code asks for
 	// authorization itself.
 	for _, s := range servers {
-		if s.remote() && s.BearerEnv != "" {
+		if s.remote() {
 			ops = append(ops, noteOp{m.item(s.Name, "", StatusSkipped, "VS Code cannot read tokens from the environment; no Authorization header written, authorize the server in VS Code")})
 		}
 	}

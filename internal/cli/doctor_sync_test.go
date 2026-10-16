@@ -108,7 +108,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 	}
 }
 
-func TestDoctorChecksBearerEnvironment(t *testing.T) {
+func TestDoctorChecksBearerEnvironmentOfSyncedMCPServers(t *testing.T) {
 	doctorSyncSetup(t)
 	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "x")
@@ -116,7 +116,15 @@ func TestDoctorChecksBearerEnvironment(t *testing.T) {
 	t.Cleanup(func() { SetOffline(false) })
 
 	checks, _ := doctorChecksByName(t)
-	if c := checks["mcp-env:GATEWAY_API_KEY"]; !c.OK {
+	if c, ok := checks["mcp-env:GATEWAY_API_KEY"]; ok {
+		t.Errorf("the gateway entry authenticates with OAuth and reads no variable: %+v", c)
+	}
+
+	writeTestFile(t, filepath.Join(os.Getenv("HOME"), ".config", "relay", "sync", "mcp.json"),
+		`{"servers":[{"name":"docs","url":"https://docs.example.com/mcp","bearerEnv":"DOCS_TOKEN"}]}`)
+	t.Setenv("DOCS_TOKEN", "x")
+	checks, _ = doctorChecksByName(t)
+	if c := checks["mcp-env:DOCS_TOKEN"]; !c.OK {
 		t.Errorf("set variable: %+v", c)
 	}
 }

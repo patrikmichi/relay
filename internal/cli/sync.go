@@ -157,7 +157,7 @@ Examples:
 	f.StringSliceVar(&o.scopes, "scope", nil, "user, project or all (default: user; project uses the current directory)")
 	f.StringSliceVar(&o.kinds, "kind", nil, "Limit to mcp, env, hooks, rules, commands, skills, subagents (default: all)")
 	f.StringVar(&o.from, "from", "", "Provider whose skills and subagents are copied to the other agents (default: claude)")
-	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto (API key when $GATEWAY_API_KEY is set, else OAuth), oauth or api-key")
+	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (the agent signs in with OAuth, which the gateway marks as an agent's), or api-key (references $GATEWAY_API_KEY, which is not marked and bypasses approvals)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")
 	f.BoolVar(&o.force, "force", false, "Replace same-named entries relay does not manage")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")

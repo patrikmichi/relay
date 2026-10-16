@@ -206,8 +206,12 @@ write fails, and `--dry-run` shows the diff without writing.
 **Credentials are never written.** Remote MCP entries carry an environment
 reference (`Bearer ${GATEWAY_API_KEY}`, `bearer_token_env_var`, `{env:...}`)
 or no credentials at all, in which case the agent signs in with OAuth.
-`--mcp-auth auto` (default) references `$GATEWAY_API_KEY` when it is set in
-the shell running `relay sync`, and otherwise writes no credentials.
+`--mcp-auth auto` (default, same as `oauth`) writes no credentials for the
+gateway entry: the agent signs in with OAuth, and the gateway marks every
+OAuth session as an agent's, so its writes wait for approval. Cline and GitHub
+Copilot cannot do this from the file, so the report asks you to authorize the
+server in the app. `--mcp-auth api-key` instead references `$GATEWAY_API_KEY`,
+which is not marked as an agent's and bypasses approvals; the sync warns.
 
 ### MCP servers
 
