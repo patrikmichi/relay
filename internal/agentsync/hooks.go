@@ -8,12 +8,10 @@ import (
 	"strings"
 )
 
+// hookLabel names a hook by its whole command: a reviewer must see exactly
+// what will run, so it is never shortened.
 func hookLabel(h Hook) string {
-	cmd := strings.Join(strings.Fields(h.Command), " ")
-	if len(cmd) > 48 {
-		cmd = cmd[:45] + "..."
-	}
-	return h.Event + ": " + cmd
+	return h.Event + ": " + strings.Join(strings.Fields(h.Command), " ")
 }
 
 // hookPlan maps neutral hooks onto one agent's event names. Hooks the agent
