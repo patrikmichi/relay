@@ -148,40 +148,60 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if len(run.agents) > 0 {
-				if err := printSyncReport(out, run, o.dryRun, o.jsonOut); err != nil {
+			// The marketplace pull needs the gateway and fails more often, so
+			// it goes first: a failure leaves the agent configs untouched
+			// rather than half-synced. With --json its progress goes to
+			// stderr, leaving stdout one JSON document: the agent report.
+			if wantMarketplace {
+				mout := out
+				if o.jsonOut {
+					mout = cmd.ErrOrStderr()
+				}
+				d := doer
+				var verify *syncVerify
+				if d == nil {
+					if d, err = resolveSyncDoer(gatewayURL); err != nil {
+						return err
+					}
+					gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
+					if err != nil {
+						return err
+					}
+					policy, err := signingPolicy(gURL, requireSig)
+					if err != nil {
+						return err
+					}
+					verify = &syncVerify{policy: policy, warn: cmd.ErrOrStderr()}
+				}
+				if err := runSyncVerified(commandDoer{d, cmd.Context()}, customDir, o.dryRun, verify, mout); err != nil {
+					if len(run.agents) > 0 && !o.dryRun {
+						return fmt.Errorf("marketplace pull failed, so no agent configuration was changed: %w", err)
+					}
 					return err
 				}
-				if !o.dryRun {
-					if err := confirmAgentWrite(cmd, run, "relay sync", o.yes); err != nil {
-						return err
-					}
-					if err := run.apply(cmd.Context()); err != nil {
-						return err
-					}
-				}
 			}
-			if !wantMarketplace {
+			if len(run.agents) == 0 {
 				return nil
 			}
-			d := doer
-			var verify *syncVerify
-			if d == nil {
-				d, err = resolveSyncDoer(gatewayURL)
-				if err != nil {
-					return err
-				}
-				gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
-				if err != nil {
-					return err
-				}
-				policy, err := signingPolicy(gURL, requireSig)
-				if err != nil {
-					return err
-				}
-				verify = &syncVerify{policy: policy, warn: cmd.ErrOrStderr()}
+			if err := printSyncReport(out, run, o.dryRun, o.jsonOut); err != nil {
+				return err
 			}
-			return runSyncVerified(commandDoer{d, cmd.Context()}, customDir, o.dryRun, verify, out)
+			if o.dryRun {
+				return nil
+			}
+			if err := confirmAgentWrite(cmd, run, "relay sync", o.yes); err != nil {
+				if wantMarketplace {
+					return fmt.Errorf("the marketplace was pulled but the agent configuration was not written: %w", err)
+				}
+				return err
+			}
+			if err := run.apply(cmd.Context()); err != nil {
+				if wantMarketplace {
+					return fmt.Errorf("the marketplace was pulled but the agent configuration was not fully written: %w", err)
+				}
+				return err
+			}
+			return nil
 		},
 	}
 
