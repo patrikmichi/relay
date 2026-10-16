@@ -10,23 +10,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/patrikmichi/zuano/internal/plugins"
 	"github.com/patrikmichi/zuano/internal/signing"
 )
 
 // The documents these tests decode are the ones the gateway's route tests
 // write; see contract_fixtures_test.go for where they are read from.
 
-func TestContract_MarketplaceManifestDecodes(t *testing.T) {
-	var m marketplaceManifest
-	if err := json.Unmarshal([]byte(contractFixture(t, "marketplace-manifest.json")), &m); err != nil {
-		t.Fatalf("the gateway's manifest does not decode: %v", err)
+func TestContract_PluginMarketplaceDecodes(t *testing.T) {
+	m, err := plugins.ParseMarketplace([]byte(contractFixture(t, "plugin-marketplace.json")))
+	if err != nil {
+		t.Fatalf("the gateway's marketplace does not decode: %v", err)
 	}
-	if m.Owner.Name != "org_abc123" || m.Owner.Email != "admin@example.com" || len(m.Plugins) != 1 || m.Plugins[0].Source != "./plugins/res_abc123" {
-		t.Errorf("manifest = %+v", m)
+	if m.Owner.Name != "org_abc123" || m.Owner.Email != "admin@example.com" || len(m.Plugins) != 1 {
+		t.Fatalf("marketplace = %+v", m)
 	}
-	var empty marketplaceManifest
-	if err := json.Unmarshal([]byte(`{"name":"org-marketplace","owner":{"name":"org"},"plugins":[]}`), &empty); err != nil || empty.Owner.Name != "org" {
-		t.Errorf("empty manifest = %+v, %v", empty, err)
+	p := m.Plugins[0]
+	if p.Name != "searcher" || p.Version != "1.2.3" || p.Source.Source != "url" || p.Ext() != ".zip" || len(p.Source.SHA256) != 64 {
+		t.Errorf("entry = %+v", p)
+	}
+	if empty, err := plugins.ParseMarketplace([]byte(`{"name":"zuano-acme-beta","owner":{"name":"org"},"plugins":[]}`)); err != nil || empty.Owner.Name != "org" {
+		t.Errorf("empty marketplace = %+v, %v", empty, err)
 	}
 }
 

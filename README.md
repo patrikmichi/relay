@@ -317,13 +317,12 @@ zuano skill quality pr-triage
 `--fail-on-regression` exits 21 when a score dropped, for CI. See
 [docs/reference/skill-evals.md](docs/reference/skill-evals.md).
 
-### Claude Code plugin marketplace
+### Plugin bundles
 
-`zuano sync --marketplace` (or `--dir <path>`) additionally pulls your
-gateway's Claude Code plugin marketplace into
-`~/.config/zuano/marketplace/<name>/` and prints the managed-settings
-fragment to merge. It needs a gateway and is not run by default. Earlier
-versions rejected `--to`; it now selects the agents to sync.
+Your gateway's plugin bundles are installed with `zuano plugin install`, through
+each agent's own plugin system and after a signature check; see
+[docs/reference/plugins.md](docs/reference/plugins.md). `zuano sync` no longer
+pulls a marketplace into a local directory.
 
 ### Agents and approvals
 
@@ -442,7 +441,6 @@ a gateway.
 | `zuano sync [--to <agents\|all>] [--scope] [--kind] [--dry-run] [--force]` | local | Write MCP servers, hooks, rules, commands, skills and subagents into the config of every supported coding agent (see [Syncing across coding agents](#syncing-across-coding-agents)) |
 | `zuano sync routes list\|add\|remove` | local | Save what a plain `zuano sync` copies where (see [Saved routes](#saved-routes)) |
 | `zuano sync --matrix` | local | Print which agent supports which artifact kind at which scope |
-| `zuano sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |
 | `zuano mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
 | `zuano mcp remove <name> [--to <agents>]` | local | Remove an MCP server zuano registered |
 | `zuano mcp link claude-ai\|chatgpt [--directory]` | gateway | Print the prefilled link (Claude) or the endpoint and steps (ChatGPT) to add the gateway as a connector (org admins) |

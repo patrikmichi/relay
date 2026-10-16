@@ -114,15 +114,6 @@ func TestPublish_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 	}
 }
 
-func TestSync_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
-	withNoGateway(t)
-
-	_, err := resolveSyncDoer("")
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
 func TestServices_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 

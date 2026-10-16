@@ -10,12 +10,10 @@ gateway implements the same one.
 |---|---|
 | `GET /api/catalog/skills/{id}/download` | the tarball |
 | `GET /api/catalog/resources/{id}/download` | the tarball (skills and agents) |
-| `GET /api/marketplace/plugin/{id}/{rev}` | the JSON response body |
 
-`GET /api/marketplace/manifest` and `GET /api/marketplace/managed-settings` are
-generated configuration, not versioned bundles, and are not signed. `zuano sync
---marketplace` prints the managed-settings fragment before it writes it or tells
-you to merge it, and says it is unsigned.
+Plugin bundles are not signed this way. Each package carries its own
+`SIGNATURE.json`, checked against the same pinned keys; see
+[plugins.md](plugins.md).
 
 Each signed response carries:
 
@@ -65,5 +63,4 @@ every depth, no whitespace.
   `ZUANO_AGENT` is set.
 - A gateway that signs nothing (no keys published, or no signature on a
   response) is allowed with a warning. `--require-signature` on `skill
-  install`, `agent install` and `sync --marketplace` refuses an unsigned
-  download. A signature that is present must always verify.
+  install` and `agent install` refuses an unsigned download. A signature that is present must always verify.
