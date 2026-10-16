@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/patrikmichi/zuano/internal/signing"
 )
@@ -48,6 +50,7 @@ type session struct {
 		Offline            string   `json:"offline"`
 		Unknown            string   `json:"unknown"`
 		DenyTools          []string `json:"denyTools"`
+		FastReads          bool     `json:"fastReads"`
 	} `json:"settings"`
 	Pins []sessionPin `json:"pins"`
 }
@@ -73,6 +76,17 @@ type OnlineGovernor struct {
 	// (only digests and local findings do).
 	Screen string
 	Logf   func(format string, args ...any)
+	// Now and FlushEvery exist for tests; they default to the clock and ten seconds.
+	Now        func() time.Time
+	FlushEvery time.Duration
+
+	fast      sync.Mutex
+	snap      *policySnapshot
+	snapUntil time.Time
+	queue     []map[string]any
+	retryAt   time.Time
+	stop      chan struct{}
+	stopped   chan struct{}
 
 	mu         sync.Mutex
 	sess       session
@@ -125,6 +139,9 @@ func (g *OnlineGovernor) Start(ctx context.Context) error {
 			g.pins[p.Name] = p
 		}
 	}
+	if g.sess.Settings.FastReads {
+		g.startFlusher()
+	}
 	return nil
 }
 
@@ -134,9 +151,6 @@ func suffixURL(u string) string {
 	}
 	return " (" + u + ")"
 }
-
-// Close does nothing.
-func (g *OnlineGovernor) Close() {}
 
 func (g *OnlineGovernor) denied(tool string) bool {
 	for _, glob := range g.sess.Settings.DenyTools {
@@ -218,6 +232,9 @@ func (g *OnlineGovernor) Call(ctx context.Context, tool string, args json.RawMes
 	if !pinned || g.denied(tool) {
 		return Decision{Kind: "deny", Reason: "tool_not_pinned", Message: "this tool is not approved"}, nil
 	}
+	if d, ok := g.fastRead(ctx, tool, pin, args); ok {
+		return d, nil
+	}
 	body := map[string]any{"upstream": g.sess.Upstream.ID, "tool": tool, "sessionRef": g.sessionRef}
 	if g.Screen == "local" {
 		body["argumentsDigest"] = digestOf(args)
@@ -258,7 +275,10 @@ func (g *OnlineGovernor) Call(ctx context.Context, tool string, args json.RawMes
 // Result sends the result for screening; a result that cannot be checked is
 // withheld.
 func (g *OnlineGovernor) Result(ctx context.Context, d Decision, tool string, result json.RawMessage, isErr bool) (ResultDecision, error) {
-	if len(d.CallID) > 6 && d.CallID[:6] == "local-" {
+	if g.isFast(d) {
+		return g.fastResult(d, tool, result, isErr), nil
+	}
+	if strings.HasPrefix(d.CallID, "local-") {
 		return ResultDecision{Kind: "allow"}, nil
 	}
 	body := map[string]any{"error": isErr}
