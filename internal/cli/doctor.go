@@ -128,13 +128,14 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		add("gateway", true, "offline mode; gateway and token checks skipped")
 		return checks
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	doctorHealth(ctx, gateway, add)
 	c, err := client.Resolve(gateway)
 	if err != nil {
 		add("gateway", false, "authentication unavailable; run zuano login")
 		return checks
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	response, err := c.GetContext(ctx, "/api/cli/whoami")
 	if err != nil {
 		add("gateway", false, "gateway request failed")
