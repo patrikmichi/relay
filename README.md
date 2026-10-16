@@ -157,6 +157,11 @@ into the config of every coding agent it supports, at the user scope
 | **Cline** | user | - | user, project | - | yes | - |
 | **GitHub Copilot** | project | - | project | project | - | - |
 
+Besides these, the `env` kind sets `RELAY_AGENT=1` in the environment of
+Claude Code and Codex (user scope) and in stdio MCP servers that run relay, so
+the relay an agent starts uses the agent profile. See
+[Agents and approvals](#agents-and-approvals); `--kind mcp,rules` leaves it out.
+
 `relay sync --matrix` prints the live matrix with the reason for every gap.
 Anything an agent has no format for is reported as `unsupported` in the sync
 report; nothing is skipped silently. Per-agent paths, keys and caveats are in
@@ -239,6 +244,34 @@ gateway's Claude Code plugin marketplace into
 fragment to merge. It needs a gateway and is not run by default. Earlier
 versions rejected `--to`; it now selects the agents to sync.
 
+### Agents and approvals
+
+A gateway can hold an autonomous agent's writes until a person approves them.
+Sign the agent in as its own profile, stored next to your own session:
+
+```bash
+relay login --agent                    # once: a session the gateway marks as an agent's
+relay sync                             # sets RELAY_AGENT=1 for the agents it configures
+RELAY_AGENT=1 relay whoami             # Profile:  agent (RELAY_AGENT=1; writes wait for approval)
+
+# What an agent sees when a write is held (exit status 12):
+RELAY_AGENT=1 relay stripe create_refund --arg charge=ch_1 --wait=120
+
+# What you do, with your own session (no RELAY_AGENT):
+relay approvals list
+relay approvals approve apr_3f9c4e --grant 30
+```
+
+`relay explain call <service> <tool>` shows what a tool needs: `approval` for
+destructive and outward tools, `grant` for writes. Exit statuses, the profiles
+and what `relay sync` sets are in
+[docs/reference/approvals.md](docs/reference/approvals.md).
+
+**Security note.** The agent marker is chosen when a session is issued. An
+unmarked `relay login` on the same machine is still unrestricted, so anything
+that can run it, or read your keychain, can act without approval. The agent
+profile makes the default safe; it is not a sandbox. keylatch RH-7 is the fix.
+
 ## The offline-vs-gateway model
 
 Every `relay` command falls into exactly one of two buckets:
@@ -247,7 +280,7 @@ Every `relay` command falls into exactly one of two buckets:
 |---|---|---|
 | Touches | Only files on this machine (`~/.claude/`, `~/.claude.json`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, `~/.codeium/windsurf/`, `~/.cline/`, project config in the current directory, and relay's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `relay login` or `GATEWAY_API_KEY` |
-| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay approvals`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -267,9 +300,11 @@ scripts/CI that must never make a network call.
 
 | Command | Kind | Description |
 |---|---|---|
-| `relay login [--device]` | gateway | Authenticate via Google OAuth (browser or device-code flow) |
-| `relay logout` | gateway | Revoke the current session and remove the stored token |
-| `relay whoami [--full]` | gateway | Show the current authenticated identity |
+| `relay login [--device] [--agent]` | gateway | Authenticate via Google OAuth (browser or device-code flow); `--agent` signs in the agent profile, a session the gateway holds to approvals |
+| `relay logout` | gateway | Revoke the current profile's session and remove the stored token |
+| `relay whoami [--full]` | gateway | Show the current authenticated identity and which profile (human or agent) answered |
+| `relay approvals list\|show\|approve\|deny\|wait` | gateway | List the held calls of agents, decide them with your own session, or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
+| `relay explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
 | `relay authorize <service> --scope <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay tokens list` | gateway | Show active session info |
 | `relay tokens revoke` | gateway | Revoke the current session token |
@@ -280,7 +315,7 @@ scripts/CI that must never make a network call.
 | `relay connectors [search <query>] [--category] [--status]` | gateway | Browse the gateway's connector catalog |
 | `relay connect <slug>` | gateway | Link your account: API-key prompt, or the OAuth consent flow in your browser |
 | `relay help-tools [service]` | gateway | List tools for one or all services |
-| `relay call <service> <tool> [--arg k=v]` | gateway | Call a tool on a gateway service |
+| `relay call <service> <tool> [--arg k=v] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
 | `relay sync [--to <agents\|all>] [--scope] [--kind] [--dry-run] [--force]` | local | Write MCP servers, hooks, rules, commands, skills and subagents into the config of every supported coding agent (see [Syncing across coding agents](#syncing-across-coding-agents)) |
 | `relay sync --matrix` | local | Print which agent supports which artifact kind at which scope |
 | `relay sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |
@@ -327,6 +362,7 @@ with environment variables — env always wins over the config file:
 | `GATEWAY_URL` | Gateway base URL (overrides the config file) |
 | `GATEWAY_API_KEY` | Non-interactive bearer auth — use in scripts/CI instead of `relay login` |
 | `RELAY_EMAIL` | Selects which keychain-stored session to use (overrides the last `relay login`'d identity) |
+| `RELAY_AGENT` | `1` makes relay use the agent profile's session, which the gateway holds to approvals, and never your own; `relay login` then signs the agent profile in. `relay sync` sets it for the agents it configures |
 | `RELAY_TIMEOUT` | Limit for each gateway request, e.g. `90s` or `10m`; `0` means no limit. Defaults: 30s, 150s for tool calls and uploads. `--timeout` overrides it. A request that hits the limit exits with status 4 |
 
 Interactive sessions authenticate via `relay login` (OAuth, tokens stored in
@@ -357,7 +393,7 @@ in the gateway.
 `relay doctor [--json]` checks provider directories, current installed hashes and
 permissions, pending recovery journals, override validation and gateway/session
 health. For every detected coding agent it also checks each synced artifact kind
-(MCP servers, hooks, rules, commands) at the user and project scope as a
+(MCP servers, agent environment, hooks, rules, commands) at the user and project scope as a
 `sync:<scope>:<agent>:<kind>` check: in sync, not synced yet, out of sync,
 edited since relay wrote it, or blocked by a config file relay cannot parse. It
 verifies the sync sources parse and that environment variables referenced by MCP

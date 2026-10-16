@@ -17,6 +17,8 @@ project directory (the current directory when `--scope project` is used).
 | JSON object keys (`mcpServers`, `mcp`, `servers`) | hash ledger in `~/.config/relay/sync-ledger.json` | Updated or removed only while the on-disk value still matches what relay wrote |
 | JSON hook arrays (`hooks.<Event>[]`) | hash ledger, per item | A hook you already wrote with the same matcher and command is not duplicated |
 | Codex `config.toml` | `# >>> relay-managed:begin mcp >>>` ... `# <<< relay-managed:end mcp <<<` | A table you defined outside the block wins and is reported as a conflict |
+| Codex `config.toml`, environment | `# >>> relay-managed:begin env >>>` ... `# <<< relay-managed:end env <<<` | A `[shell_environment_policy.set]` table you defined outside the block wins and is reported as a conflict |
+| Claude Code `settings.json` `env` | hash ledger, per variable | A variable you set to another value is a conflict; others are untouched |
 | Shared Markdown (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...) | `<!-- relay-managed:begin rules -->` ... `<!-- relay-managed:end rules -->` | Text outside the block is never touched |
 | Whole files (`.mdc`, command and workflow files, the OpenCode plugin) | `relay-managed` in the first kilobyte | A same-named file without the marker is yours and is left alone |
 | Skills and subagents | the agentport manifest (`relay history`) | Unmodified relay installs are updated when the source changes; user-owned or edited ones are conflicts until `--force` |
@@ -33,11 +35,12 @@ and the agent signs in with OAuth.
 
 ## Claude Code
 
-Sources: [MCP](https://code.claude.com/docs/en/mcp), [hooks](https://code.claude.com/docs/en/hooks), [memory](https://code.claude.com/docs/en/memory), [slash commands](https://code.claude.com/docs/en/slash-commands)
+Sources: [MCP](https://code.claude.com/docs/en/mcp), [settings](https://code.claude.com/docs/en/settings), [hooks](https://code.claude.com/docs/en/hooks), [memory](https://code.claude.com/docs/en/memory), [slash commands](https://code.claude.com/docs/en/slash-commands)
 
 | Kind | User | Project |
 |---|---|---|
 | MCP | `~/.claude.json` top-level `mcpServers` | `.mcp.json` `mcpServers` |
+| Environment | `~/.claude/settings.json` `env` | unsupported (set in the user settings) |
 | Hooks | `~/.claude/settings.json` `hooks` | `.claude/settings.json` `hooks` |
 | Rules | block in `~/.claude/CLAUDE.md` | block in `CLAUDE.md` (`./CLAUDE.md` or `./.claude/CLAUDE.md` are both read) |
 | Commands | `~/.claude/commands/<name>.md` | `.claude/commands/<name>.md` |
@@ -45,19 +48,22 @@ Sources: [MCP](https://code.claude.com/docs/en/mcp), [hooks](https://code.claude
 - Confirmed: user and project MCP locations; `${VAR}` expansion in `url` and `headers` (not for Claude's own credential variables such as `ANTHROPIC_AUTH_TOKEN`, which expand to nothing); hooks in the two settings files with `matcher` and a `hooks` array, timeout in seconds; both CLAUDE.md locations.
 - Commands: the docs say custom commands "have been merged into skills" and recommend skills for new work. `.claude/commands/<name>.md` keeps working with `description` and `argument-hint` frontmatter and `$ARGUMENTS`, but the user-level `~/.claude/commands/` directory is not documented on that page; relay writes it because older and current Claude Code builds load it.
 - Remote servers: `{"type": "http", "url", "headers"}`; local: `{"type": "stdio", "command", "args", "env"}`.
+- Environment: the `env` object of a settings file is applied to every session. relay writes `RELAY_AGENT` to the user file only, since a project file is shared with a team.
 
 ## Codex
 
-Sources: [hooks](https://learn.chatgpt.com/docs/hooks), [MCP](https://learn.chatgpt.com/docs/extend/mcp.md), [config files](https://learn.chatgpt.com/docs/config-file/config-basic.md), [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [custom prompts](https://learn.chatgpt.com/docs/custom-prompts)
+Sources: [hooks](https://learn.chatgpt.com/docs/hooks), [MCP](https://learn.chatgpt.com/docs/extend/mcp.md), [config files](https://learn.chatgpt.com/docs/config-file/config-basic.md), [advanced config](https://learn.chatgpt.com/docs/config-file/config-advanced.md), [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [custom prompts](https://learn.chatgpt.com/docs/custom-prompts)
 
 | Kind | User | Project |
 |---|---|---|
 | MCP | `~/.codex/config.toml` `[mcp_servers.<name>]` | `.codex/config.toml` (trusted projects only) |
+| Environment | `~/.codex/config.toml` `[shell_environment_policy.set]` | unsupported (set in the user config) |
 | Hooks | `~/.codex/hooks.json` | `.codex/hooks.json` (trusted projects only) |
 | Rules | block in `~/.codex/AGENTS.md` | block in `AGENTS.md` |
 | Commands | `~/.codex/prompts/<name>.md` | unsupported (prompts are read from the Codex home only) |
 
 - Confirmed: HTTP servers take `url`, `bearer_token_env_var`, `http_headers`, `env_http_headers`; stdio servers take `command`, `args`, `env`. Hook events and the group shape match Claude Code, without `Notification`; timeouts are seconds. New hooks must be reviewed with `/hooks` before they run.
+- Environment: `shell_environment_policy.set` passes variables to the commands Codex runs. It applies after the exclusion rules, but an include-pattern allowlist can still remove the value. relay writes it as a `[shell_environment_policy.set]` table, which is the same setting as the inline `set = { ... }` form; an existing definition of either form is reported as a conflict.
 - A global `~/.codex/AGENTS.override.md`, when present, is read instead of `AGENTS.md`; relay still writes `AGENTS.md`, so remove the override file if the synced rules do not show up.
 - Custom prompts are deprecated upstream in favour of skills; relay still writes them because they are the only command primitive Codex has.
 
