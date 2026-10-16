@@ -33,6 +33,7 @@ func Build(env Env, bundles map[Scope]Bundle, opts Options) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	env = pinWindsurfDir(env, led)
 	c := &Ctx{Env: env, Ledger: led, Force: opts.Force}
 
 	var items []Item

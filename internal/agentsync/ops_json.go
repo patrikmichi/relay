@@ -243,8 +243,11 @@ func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
 		events[ev] = true
 	}
 	for id := range led {
+		// A hand-edited ledger can hold a malformed id; it names no event.
 		if rest, ok := strings.CutPrefix(id, "hook:"); ok {
-			events[rest[:strings.Index(rest, ":")]] = true
+			if i := strings.Index(rest, ":"); i > 0 {
+				events[rest[:i]] = true
+			}
 		}
 	}
 	names := make([]string, 0, len(events))

@@ -135,6 +135,9 @@ func windsurfRules(env Env, scope Scope, rules []Rule) ([]Op, string) {
 // windsurfProjectDir is the workspace config directory: .devin when the
 // project has one (the documented preference), else the legacy .windsurf.
 func windsurfProjectDir(env Env) string {
+	if env.windsurfDir != "" {
+		return env.windsurfDir
+	}
 	if dirExists(filepath.Join(env.Project, ".devin")) {
 		return filepath.Join(env.Project, ".devin")
 	}

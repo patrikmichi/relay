@@ -22,6 +22,34 @@ type Env struct {
 	Home    string
 	Project string
 	Getenv  func(string) string
+
+	// windsurfDir pins the workspace config directory (.windsurf or .devin)
+	// the ledger already holds files in, so creating the other one later
+	// does not strand them.
+	windsurfDir string
+}
+
+// pinWindsurfDir fixes windsurfProjectDir to the directory the ledger
+// already records files under.
+func pinWindsurfDir(env Env, led *Ledger) Env {
+	if env.Project == "" {
+		return env
+	}
+	roots := []string{env.Project}
+	if real, err := filepath.EvalSymlinks(env.Project); err == nil && real != env.Project {
+		roots = append(roots, real)
+	}
+	for _, d := range []string{".windsurf", ".devin"} {
+		for file := range led.Files {
+			for _, root := range roots {
+				if strings.HasPrefix(file, filepath.Join(root, d)+string(filepath.Separator)) {
+					env.windsurfDir = filepath.Join(env.Project, d)
+					return env
+				}
+			}
+		}
+	}
+	return env
 }
 
 func (e Env) getenv(k string) string {
@@ -299,14 +327,24 @@ type Ledger struct {
 
 	path  string
 	dirty bool
+	// ops are this process's changes, replayed on the file's current
+	// content when saving so a concurrent sync's entries are not lost.
+	ops []ledgerOp
+}
+
+type ledgerOp struct {
+	file, id, hash string
+	drop           bool
 }
 
 func LedgerPath(home string) string {
 	return filepath.Join(home, ".config", "relay", "sync-ledger.json")
 }
 
-func LoadLedger(home string) (*Ledger, error) {
-	l := &Ledger{Version: 1, Files: map[string]map[string]string{}, path: LedgerPath(home)}
+func LoadLedger(home string) (*Ledger, error) { return readLedger(LedgerPath(home)) }
+
+func readLedger(path string) (*Ledger, error) {
+	l := &Ledger{Version: 1, Files: map[string]map[string]string{}, path: path}
 	raw, err := os.ReadFile(l.path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return l, nil
@@ -337,6 +375,7 @@ func (l *Ledger) set(file, id, hash string) {
 	if m[id] != hash {
 		m[id] = hash
 		l.dirty = true
+		l.ops = append(l.ops, ledgerOp{file: file, id: id, hash: hash})
 	}
 }
 
@@ -345,9 +384,24 @@ func (l *Ledger) drop(file, id string) {
 	if _, ok := m[id]; ok {
 		delete(m, id)
 		l.dirty = true
+		l.ops = append(l.ops, ledgerOp{file: file, id: id, drop: true})
 	}
 	if len(m) == 0 {
 		delete(l.Files, file)
+	}
+}
+
+func (l *Ledger) apply(op ledgerOp) {
+	if op.drop {
+		delete(l.Files[op.file], op.id)
+	} else {
+		if l.Files[op.file] == nil {
+			l.Files[op.file] = map[string]string{}
+		}
+		l.Files[op.file][op.id] = op.hash
+	}
+	if len(l.Files[op.file]) == 0 {
+		delete(l.Files, op.file)
 	}
 }
 
@@ -355,21 +409,60 @@ func (l *Ledger) Save() error {
 	if !l.dirty {
 		return nil
 	}
-	raw, err := json.MarshalIndent(l, "", "  ")
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
 		return err
 	}
-	tmp := l.path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
+	// Another sync may have saved since this one loaded the ledger: take the
+	// lock, reread the file and replay only this process's changes on it.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	locks, err := txn.AcquireAll(ctx, []string{"sync-ledger"})
+	if err != nil {
+		return fmt.Errorf("lock the sync ledger: %w", err)
+	}
+	defer locks.Unlock()
+
+	fresh, err := readLedger(l.path)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, l.path); err != nil {
-		_ = os.Remove(tmp)
+	for _, op := range l.ops {
+		fresh.apply(op)
+	}
+	for file, entries := range fresh.Files {
+		if len(entries) == 0 {
+			delete(fresh.Files, file)
+		}
+	}
+	raw, err := json.MarshalIndent(fresh, "", "  ")
+	if err != nil {
 		return err
 	}
-	l.dirty = false
+	tmp, err := os.CreateTemp(filepath.Dir(l.path), "sync-ledger-*.tmp")
+	if err != nil {
+		return err
+	}
+	fail := func(err error) error {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fail(err)
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return fail(err)
+	}
+	if err := os.Rename(tmp.Name(), l.path); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	l.Files, l.ops, l.dirty = fresh.Files, nil, false
 	return nil
 }

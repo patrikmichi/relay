@@ -29,6 +29,7 @@ func ReadAgent(env Env, agent AgentID, scope Scope, kinds []Kind) (Bundle, []str
 	if err != nil {
 		return Bundle{}, nil, err
 	}
+	env = pinWindsurfDir(env, led)
 	r := &agentReader{env: env, agent: agent, scope: scope, led: led, ctx: &Ctx{Env: env, Ledger: led}}
 	var b Bundle
 	for _, k := range kinds {
