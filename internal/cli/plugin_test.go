@@ -33,6 +33,7 @@ func bundleFiles(withHooks bool) map[string][]byte {
 		"commands/review.md":     []byte("---\ndescription: Review a change\n---\nReview it.\n"),
 		"rules/style.md":         []byte("---\ndescription: Style\nalways: true\n---\nBe terse.\n"),
 		"mcp.json":               []byte(`{"mcpServers":{"docs":{"type":"http","url":"https://docs.example.com/mcp"}}}`),
+		"agents/reviewer.md":     []byte("---\nname: reviewer\ndescription: Reviews changes\n---\nYou review changes.\n"),
 	}
 	if withHooks {
 		files["hooks/hooks.json"] = []byte(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"./hooks/check.sh"}]}]}}`)
@@ -446,6 +447,20 @@ func TestPluginInstall_AnAgentWithoutAPluginSystemGetsTheBundleExpanded(t *testi
 	if len(in.Skills) != 1 || in.Skills[0] != "triage" {
 		t.Errorf("skills = %v", in.Skills)
 	}
+	if len(in.Hooks) != 1 || in.Hooks[0].Event != "pre-tool-use" || in.Hooks[0].Matcher != "Bash" || !strings.HasSuffix(in.Hooks[0].Command, filepath.Join("toolkit", "hooks", "check.sh")+"'") {
+		t.Errorf("hooks = %+v", in.Hooks)
+	}
+	hooksFile := readHomeFile(t, ".config", "zuano", "sync", "hooks.json")
+	if !strings.Contains(hooksFile, `"agents": [`) || !strings.Contains(hooksFile, `"windsurf"`) || !strings.Contains(hooksFile, `"event": "pre-tool-use"`) {
+		t.Errorf("hooks.json = %s", hooksFile)
+	}
+	script := filepath.Join(home, ".config", "zuano", "plugins", "files", "toolkit", "hooks", "check.sh")
+	if info, err := os.Stat(script); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("hook script = %v, %v", info, err)
+	}
+	if !strings.Contains(out, "no subagent format zuano can write") {
+		t.Errorf("no note about subagents on windsurf:\n%s", out)
+	}
 	source := filepath.Join(home, ".config", "zuano", "sync")
 	if got := readHomeFile(t, ".config", "zuano", "sync", "commands", "toolkit--review.md"); !strings.Contains(got, "Review it.") {
 		t.Errorf("command = %q", got)
@@ -519,8 +534,24 @@ func TestPluginInstall_OpencodeWritesTheNPMScopeOnceAndListsThePackage(t *testin
 	if cfg := readHomeFile(t, ".config", "opencode", "opencode.json"); !strings.Contains(cfg, "@acme/toolkit") {
 		t.Errorf("config = %s", cfg)
 	}
+	in, _ := loadTestLedger(t).Get("toolkit", "opencode")
+	if len(in.Subagents) != 1 || in.Subagents[0] != "reviewer" || len(in.Hooks) != 1 {
+		t.Fatalf("ledger = %+v", in)
+	}
+	var agentFile string
+	for _, f := range in.Files {
+		if strings.HasSuffix(f.Path, "reviewer.md") {
+			agentFile = f.Path
+		}
+	}
+	if data, err := os.ReadFile(agentFile); err != nil || !strings.Contains(string(data), "You review changes.") {
+		t.Errorf("subagent file %q: %v", agentFile, err)
+	}
 	if _, err := runCommand(t, PluginCmd(), "install", "toolkit", "--to", "opencode", "--allow-hooks"); err != nil {
 		t.Fatal(err)
+	}
+	if hooks := readHomeFile(t, ".config", "zuano", "sync", "hooks.json"); strings.Count(hooks, "pre-tool-use") != 1 {
+		t.Errorf("a second install duplicated the hook:\n%s", hooks)
 	}
 	if g.minted != 1 {
 		t.Errorf("minted %d keys, want 1", g.minted)
@@ -530,6 +561,31 @@ func TestPluginInstall_OpencodeWritesTheNPMScopeOnceAndListsThePackage(t *testin
 	}
 	if cfg := readHomeFile(t, ".config", "opencode", "opencode.json"); strings.Contains(cfg, "@acme/toolkit") {
 		t.Errorf("the package stayed in the config: %s", cfg)
+	}
+	if _, err := os.Stat(agentFile); err == nil {
+		t.Error("the subagent survived removal")
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".config", "zuano", "sync", "hooks.json")); err == nil {
+		t.Error("hooks.json is left although it held only the plugin's hook")
+	}
+}
+
+func TestMergeHooks_ReplacesOnlyThePluginsOwnEntries(t *testing.T) {
+	before := []byte(`{"note":"mine","hooks":[{"event":"stop","command":"notify"},{"event":"pre-tool-use","matcher":"Bash","command":"'/x/check.sh'","agents":["windsurf"]},{"event":"pre-tool-use","matcher":"Bash","command":"'/x/check.sh'","agents":["cursor"]}]}`)
+	drop := []plugins.HookRef{{Event: "pre-tool-use", Matcher: "Bash", Command: "'/x/check.sh'"}}
+	out, err := mergeHooks(before, drop, nil, "windsurf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, `"note": "mine"`) || !strings.Contains(got, `"notify"`) || !strings.Contains(got, `"cursor"`) || strings.Contains(got, `"windsurf"`) {
+		t.Errorf("merged = %s", got)
+	}
+	if _, err := mergeHooks([]byte(`{"hooks": 3}`), nil, nil, "windsurf"); err == nil {
+		t.Error("a hooks member that is not a list was accepted")
+	}
+	if out, _ := mergeHooks([]byte(`{"hooks":[{"event":"stop","command":"n","agents":["windsurf"]}]}`), []plugins.HookRef{{Event: "stop", Command: "n"}}, nil, "windsurf"); out != nil {
+		t.Errorf("an emptied file should go away, got %s", out)
 	}
 }
 

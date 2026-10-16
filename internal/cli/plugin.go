@@ -66,6 +66,7 @@ type pluginFeed struct {
 
 // pluginSession is the state one plugin command works with.
 type pluginSession struct {
+	cmd        *cobra.Command
 	ctx        context.Context
 	out, err   io.Writer
 	client     *client.Client
@@ -99,7 +100,7 @@ func newPluginSession(cmd *cobra.Command, gatewayURL, channel string, dryRun boo
 		return nil, fmt.Errorf("resolve home directory: %w", err)
 	}
 	s := &pluginSession{
-		ctx: cmd.Context(), out: cmd.OutOrStdout(), err: cmd.ErrOrStderr(), client: c, origin: origin,
+		cmd: cmd, ctx: cmd.Context(), out: cmd.OutOrStdout(), err: cmd.ErrOrStderr(), client: c, origin: origin,
 		home: home, channel: channel, dryRun: dryRun,
 		markets: map[string]plugins.Marketplace{}, packages: map[string]*verifiedPackage{},
 	}

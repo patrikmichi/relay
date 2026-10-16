@@ -40,12 +40,17 @@ func (s *pluginSession) expandInto(agentID string, t *pluginTarget, in *plugins.
 	var kinds []string
 
 	// Skills.
+	in.Skills, in.Subagents, in.Files, in.MCP, in.Hooks = nil, nil, nil, nil, nil
 	skillNames := topLevelNames(vp.pkg, "skills/")
 	if len(skillNames) > 0 {
-		in.Skills, in.Files = nil, nil
 		if err := s.expandSkills(agentID, vp, skillNames, t.prior, in); err != nil {
 			return err
 		}
+	}
+
+	// Subagents.
+	if err := s.expandSubagents(agentID, vp, t.prior, in); err != nil {
+		return err
 	}
 
 	// Commands and rules.
@@ -114,10 +119,12 @@ func (s *pluginSession) expandInto(agentID string, t *pluginTarget, in *plugins.
 		kinds = append(kinds, "mcp")
 	}
 
-	if dropped := notExpanded(vp.pkg); dropped != "" {
-		fmt.Fprintf(s.err, "note: %s are not expanded into %s\n", dropped, agentID)
+	if err := s.syncKinds(agentID, kinds); err != nil {
+		return err
 	}
-	return s.syncKinds(agentID, kinds)
+	// Hooks last: they run code, so they are confirmed, and a refusal leaves
+	// the rest of the bundle installed.
+	return s.expandHooks(agentID, vp, t, in)
 }
 
 // syncKinds fans the given kinds of the zuano sync directory out to one agent.
@@ -214,20 +221,6 @@ func topLevelNames(pkg *plugins.Package, prefix string) []string {
 	return names
 }
 
-// notExpanded names the parts of a package that expansion leaves alone.
-func notExpanded(pkg *plugins.Package) string {
-	var parts []string
-	for _, dir := range []string{"agents", "hooks"} {
-		for p := range pkg.Files {
-			if strings.HasPrefix(p, dir+"/") {
-				parts = append(parts, dir)
-				break
-			}
-		}
-	}
-	return strings.Join(parts, " and ")
-}
-
 // bundleMCPServers reads the MCP servers a package declares. A server that
 // runs a local command is taken only with --allow-hooks.
 func bundleMCPServers(pkg *plugins.Package, plugin string, allowCommands bool) ([]agentsync.MCPServer, []string) {
@@ -293,6 +286,16 @@ func removeExpanded(s *pluginSession, a *pluginAgent, _ string, in plugins.Insta
 				return fmt.Errorf("update the skill manifest: %w", err)
 			}
 		}
+	}
+	if adapter, ok := agentport.AgentAdapterByID(agentport.ProviderID(a.id)); ok {
+		for _, name := range in.Subagents {
+			if _, err := agentport.RemoveEntriesFor(name, adapter.ID(), agentport.ScopeUser, agentport.KindAgent); err != nil {
+				return fmt.Errorf("update the subagent manifest: %w", err)
+			}
+		}
+	}
+	if err := s.removeHooks(a.id, in); err != nil {
+		return err
 	}
 	var kinds []string
 	for _, f := range in.Files {

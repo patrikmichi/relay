@@ -107,7 +107,22 @@ that part into the agent's configuration and records it in the ledger:
   (`~/.config/zuano/sync/commands/<plugin>--<name>.md`, `rules/...`), and MCP
   servers to its `mcp.json` as `<plugin>-<name>`, then those kinds are synced to
   that agent. A local-command MCP server needs `--allow-hooks`.
-- subagents and hooks are not expanded.
+- subagents (`agents/<name>.md`) go through the agent engine of `zuano agent
+  install`, for agents that have a subagent format (Claude Code, Codex, Cursor,
+  Gemini CLI, OpenCode); for the others zuano says so and skips them;
+- hooks (`hooks/hooks.json`) are added to `~/.config/zuano/sync/hooks.json`
+  limited to that one agent (`agents: [<agent>]`), with Claude's event names
+  mapped to zuano's. A command that names a file in the bundle (`./...` or
+  `${CLAUDE_PLUGIN_ROOT}/...`) is pointed at a copy under
+  `~/.config/zuano/plugins/files/<plugin>/`. Hooks run code, so they go through
+  the same confirmation as `zuano sync`: `--allow-hooks`, or a yes at a
+  terminal after the change is shown; if it is declined or refused (for example
+  in an agent session) the sync directory is put back and the rest of the bundle
+  stays installed.
+
+All of it is recorded in the ledger (skills, subagents, MCP servers, hooks and
+files), so `plugin update` replaces exactly the plugin's own entries and
+`plugin remove` takes them out.
 
 Because the parts join the sync directory, a later `zuano sync` to other agents
 carries them too, and `plugin remove` takes them out again. A file you changed

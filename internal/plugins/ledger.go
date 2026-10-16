@@ -18,6 +18,13 @@ type FileRef struct {
 	SHA256 string `json:"sha256"`
 }
 
+// HookRef identifies a hook an expansion added to the zuano sync directory.
+type HookRef struct {
+	Event   string `json:"event"`
+	Matcher string `json:"matcher,omitempty"`
+	Command string `json:"command"`
+}
+
 // Install records one plugin installed for one agent. zuano removes and
 // updates only what it lists.
 type Install struct {
@@ -30,8 +37,10 @@ type Install struct {
 	Files       []FileRef `json:"files,omitempty"`
 	// Skills and MCP name what an expansion put into the agent's own
 	// configuration, so a removal takes the same things out.
-	Skills []string `json:"skills,omitempty"`
-	MCP    []string `json:"mcp,omitempty"`
+	Skills    []string  `json:"skills,omitempty"`
+	Subagents []string  `json:"subagents,omitempty"`
+	MCP       []string  `json:"mcp,omitempty"`
+	Hooks     []HookRef `json:"hooks,omitempty"`
 	// Package is the npm package name an OpenCode install added.
 	Package string `json:"package,omitempty"`
 	// CommandsSHA256 identifies the commands the bundle runs on this machine,

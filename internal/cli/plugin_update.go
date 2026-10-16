@@ -24,7 +24,7 @@ func newLocalPluginSession(cmd *cobra.Command) (*pluginSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve home directory: %w", err)
 	}
-	s := &pluginSession{ctx: cmd.Context(), out: cmd.OutOrStdout(), err: cmd.ErrOrStderr(), home: home, ledgerPath: plugins.LedgerPath(home)}
+	s := &pluginSession{cmd: cmd, ctx: cmd.Context(), out: cmd.OutOrStdout(), err: cmd.ErrOrStderr(), home: home, ledgerPath: plugins.LedgerPath(home)}
 	if s.ledger, err = plugins.LoadLedger(s.ledgerPath); err != nil {
 		return nil, err
 	}
