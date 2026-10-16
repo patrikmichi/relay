@@ -19,7 +19,7 @@ func TestProjectSymlinkToUserConfigIsRefused(t *testing.T) {
 		t.Skip("symlinks unavailable:", err)
 	}
 
-	plan := syncAll(t, env,map[Scope]Bundle{ScopeProject: fixtureBundle()}, projectOpts(Claude))
+	plan := syncAll(t, env, map[Scope]Bundle{ScopeProject: fixtureBundle()}, projectOpts(Claude))
 	if got := readFile(t, userCfg); got != "{}\n" {
 		t.Fatalf("project symlink redirected a write into the user config:\n%s", got)
 	}
