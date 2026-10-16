@@ -107,6 +107,7 @@ func doctorSyncChecks(add func(name string, ok bool, detail string)) {
 		add("sync", false, err.Error())
 		return
 	}
+	doctorRouteChecks(add)
 	scopes := []agentsync.Scope{agentsync.ScopeUser, agentsync.ScopeProject}
 	if _, err := agentsync.LoadLedger(env.Home); err != nil {
 		add("sync-ledger", false, "sync ledger cannot be read: "+err.Error())

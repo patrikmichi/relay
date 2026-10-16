@@ -17,6 +17,7 @@ import (
 	"github.com/patrikmichi/relay/internal/agentport/txn"
 	"github.com/patrikmichi/relay/internal/catalog"
 	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/signing"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
@@ -142,7 +143,7 @@ Examples:
 			wantMarketplace := marketplace || customDir != ""
 			o.optionalAgents = wantMarketplace
 			o.gatewayURL = gatewayURL
-			run, err := planAgentSync(o)
+			run, err := planSync(cmd, o)
 			if err != nil {
 				return err
 			}
@@ -199,7 +200,24 @@ Examples:
 	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $GATEWAY_URL, then the config file)")
 	f.BoolVar(&requireSig, "require-signature", false, "With --marketplace: refuse plugin bundles the gateway did not sign")
 	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/relay/marketplace/<name>/)")
+	cmd.AddCommand(SyncRoutesCmd())
 	return cmd
+}
+
+// planSync follows the saved routes unless --to, --from or --kind ask for
+// one ordinary sync.
+func planSync(cmd *cobra.Command, o agentSyncOpts) (*agentSyncRun, error) {
+	fl := cmd.Flags()
+	if !fl.Changed("to") && !fl.Changed("from") && !fl.Changed("kind") {
+		s, err := config.SyncConfig()
+		if err != nil {
+			return nil, err
+		}
+		if len(s.Routes) > 0 || len(s.Defaults) > 0 {
+			return planRoutedSync(o, s)
+		}
+	}
+	return planAgentSync(o)
 }
 
 // resolveSyncDoer reads the gateway URL and resolves an authenticated

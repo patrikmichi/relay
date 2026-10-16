@@ -79,10 +79,8 @@ func confirmAgentWrite(cmd *cobra.Command, run *agentSyncRun, what string, yes b
 	if run.gatewayURL != "" {
 		fmt.Fprintf(out, "  the gateway MCP entry will point at %s, not the gateway saved in your config\n", run.gatewayURL)
 	}
-	if run.plan != nil {
-		for _, e := range run.plan.Edits {
-			fmt.Fprintf(out, "\n%s", textsafe.Reveal(e.Diff()))
-		}
+	for _, e := range run.edits() {
+		fmt.Fprintf(out, "\n%s", textsafe.Reveal(e.Diff()))
 	}
 	if !askNo(bufio.NewReader(in), out, "\nWrite these changes?") {
 		return errors.New("not confirmed; nothing was written")

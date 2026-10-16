@@ -253,11 +253,14 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayUR
 // agentSyncRun is a computed sync: file edits plus skill and subagent
 // writes, ready to print or apply.
 type agentSyncRun struct {
-	items  []agentsync.Item
-	plan   *agentsync.Plan
+	items []agentsync.Item
+	// plans are the file edits; a routed sync has one per route.
+	plans  []*agentsync.Plan
 	writes []func() error
 	warns  []string
 	agents []agentsync.AgentID
+	// routes summarises each saved route a routed sync followed.
+	routes []routeSummary
 	// stdio names the servers that run a local command.
 	stdio map[string]bool
 	// projectRemote names the remote servers a project directory declares.
@@ -320,11 +323,12 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		}
 	}
 	if len(kinds.file) > 0 {
-		run.plan, err = agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force})
+		plan, err := agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force})
 		if err != nil {
 			return nil, err
 		}
-		run.items = append(run.items, run.plan.Items...)
+		run.plans = append(run.plans, plan)
+		run.items = append(run.items, plan.Items...)
 	}
 	if kinds.skills {
 		run.warns = append(run.warns, skillRequirementWarnings(o.from, scopes)...)
@@ -348,8 +352,8 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 // apply writes the planned files in one transaction, then installs skills
 // and subagents one by one through the agentport engine.
 func (r *agentSyncRun) apply(ctx context.Context) error {
-	if r.plan != nil {
-		if err := r.plan.Apply(ctx); err != nil {
+	for _, p := range r.plans {
+		if err := p.Apply(ctx); err != nil {
 			return err
 		}
 	}
@@ -382,15 +386,17 @@ func printSyncReport(out io.Writer, run *agentSyncRun, dryRun, jsonOut bool) err
 			Items    []agentsync.Item `json:"items"`
 			Warnings []string         `json:"warnings,omitempty"`
 			Edits    []edit           `json:"edits,omitempty"`
+			Routes   []routeSummary   `json:"routes,omitempty"`
 		}{DryRun: dryRun, Items: run.items, Warnings: run.warns}
 		for _, a := range run.agents {
 			doc.Agents = append(doc.Agents, string(a))
 		}
-		if run.plan != nil && dryRun {
-			for _, e := range run.plan.Edits {
+		if dryRun {
+			for _, e := range run.edits() {
 				doc.Edits = append(doc.Edits, edit{e.Path, e.Diff()})
 			}
 		}
+		doc.Routes = run.routes
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(doc)
@@ -399,6 +405,7 @@ func printSyncReport(out io.Writer, run *agentSyncRun, dryRun, jsonOut bool) err
 	for _, w := range run.warns {
 		fmt.Fprintf(out, "warning: %s\n", w)
 	}
+	printRouteSummaries(out, run.routes)
 	if len(run.items) == 0 {
 		fmt.Fprintln(out, "nothing to sync: add rules, commands, hooks or MCP servers under the relay sync directory, or configure a gateway")
 		return nil
@@ -434,8 +441,8 @@ func printSyncReport(out io.Writer, run *agentSyncRun, dryRun, jsonOut bool) err
 		fmt.Fprintln(out, "Conflicts are entries relay did not write; rerun with --force to replace them.")
 	}
 
-	if dryRun && run.plan != nil {
-		for _, e := range run.plan.Edits {
+	if dryRun && len(run.plans) > 0 {
+		for _, e := range run.edits() {
 			fmt.Fprintf(out, "\n%s", e.Diff())
 		}
 		fmt.Fprintln(out, "\n[dry-run] no files written")

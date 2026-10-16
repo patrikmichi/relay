@@ -238,6 +238,26 @@ Copilot cannot do this from the file, so the report asks you to authorize the
 server in the app. `--mcp-auth api-key` instead references `$GATEWAY_API_KEY`,
 which is not marked as an agent's and bypasses approvals; the sync warns.
 
+### Saved routes
+
+Save what goes where once, and a plain `relay sync` follows it:
+
+```bash
+relay sync routes add --from claude --to cursor --kind skills,subagents
+relay sync routes add --kind hooks,rules,commands --to claude,codex
+relay sync routes list
+relay sync --dry-run          # the plan, per route
+relay sync routes remove 1    # by number, or by kind for default targets
+```
+
+A route with `--from` copies skills or subagents from that provider. Settings
+(`mcp`, `env`, `hooks`, `rules`, `commands`) come from the relay sync
+directory, so they have default targets instead of a source. With saved
+routes a plain `relay sync` syncs only what they cover; `--to`, `--from` or
+`--kind` run one ordinary sync for that invocation. `relay doctor` checks that
+the routes name installed agents. The routes live in the `sync` key of
+`~/.config/relay/config.json`; see [docs/reference/sync-routes.md](docs/reference/sync-routes.md).
+
 ### MCP servers
 
 ```bash

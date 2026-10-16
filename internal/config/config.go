@@ -31,6 +31,55 @@ type Config struct {
 	// gateway origin the first time they are seen (see `relay config
 	// trust-key`).
 	SigningKeys map[string][]SigningKey `json:"signingKeys,omitempty"`
+	// Sync holds the saved routes `relay sync` follows.
+	Sync *SyncSettings `json:"sync,omitempty"`
+}
+
+// SyncRoute copies Kinds from one source to the agents in To. From names the
+// provider whose skills and subagents are read.
+type SyncRoute struct {
+	From  string   `json:"from"`
+	To    []string `json:"to"`
+	Kinds []string `json:"kinds"`
+}
+
+// SyncSettings are the saved sync routes and, per artifact kind, the agents
+// that receive it when no route covers that kind.
+type SyncSettings struct {
+	Routes   []SyncRoute         `json:"routes,omitempty"`
+	Defaults map[string][]string `json:"defaults,omitempty"`
+}
+
+// SyncConfig returns the saved sync settings, or the zero value.
+func SyncConfig() (SyncSettings, error) {
+	cfg, err := Load()
+	if err != nil || cfg.Sync == nil {
+		return SyncSettings{}, err
+	}
+	return *cfg.Sync, nil
+}
+
+// UpdateSync applies fn to the saved sync settings under the config lock.
+func UpdateSync(fn func(*SyncSettings) error) error {
+	var ferr error
+	err := modify(func(cfg *Config) {
+		s := SyncSettings{}
+		if cfg.Sync != nil {
+			s = *cfg.Sync
+		}
+		if ferr = fn(&s); ferr != nil {
+			return
+		}
+		if len(s.Routes) == 0 && len(s.Defaults) == 0 {
+			cfg.Sync = nil
+			return
+		}
+		cfg.Sync = &s
+	}, true)
+	if err != nil {
+		return err
+	}
+	return ferr
 }
 
 // SigningKey is one ed25519 public key a gateway signs downloads with.
