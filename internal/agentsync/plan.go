@@ -86,6 +86,9 @@ type Ctx struct {
 	Env    Env
 	Ledger *Ledger
 	Force  bool
+	// ForceNames replaces only the same-named entries the user wrote, for a
+	// change that takes over particular servers and nothing else.
+	ForceNames map[string]bool
 
 	edits  map[string]*Edit
 	order  []string

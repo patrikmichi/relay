@@ -48,7 +48,7 @@ func TestParentCommands_ExposeExpectedSubcommands(t *testing.T) {
 	}{
 		{SkillCmd(), []string{"compare", "diff", "drafts", "eval", "evals", "from-session", "info", "install", "list", "migrate", "optimize", "publish", "quality", "rollback", "scan", "score", "search", "uninstall"}},
 		{AgentCmd(), []string{"diff", "install", "list", "migrate", "publish", "rollback", "scan", "uninstall"}},
-		{MCPCmd(), []string{"inspect", "install", "link", "list", "publish", "remove"}},
+		{MCPCmd(), []string{"changes", "inspect", "install", "link", "list", "pins", "publish", "remove", "wrap"}},
 		{PublishCmd(), []string{"status"}},
 	}
 	for _, tc := range cases {

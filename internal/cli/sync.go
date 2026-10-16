@@ -18,6 +18,8 @@ func SyncCmd() *cobra.Command {
 		matrix        bool
 		noPacks       bool
 		hostLabelFlag string
+		firewallMode  string
+		moveSecrets   bool
 	)
 
 	cmd := &cobra.Command{
@@ -74,6 +76,15 @@ Device report
   session never sends it. The gateway entry carries your install id in the
   ` + brand.InstallHeader + ` header, which is metadata and grants nothing.
 
+Firewall
+  --firewall routes the MCP servers zuano syncs through the firewall and
+  remembers the choice for later syncs. A local server then starts as 'zuano mcp
+  wrap --upstream <name> -- <command>'; a remote one is reached through the
+  gateway, which holds its credentials ('zuano firewall connect <name>'). The
+  servers stay as installed in zuano's own list, so --firewall=off puts them
+  back. A server you wrote into an agent's config yourself is left alone until
+  you hand it over with 'zuano firewall import-local <name>'.
+
 Plugin bundles from the gateway are installed with 'zuano plugin install'.
 
 Examples:
@@ -90,6 +101,12 @@ Examples:
 					return err
 				}
 			}
+			fwWant, err := parseFirewallFlag(cmd, firewallMode)
+			if err != nil {
+				return err
+			}
+			o.firewall = fwWant
+			o.moveSecrets = moveSecrets
 			var ps *packSync
 			if !noPacks {
 				var err error
@@ -122,6 +139,9 @@ Examples:
 			if err := run.apply(cmd.Context()); err != nil {
 				return err
 			}
+			if err := saveFirewallChoice(fwWant); err != nil {
+				return err
+			}
 			var label *string
 			if cmd.Flags().Changed("host-label") {
 				label = &hostLabelFlag
@@ -147,6 +167,9 @@ Examples:
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
 	f.BoolVar(&noPacks, "no-packs", false, "Do not fetch or write the rules, skills and bundles your organisation's starter packs assign")
 	f.StringVar(&hostLabelFlag, "host-label", "", "Name this machine goes by in the gateway's device list (default: its host name; give an empty value to send none); remembered for later syncs")
+	f.StringVar(&firewallMode, "firewall", "", "on routes the MCP servers zuano syncs through the firewall (local ones under `mcp wrap`, remote ones through the gateway) and remembers it; off goes back to the servers as installed")
+	cmd.Flags().Lookup("firewall").NoOptDefVal = "on"
+	f.BoolVar(&moveSecrets, "move-secrets", false, "With --firewall: store literal secret-looking environment values of local servers in the system keychain instead of the agents' config")
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
 	f.StringVar(&o.gatewayURL, "gateway-url", "", "Gateway URL for the gateway MCP server (default: $ZUANO_URL, then the config file)")
 	cmd.AddCommand(SyncRoutesCmd())

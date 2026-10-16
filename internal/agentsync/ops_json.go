@@ -134,7 +134,7 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 				c.Ledger.set(real, id, want)
 			}
 			items = append(items, o.item(e.name, real, StatusUnchanged, ownership(managed)))
-		case managed && cur.hash() == prev, c.Force:
+		case managed && cur.hash() == prev, c.Force, c.ForceNames[e.name]:
 			cont.set(e.name, e.node)
 			muts = append(muts, jmut{key: e.name, val: e.node})
 			c.Ledger.set(real, id, want)

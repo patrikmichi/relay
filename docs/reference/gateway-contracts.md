@@ -715,3 +715,34 @@ Source: automation templates plan (REST routes, CLI commands, exit codes). The
 plan names the routes, ids and exit codes; the response wrappers, `seq`
 cursor, the `template`/`runAsEmail` request fields, `owner=me` and the browser
 page paths are this client's decisions.
+
+## MCP firewall
+
+Bearer auth. The session document is signed (`X-Content-Signature`) and checked
+against the pinned keys; a session that does not verify ends the command
+before any tool is served.
+
+| Request | Carries / answers |
+|---|---|
+| `POST /api/fw/local/session` | `{"slug"?, "fingerprint", "packageSpec"?, "installId", "agentId"?}`; signed `{"upstream": {"id", "slug"}, "status": "active\|pending\|unknown\|quarantined", "adminUrl"?, "settings": {"onDefinitionChange": "block\|warn", "offline": "deny\|allow_read_pinned", "unknown": "allow\|deny", "denyTools": [glob]}, "pins": [{"kind": "tool", "name", "hash", "state": "active", "risk": "read\|write\|destructive\|outward", "definition"}]}`. `quarantined` ends the command with exit 44 |
+| `POST /api/fw/local/changes` | `{"upstream", "changes": [{"kind": "tool", "name", "change": "added\|modified\|removed", "oldHash"?, "newHash"?, "definition"?}]}`; `200` |
+| `POST /api/fw/local/calls` | `{"upstream", "tool", "sessionRef", "arguments"}` (or `"argumentsDigest"` and `"localFindings"` with `--screen local`); answers `{"decision": "allow\|deny\|pending\|redact", "callId"?, "reason"?, "message"?, "approval_id"?, "url"?, "arguments"?}` |
+| `POST /api/fw/local/calls/{callId}/result` | `{"error", "content"}` (or `"digest"` and `"localFindings"`); answers `{"decision": "allow\|redact\|withhold", "content"?, "message"?}`. A result the gateway cannot check is withheld |
+| `GET /api/firewall/upstreams`, `GET /api/firewall/upstreams/{slug}` | `{"upstreams": [{"slug", "name", "transport", "status", "toolCount", "pendingChanges"}]}`, `{"upstream": {...}}` |
+| `POST /api/firewall/upstreams` | `{"slug", "name", "url"}` or `{"slug", "name", "package"}`; `201` |
+| `POST /api/firewall/upstream-requests` | as above plus `"reason"`; `201` |
+| `GET /api/firewall/changes?status=&upstream=`, `GET /api/firewall/changes/{id}` | `{"changes": [{"id", "upstream", "name", "change", "risk", "status"}]}`, `{"change": {...}}` |
+
+A remote server is reached at `{gateway}/api/fw/{slug}/mcp` with the install id
+in the `X-Zuano-Install` header and no token of its own: the gateway holds the
+server's credentials. A refusal reason `tool_definition_changed` exits 43,
+`upstream_quarantined` and `registry_server_deleted` exit 44, and
+`denied_by_policy`, `tool_not_pinned` and the other reasons in the exit-code
+table exit 10.
+
+Pages the CLI opens (no API call): `/firewall/changes/{id}` and
+`/api/fw/oauth/start?upstream={slug}`.
+
+Source: MCP firewall plan (routes, settings, decisions, exit codes). The
+`/api/firewall/*` wrappers, the session request fields and the page paths are
+this client's decisions.

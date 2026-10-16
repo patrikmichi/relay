@@ -64,7 +64,7 @@ var staticCommandNames = map[string]bool{
 	"providers": true, "doctor": true, "recover": true, "history": true,
 	"explain": true, "connectors": true, "connect": true, "approvals": true,
 	"billing": true, "usage": true, "runs": true, "sessions": true, "audit": true, "policy": true,
-	"docs": true, "trace": true, "files": true, "webhooks": true, "drop": true, "auth": true, "plugin": true, "pack": true, "automation": true, "chat": true, "agents": true, "reviews": true, "dlp": true, "compliance": true,
+	"docs": true, "trace": true, "files": true, "webhooks": true, "drop": true, "auth": true, "plugin": true, "pack": true, "automation": true, "chat": true, "agents": true, "reviews": true, "dlp": true, "compliance": true, "firewall": true,
 	"list": true, "revoke": true, // tokens sub-commands
 	"set-gateway": true, "get-gateway": true, "show": true, // config sub-commands
 }
@@ -231,6 +231,7 @@ func newRootCmd() *cobra.Command {
 		cli.ReviewsCmd(),
 		cli.DLPCmd(),
 		cli.ComplianceCmd(),
+		cli.FirewallCmd(),
 	)
 
 	// PersistentPreRunE only needs to record --offline for every catalog

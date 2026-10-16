@@ -52,6 +52,8 @@ type SyncRoute struct {
 type SyncSettings struct {
 	Routes   []SyncRoute         `json:"routes,omitempty"`
 	Defaults map[string][]string `json:"defaults,omitempty"`
+	// Firewall routes the MCP servers a sync writes through the firewall.
+	Firewall bool `json:"firewall,omitempty"`
 }
 
 // SyncConfig returns the saved sync settings, or the zero value.
@@ -69,6 +71,7 @@ func UpdateSync(fn func(*SyncSettings) error) error {
 	err := modify(func(cfg *Config) {
 		s := SyncSettings{}
 		if cfg.Sync != nil {
+			s.Firewall = cfg.Sync.Firewall
 			// Copy the containers: fn may edit them in place and then fail,
 			// and the unchanged settings are still written back.
 			s.Routes = slices.Clone(cfg.Sync.Routes)
@@ -80,7 +83,7 @@ func UpdateSync(fn func(*SyncSettings) error) error {
 		if ferr = fn(&s); ferr != nil {
 			return
 		}
-		if len(s.Routes) == 0 && len(s.Defaults) == 0 {
+		if len(s.Routes) == 0 && len(s.Defaults) == 0 && !s.Firewall {
 			cfg.Sync = nil
 			return
 		}

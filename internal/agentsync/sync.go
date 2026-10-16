@@ -14,6 +14,8 @@ type Options struct {
 	Kinds []Kind
 	// Force lets zuano overwrite same-named entries it does not manage.
 	Force bool
+	// ForceNames is Force for the named entries only.
+	ForceNames map[string]bool
 }
 
 func runBuilder[T any](b builder[T], env Env, scope Scope, items []T) ([]Op, string) {
@@ -35,7 +37,7 @@ func Build(env Env, bundles map[Scope]Bundle, opts Options) (*Plan, error) {
 		return nil, err
 	}
 	env = pinWindsurfDir(env, led)
-	c := &Ctx{Env: env, Ledger: led, Force: opts.Force}
+	c := &Ctx{Env: env, Ledger: led, Force: opts.Force, ForceNames: opts.ForceNames}
 
 	var items []Item
 	for _, scope := range opts.Scopes {

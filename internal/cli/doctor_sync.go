@@ -113,7 +113,12 @@ func doctorSyncChecks(add func(name string, ok bool, detail string)) {
 		add("sync-ledger", false, "sync ledger cannot be read: "+err.Error())
 		return
 	}
-	bundles, warns, _, err := loadBundles(env, scopes, "auto", "", nil)
+	var fw *firewallOpts
+	if on, _ := firewallEnabled(nil); on {
+		fw = &firewallOpts{}
+	}
+	doctorFirewall(add)
+	bundles, warns, _, err := loadBundles(env, scopes, "auto", "", nil, fw)
 	if err != nil {
 		add("sync-source", false, err.Error())
 		return

@@ -49,6 +49,13 @@ type agentSyncOpts struct {
 	// extraRules are rules the gateway assigns, written to every synced scope
 	// next to the ones from the sync directory.
 	extraRules []agentsync.Rule
+	// firewall overrides the saved choice to route servers through the
+	// firewall; moveSecrets and forceNames refine it.
+	firewall    *bool
+	moveSecrets bool
+	// forceNames replaces the named entries the user wrote, to bring a server
+	// the user configured under the firewall.
+	forceNames map[string]bool
 }
 
 type syncKinds struct {
@@ -227,8 +234,13 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 // ignoredEnv is a $ZUANO_URL that was left out.
 type gatewayNotes struct{ changed, ignoredEnv string }
 
-func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayURL string, override map[agentsync.Scope]agentsync.MCPSource) (bundles map[agentsync.Scope]agentsync.Bundle, warns []string, notes gatewayNotes, err error) {
+func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayURL string, override map[agentsync.Scope]agentsync.MCPSource, fw *firewallOpts) (bundles map[agentsync.Scope]agentsync.Bundle, warns []string, notes gatewayNotes, err error) {
 	bundles = map[agentsync.Scope]agentsync.Bundle{}
+	var fwGateway, installID string
+	if fw != nil {
+		fwGateway = firewallGateway(gatewayURL)
+		installID, _ = config.InstallID()
+	}
 	for _, scope := range scopes {
 		b, w, err := agentsync.LoadBundle(agentsync.SourceDir(env, scope), agentsync.SourceCheck(env, scope))
 		if err != nil {
@@ -251,7 +263,13 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayUR
 				b.MCP = append(b.MCP, *gw)
 			}
 		}
-		b.MCP = append(b.MCP, markZuanoServers(src.Servers)...)
+		servers := src.Servers
+		if fw != nil {
+			var w []string
+			servers, w = firewallServers(servers, fwGateway, installID, fw)
+			warns = append(warns, w...)
+		}
+		b.MCP = append(b.MCP, markZuanoServers(servers)...)
 		if scope == agentsync.ScopeUser {
 			b.Env = []agentsync.EnvVar{{Name: agentEnvVar, Value: "1"}}
 		}
@@ -265,7 +283,9 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayUR
 type agentSyncRun struct {
 	items []agentsync.Item
 	// plans are the file edits; a routed sync has one per route.
-	plans  []*agentsync.Plan
+	plans []*agentsync.Plan
+	// before runs ahead of the files, for what the files refer to.
+	before []func() error
 	writes []func() error
 	warns  []string
 	agents []agentsync.AgentID
@@ -310,9 +330,21 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		return nil, errors.New("no supported coding agent detected on this machine; name one with --to (claude, codex, cursor, opencode, gemini-cli, windsurf, cline, copilot) or --to all")
 	}
 
-	bundles, warns, gw, err := loadBundles(env, scopes, o.mcpAuth, o.gatewayURL, o.mcpOverride)
+	on, err := firewallEnabled(o.firewall)
 	if err != nil {
 		return nil, err
+	}
+	var fw *firewallOpts
+	if on {
+		fw = &firewallOpts{moveSecrets: o.moveSecrets}
+	}
+	bundles, warns, gw, err := loadBundles(env, scopes, o.mcpAuth, o.gatewayURL, o.mcpOverride, fw)
+	if err != nil {
+		return nil, err
+	}
+	if fw != nil && len(fw.moves) > 0 {
+		moves := fw.moves
+		run.before = append(run.before, func() error { return storeMoves(moves) })
 	}
 	if o.settingsFrom == "" && len(o.extraRules) > 0 {
 		for scope, b := range bundles {
@@ -355,7 +387,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		}
 	}
 	if len(kinds.file) > 0 {
-		plan, err := agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force})
+		plan, err := agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force, ForceNames: o.forceNames})
 		if err != nil {
 			return nil, err
 		}
@@ -384,6 +416,11 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 // apply writes the planned files in one transaction, then installs skills
 // and subagents one by one through the agentport engine.
 func (r *agentSyncRun) apply(ctx context.Context) error {
+	for _, b := range r.before {
+		if err := b(); err != nil {
+			return err
+		}
+	}
 	for _, p := range r.plans {
 		if err := p.Apply(ctx); err != nil {
 			return err

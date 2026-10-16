@@ -25,6 +25,11 @@ type mcpInstallFlags struct {
 	force      bool
 	yes        bool
 	jsonOut    bool
+	// firewall routes the servers zuano syncs through the firewall.
+	firewall      bool
+	envToKeychain bool
+	// forceNames takes over the named entries the user wrote.
+	forceNames map[string]bool
 }
 
 func McpInstallCmd() *cobra.Command {
@@ -66,6 +71,8 @@ updated.`,
 	fl.StringArrayVar(&f.env, "env", nil, "Environment for --command as KEY=VALUE (repeatable; a ${VAR} reference is translated per agent)")
 	fl.StringVar(&f.bearerEnv, "bearer-env", "", "Environment variable holding a bearer token for --url")
 	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
+	fl.BoolVar(&f.firewall, "firewall", false, "Route the servers zuano syncs through the firewall, this one included, and remember it (see `zuano sync --firewall`)")
+	fl.BoolVar(&f.envToKeychain, "env-to-keychain", false, "With --firewall: keep literal secret-looking --env values in the system keychain instead of the agents' config")
 	return cmd
 }
 
@@ -233,9 +240,15 @@ func runMcpRemove(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 // syncMCPSource syncs MCP config for the given source, and persists the
 // source only when files are actually written.
 func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope, src agentsync.MCPSource, f mcpInstallFlags) error {
+	var want *bool
+	if f.firewall {
+		on := true
+		want = &on
+	}
 	run, err := planAgentSync(agentSyncOpts{
 		to: f.to, scopes: []string{string(scope)}, kinds: []string{"mcp"}, mcpAuth: f.mcpAuth, gatewayURL: f.gatewayURL,
 		dryRun: f.dryRun, force: f.force, mcpOverride: map[agentsync.Scope]agentsync.MCPSource{scope: src},
+		firewall: want, moveSecrets: f.envToKeychain, forceNames: f.forceNames,
 	})
 	if err != nil {
 		return err
@@ -253,7 +266,10 @@ func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope,
 	if err := run.apply(cmd.Context()); err != nil {
 		return err
 	}
-	return agentsync.SaveMCPSource(env, scope, src)
+	if err := agentsync.SaveMCPSource(env, scope, src); err != nil {
+		return err
+	}
+	return saveFirewallChoice(want)
 }
 
 // requireCatalogService checks that name is a service the gateway offers.
