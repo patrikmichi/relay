@@ -34,17 +34,34 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	text := string(data)
+	eol := lineEnding(data)
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	begin, end := mdBegin(o.id), mdEnd(o.id)
+	if strings.Count(text, begin) > 1 || strings.Count(text, end) > 1 {
+		return []Item{o.item(o.id, real, StatusSkipped, "duplicate relay block markers; fix the file by hand")}, nil
+	}
 	bi := strings.Index(text, begin)
 	ei := strings.Index(text, end)
 	if (bi >= 0) != (ei >= 0) || (bi >= 0 && ei < bi) {
 		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced relay block markers; fix the file by hand")}, nil
 	}
 
+	ledgerID := "block:" + o.id
+	led := c.Ledger.entries(real)
+	current := ""
+	if bi >= 0 {
+		current = text[bi : ei+len(end)]
+	}
+	// A block whose text no longer matches what relay recorded was edited by hand.
+	edited := bi >= 0 && led[ledgerID] != "" && contentHash([]byte(current)) != led[ledgerID]
+
 	if o.body == "" {
 		if bi < 0 {
+			c.Ledger.drop(real, ledgerID)
 			return nil, nil
+		}
+		if edited && !c.Force {
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force removes it")}, nil
 		}
 		rest := strings.TrimRight(text[:bi], "\n")
 		tail := strings.TrimLeft(text[ei+len(end):], "\n")
@@ -55,10 +72,11 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 			}
 			out += tail
 		}
+		c.Ledger.drop(real, ledgerID)
 		if strings.TrimSpace(out) == "" {
 			err = c.remove(real)
 		} else {
-			err = c.write(real, 0o644, []byte(strings.TrimRight(out, "\n")+"\n"))
+			err = c.write(real, 0o644, []byte(withEOL(strings.TrimRight(out, "\n")+"\n", eol)))
 		}
 		return []Item{o.item(o.id, real, StatusRemoved, "")}, err
 	}
@@ -67,8 +85,12 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 	var out, status string
 	switch {
 	case bi >= 0:
-		if text[bi:ei+len(end)] == block {
+		if current == block {
+			c.Ledger.set(real, ledgerID, contentHash([]byte(block)))
 			return []Item{o.item(o.id, real, StatusUnchanged, "")}, nil
+		}
+		if edited && !c.Force {
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force overwrites")}, nil
 		}
 		out, status = text[:bi]+block+text[ei+len(end):], StatusUpdated
 	case !exists || strings.TrimSpace(text) == "":
@@ -76,7 +98,23 @@ func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
 	default:
 		out, status = strings.TrimRight(text, "\n")+"\n\n"+block+"\n", StatusAdded
 	}
-	return []Item{o.item(o.id, real, status, "")}, c.write(real, 0o644, []byte(out))
+	c.Ledger.set(real, ledgerID, contentHash([]byte(block)))
+	return []Item{o.item(o.id, real, status, "")}, c.write(real, 0o644, []byte(withEOL(out, eol)))
+}
+
+// lineEnding reports the line ending a file uses, so a rewrite keeps it.
+func lineEnding(data []byte) string {
+	if bytes.Contains(data, []byte("\r\n")) {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+func withEOL(s, eol string) string {
+	if eol == "\n" {
+		return s
+	}
+	return strings.ReplaceAll(s, "\n", eol)
 }
 
 // tomlTable is one table relay manages inside a TOML file. path is the key
@@ -112,13 +150,19 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	text := string(data)
+	eol := lineEnding(data)
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	begin, end := tomlBegin(o.id), tomlEnd(o.id)
+	if strings.Count(text, begin) > 1 || strings.Count(text, end) > 1 {
+		return []Item{o.item(o.id, real, StatusSkipped, "duplicate relay block markers; fix the file by hand")}, nil
+	}
 	bi, ei := strings.Index(text, begin), strings.Index(text, end)
 	if (bi >= 0) != (ei >= 0) || (bi >= 0 && ei < bi) {
 		return []Item{o.item(o.id, real, StatusSkipped, "unbalanced relay block markers; fix the file by hand")}, nil
 	}
+	ledgerID := "block:" + o.id
 	if len(o.tables) == 0 && bi < 0 {
+		c.Ledger.drop(real, ledgerID)
 		return nil, nil
 	}
 
@@ -126,6 +170,10 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	if bi >= 0 {
 		oldBlock = text[bi : ei+len(end)]
 		outside = text[:bi] + text[ei+len(end):]
+		// A block whose text no longer matches what relay recorded was edited by hand.
+		if want := c.Ledger.entries(real)[ledgerID]; want != "" && contentHash([]byte(oldBlock)) != want && !c.Force {
+			return []Item{o.item(o.id, real, StatusConflict, "block edited since relay wrote it; --force overwrites")}, nil
+		}
 	}
 	var parsed map[string]any
 	if err := toml.Unmarshal([]byte(outside), &parsed); err != nil {
@@ -186,15 +234,17 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 			}
 			out += tail
 		}
+		c.Ledger.drop(real, ledgerID)
 		if strings.TrimSpace(out) == "" {
 			return items, c.remove(real)
 		}
-		return items, c.write(real, 0o644, []byte(strings.TrimRight(out, "\n")+"\n"))
+		return items, c.write(real, 0o644, []byte(withEOL(strings.TrimRight(out, "\n")+"\n", eol)))
 	}
 	block := begin + "\n" + strings.Join(bodies, "\n\n") + "\n" + end
 	switch {
 	case bi >= 0:
 		if oldBlock == block {
+			c.Ledger.set(real, ledgerID, contentHash([]byte(block)))
 			return items, nil
 		}
 		out = text[:bi] + block + text[ei+len(end):]
@@ -203,7 +253,8 @@ func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
 	default:
 		out = strings.TrimRight(text, "\n") + "\n\n" + block + "\n"
 	}
-	return items, c.write(real, 0o600, []byte(out))
+	c.Ledger.set(real, ledgerID, contentHash([]byte(block)))
+	return items, c.write(real, 0o600, []byte(withEOL(out, eol)))
 }
 
 func isSubTable(header string, present map[string]bool) bool {

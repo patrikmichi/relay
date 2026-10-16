@@ -272,6 +272,71 @@ func TestEnvReferencesAreTranslatedPerAgent(t *testing.T) {
 	}
 }
 
+func TestMarkerBlocksKeepCRLFAndReportHandEdits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		agent AgentID
+		path  []string
+		edit  func(string) string
+	}{
+		"markdown": {Gemini, []string{".gemini", "GEMINI.md"}, func(s string) string {
+			return strings.Replace(s, "Prefer small functions.", "Prefer big functions.", 1)
+		}},
+		"toml": {Codex, []string{".codex", "config.toml"}, func(s string) string { return strings.Replace(s, "command = \"npx\"", "command = \"mine\"", 1) }},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := newEnv(t)
+			path := filepath.Join(append([]string{env.Home}, tc.path...)...)
+			writeFile(t, path, "# my line\r\n# second line\r\n")
+			kind := KindRules
+			if tc.agent == Codex {
+				kind = KindMCP
+			}
+			opts := Options{Agents: []AgentID{tc.agent}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{kind}}
+			syncAll(t, env, userBundle(fixtureBundle()), opts)
+
+			got := readFile(t, path)
+			if strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") || !strings.Contains(got, "# my line\r\n") {
+				t.Fatalf("line endings not kept:\n%q", got)
+			}
+
+			edited := tc.edit(got)
+			if edited == got {
+				t.Fatal("test edit changed nothing")
+			}
+			writeFile(t, path, edited)
+			plan := syncAll(t, env, userBundle(Bundle{}), opts)
+			var conflict bool
+			for _, it := range plan.Items {
+				conflict = conflict || it.Status == StatusConflict
+			}
+			if !conflict || readFile(t, path) != edited {
+				t.Fatalf("a hand-edited block was not reported or was touched (conflict=%v)", conflict)
+			}
+
+			forced := opts
+			forced.Force = true
+			syncAll(t, env, userBundle(Bundle{}), forced)
+			if strings.Contains(readFile(t, path), Marker) {
+				t.Errorf("--force did not remove the edited block:\n%s", readFile(t, path))
+			}
+		})
+	}
+}
+
+func TestMarkerBlocksRefuseDuplicatePairs(t *testing.T) {
+	env := newEnv(t)
+	path := filepath.Join(env.Home, ".gemini", "GEMINI.md")
+	block := mdBegin("rules") + "\nold\n" + mdEnd("rules") + "\n"
+	writeFile(t, path, block+"\n"+block)
+	plan := syncAll(t, env, userBundle(fixtureBundle()), Options{Agents: []AgentID{Gemini}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindRules}})
+	if got := statusOf(plan.Items, KindRules, "rules"); got != StatusSkipped {
+		t.Fatalf("status = %q, want skipped", got)
+	}
+	if readFile(t, path) != block+"\n"+block {
+		t.Error("a file with duplicate blocks was modified")
+	}
+}
+
 func TestMarkdownBlockPreservesSurroundingText(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".gemini", "GEMINI.md")
