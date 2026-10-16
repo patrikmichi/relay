@@ -64,6 +64,11 @@ type Client struct {
 	store  SessionStore
 	locker SessionLocker
 
+	// mcpSessions holds the Mcp-Session-Id of each MCP endpoint this client
+	// has initialized, keyed by path; "" records an endpoint that issued none.
+	mcpMu       sync.Mutex
+	mcpSessions map[string]string
+
 	stepUp StepUpHandler
 	proofs ProofSigner
 	// dpopKey is the reference of the device key the session is bound to.

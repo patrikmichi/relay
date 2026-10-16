@@ -689,14 +689,19 @@ func TestBuildServiceCommands_RegistersCallableToolCommands(t *testing.T) {
 		case "/api/integrations":
 			jsonHandler(http.StatusOK, integrationsFixture())(w, r)
 		case "/api/clockify/mcp":
-			toolCalls.Add(1)
 			var req struct {
+				Method string `json:"method"`
 				Params struct {
 					Name      string         `json:"name"`
 					Arguments map[string]any `json:"arguments"`
 				} `json:"params"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Method != "tools/call" {
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+			toolCalls.Add(1)
 			if req.Params.Name != "list_workspaces" || req.Params.Arguments["limit"] != float64(5) {
 				t.Errorf("unexpected tools/call params: %+v", req.Params)
 			}

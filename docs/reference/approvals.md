@@ -94,6 +94,40 @@ body or from the `structuredContent` of an MCP tool error.
 `90s` also works) waits for the decision, runs the approved call once and
 prints its result. With `--json` only the final response is printed.
 
+## Approval pages in the session (URL elicitation)
+
+Before its first call to an MCP endpoint zuano sends `initialize` declaring
+`capabilities.elicitation.url`, and sends the `Mcp-Session-Id` the gateway
+returns on every later request to that endpoint (a gateway that issues none is
+used without one; a session it forgets, answered with `404`, is renewed once).
+A gateway that sees the capability may hold a call by answering with the
+JSON-RPC error `-32042` instead of the held-call result:
+
+```json
+{"error": {"code": -32042, "message": "...",
+  "data": {"elicitations": [{"mode": "url", "elicitationId": "eid_1",
+                              "url": "https://gateway.example/approvals/apr_1?e=eid_1",
+                              "message": "Approve create_refund on stripe (destructive)"}],
+           "relay": {"approval_id": "apr_1", "expires_at": "...", "next": "..."}}}}
+```
+
+With a person at the keyboard zuano then:
+
+1. prints the message and the link with its host in bold and underline (and on
+   a line of its own);
+2. asks `Open it in your browser? [Y/n]` and opens it, unless `--no-browser`
+   or the link is not a page on the gateway the call went to (it only warns
+   about those);
+3. polls `GET /api/approvals/{approval_id}` for up to 300 seconds, or the
+   `--wait` limit, printing the outcome;
+4. when approved, repeats the call once. If that is held again it exits 12.
+
+A denied approval exits 10 and an expired one 11, as for `approvals wait`.
+Without a person (an agent session, no terminal, or `--json`) zuano opens
+nothing, prints the link and exits 12 straight away, and waits and retries only
+when `--wait` is given. The approval id comes from `data.relay.approval_id`,
+or from the `/approvals/<id>` path of the link.
+
 ## Exit statuses
 
 | Status | Meaning |

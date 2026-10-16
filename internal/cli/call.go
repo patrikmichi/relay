@@ -16,7 +16,7 @@ import (
 func CallCmd() *cobra.Command {
 	var gatewayURL string
 	var rawArgs, jsonArgs []string
-	var jsonOut bool
+	var jsonOut, noBrowser bool
 	var wait string
 
 	cmd := &cobra.Command{
@@ -33,6 +33,12 @@ approval id, risk and expiry and exits 12. With --wait[=SECONDS] the command
 waits for the decision and prints the result instead; exit status as for
 'zuano approvals wait'.
 
+When the gateway answers with an approval page to visit (URL elicitation),
+zuano prints the link with its host highlighted, opens it in your browser
+after you confirm (--no-browser only prints it), waits for the decision and
+runs the call once more. Without a person at the keyboard, or with --json, it
+opens nothing and waits only with --wait.
+
 Example:
   zuano call clockify list_time_entries
   zuano call google-workspace search_emails --arg query="is:unread" --arg-json maxResults=10`,
@@ -43,6 +49,7 @@ Example:
 				return err
 			}
 			opts.jsonArgs = jsonArgs
+			opts.bindPresence(cmd, noBrowser)
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -61,5 +68,6 @@ Example:
 	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print an approval link instead of opening it in a browser")
 	return cmd
 }

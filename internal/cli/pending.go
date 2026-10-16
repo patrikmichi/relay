@@ -71,6 +71,12 @@ type callOpts struct {
 	waitFor time.Duration
 	// jsonArgs are --arg-json key=<json> pairs, sent with their JSON types.
 	jsonArgs []string
+	// noBrowser, in and interactive describe who can answer an approval link:
+	// --no-browser, where a confirmation is read from, and whether a person is
+	// at the keyboard.
+	noBrowser   bool
+	in          io.Reader
+	interactive bool
 }
 
 // addWaitFlag registers --wait. A bare --wait waits the default time; a

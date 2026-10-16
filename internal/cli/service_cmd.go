@@ -95,8 +95,9 @@ const maxToolCallResponseBytes = 4 << 20 // 4 MiB
 
 // mcpRPCError mirrors the JSON-RPC 2.0 top-level error object.
 type mcpRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 type mcpToolResult struct {
@@ -225,17 +226,25 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 	if err != nil || held == nil {
 		return err
 	}
-	if held.job != nil {
+	switch {
+	case held.job != nil:
 		return handleStartedJob(parent, c, held.job, jsonOut, o, out)
+	case held.elicit != nil:
+		retry := func() (*heldCall, error) {
+			return sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, false, out)
+		}
+		return handleURLElicitation(parent, c, held.elicit, retry, jsonOut, o, out)
 	}
 	return handlePending(parent, c, held.approval, jsonOut, o, out)
 }
 
-// heldCall is a call the gateway did not finish: held for an approval, or
-// started as work that runs on after the answer.
+// heldCall is a call the gateway did not finish: held for an approval, asking
+// a person to visit an approval page first, or started as work that runs on
+// after the answer.
 type heldCall struct {
 	approval *pendingApproval
 	job      *startedJob
+	elicit   *urlElicitation
 }
 
 // sendToolCall posts the tools/call request. It returns the pending approval
@@ -269,7 +278,7 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	}
 
 	path := "/api/" + service + "/mcp"
-	resp, err := c.PostContext(ctx, path, "application/json", bytes.NewReader(body))
+	resp, err := c.MCPPostContext(ctx, path, body)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", path, err)
 	}
@@ -296,7 +305,11 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 			started = jobFromResult(env.Result)
 		}
 	}
-	if jsonOut && ((held == nil && started == nil) || !waiting) {
+	var elicit *urlElicitation
+	if held == nil && started == nil && envErr == nil && env.Error != nil && env.Error.Code == codeURLElicitationRequired {
+		elicit = elicitationFromError(env.Error)
+	}
+	if jsonOut && ((held == nil && started == nil && elicit == nil) || !waiting) {
 		fmt.Fprintln(out, string(respBody))
 	}
 	if held != nil {
@@ -304,6 +317,9 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	}
 	if started != nil {
 		return &heldCall{job: started}, nil
+	}
+	if elicit != nil {
+		return &heldCall{elicit: elicit}, nil
 	}
 	if refusal := policyRefusal(respBody, env); refusal != nil {
 		return nil, refusal
@@ -349,7 +365,7 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 // buildToolCmd creates a leaf cobra command for a single tool.
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
 	var rawArgs, jsonArgs []string
-	var jsonOut bool
+	var jsonOut, noBrowser bool
 	var wait string
 	cmd := &cobra.Command{
 		Use:                toolName,
@@ -361,6 +377,7 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 				return err
 			}
 			opts.jsonArgs = jsonArgs
+			opts.bindPresence(cmd, noBrowser)
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -376,6 +393,7 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print an approval link instead of opening it in a browser")
 	return cmd
 }
 

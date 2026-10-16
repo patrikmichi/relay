@@ -97,6 +97,19 @@ session and tells the person to run `zuano login`.
 zuano calls no `approve`, `deny`, `challenge` or `decide` route. The gateway
 must reject a Bearer decision (risk policy plan 5.3).
 
+## MCP sessions and URL elicitation
+
+| Exchange | Detail |
+|---|---|
+| `POST /api/{service}/mcp`, `/api/mcp` `initialize` | request `params`: `protocolVersion: "2025-11-25"`, `capabilities: {"elicitation": {"url": {}}}`, `clientInfo: {"name": "zuano", "version"}`. The response may carry `Mcp-Session-Id`. zuano then sends `notifications/initialized` and echoes the header on every later request to that path. `404` for a known session id means the session is gone: zuano initializes again, once. Fixture: none (the document is the request) |
+| `tools/call` error `-32042` | `data.elicitations[]` with `mode: "url"`, `elicitationId`, `url`, `message`; `data.relay.approval_id` (read; the `/approvals/<id>` path of `url` is the fallback), `expires_at`, `next`. Fixture: `mcp-url-elicitation.json` |
+| `GET /api/approvals/{id}` | polled for the decision, as for `approvals wait` |
+| `GET /api/org/{org}/connect-links` | `{"claude_ai": {"url", "directory_url"?, "endpoint", "steps": [text]}, "chatgpt": {"endpoint", "auth": text, "admin_url": null\|text, "steps": [text]}}`; org admins only. Fixture: `connect-links.json` |
+
+Source: connectors plan sections 4.9, 4.11, 4.12 and 4.13. The layout of the
+connect-links document, and the 300 second default wait, are this client's
+decisions; the plan names the endpoint and the two targets.
+
 ## Step-up
 
 | Route | Use |
