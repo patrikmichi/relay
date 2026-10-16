@@ -11,6 +11,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/agentsync"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 // refuseInAgentMode stops a command that changes coding agent configuration
@@ -70,14 +71,14 @@ func confirmAgentWrite(cmd *cobra.Command, run *agentSyncRun, what string, yes b
 	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out, "\n%s will change what your coding agents run:\n", what)
 	for _, it := range risky {
-		fmt.Fprintf(out, "  %s %s (%s, %s): %s\n", it.Status, it.Kind, it.Agent, it.Scope, revealControls(it.Name))
+		fmt.Fprintf(out, "  %s %s (%s, %s): %s\n", it.Status, it.Kind, it.Agent, it.Scope, textsafe.Reveal(it.Name))
 	}
 	if run.gatewayURL != "" {
 		fmt.Fprintf(out, "  the gateway MCP entry will point at %s, not the gateway saved in your config\n", run.gatewayURL)
 	}
 	if run.plan != nil {
 		for _, e := range run.plan.Edits {
-			fmt.Fprintf(out, "\n%s", revealControls(e.Diff()))
+			fmt.Fprintf(out, "\n%s", textsafe.Reveal(e.Diff()))
 		}
 	}
 	if !askNo(bufio.NewReader(in), out, "\nWrite these changes?") {

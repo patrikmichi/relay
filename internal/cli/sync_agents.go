@@ -16,6 +16,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/agentsync"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 const (
@@ -298,7 +299,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	}
 	run.gatewayURL = gw.changed
 	if gw.ignoredEnv != "" {
-		warns = append(warns, fmt.Sprintf("ignoring $GATEWAY_URL (%s): agent configs use the gateway saved in the config file; pass --gateway-url to write another", cleanText(gw.ignoredEnv)))
+		warns = append(warns, fmt.Sprintf("ignoring $GATEWAY_URL (%s): agent configs use the gateway saved in the config file; pass --gateway-url to write another", textsafe.Clean(gw.ignoredEnv)))
 	}
 	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns
