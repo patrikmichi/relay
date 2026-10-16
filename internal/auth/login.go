@@ -6,8 +6,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,13 +18,19 @@ import (
 
 	"github.com/pkg/browser"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 const (
-	loginTimeout = 120 * time.Second
-	cliClientID  = "relay-cli"
+	// loginTimeout is how long the person has to sign in; exchangeTimeout
+	// then bounds the token request on its own.
+	loginTimeout    = 120 * time.Second
+	exchangeTimeout = 30 * time.Second
+	cliClientID     = brand.Name + "-cli"
 )
 
 // openBrowser launches the system browser to the given URL. A package-level
@@ -55,11 +62,30 @@ type tokenResponse struct {
 //  4. Wait for callback (max 120s)
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
-func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
+//
+// The authorize request carries principal=cli_personal or cli_agent, so the
+// gateway issues the session to that principal; it is fixed when the login
+// starts and the token request carries no flag. Both are held to approvals.
+// The agent session is stored apart from the personal one.
+func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
+	var diagnostic io.Writer = os.Stderr
+	if len(writers) > 0 && writers[0] != nil {
+		diagnostic = writers[0]
+	}
+	// The keychain entry this login produces is bound to this normalized
+	// origin — reject an invalid/insecure gateway value before opening a
+	// browser or starting the loopback server.
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Waiting for the person in the browser and exchanging the code have
+	// their own limits: a slow sign-in must not leave the exchange no time.
+	parent := ctx
+	ctx, cancel := context.WithTimeout(parent, loginTimeout)
 	defer cancel()
 
-	// Step 1: PKCE
 	verifier, challenge, err := generatePKCE()
 	if err != nil {
 		return nil, fmt.Errorf("generate PKCE: %w", err)
@@ -70,7 +96,6 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 		return nil, fmt.Errorf("generate state: %w", err)
 	}
 
-	// Step 2: Start loopback server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("start callback server: %w", err)
@@ -82,43 +107,31 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	errCh := make(chan error, 1)
 
 	server := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			q := r.URL.Query()
-			if errParam := q.Get("error"); errParam != "" {
-				errCh <- fmt.Errorf("oauth error: %s — %s", errParam, q.Get("error_description"))
-				fmt.Fprintln(w, "Authentication failed. You can close this tab.")
-				return
-			}
-			code := q.Get("code")
-			returnedState := q.Get("state")
-			if returnedState != state {
-				errCh <- fmt.Errorf("state mismatch: expected %s got %s", state, returnedState)
-				http.Error(w, "State mismatch", http.StatusBadRequest)
-				return
-			}
-			codeCh <- code
-			fmt.Fprintln(w, "Authentication complete. You can close this tab.")
-		}),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       10 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		Handler:           oauthCallbackHandler(state, codeCh, errCh),
 	}
 
 	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			// Non-fatal: server closed after we got the code
-		}
+		// Serve returns once the server is shut down after the callback; a
+		// listener error then only means no callback arrives, which the
+		// login timeout reports.
+		_ = server.Serve(listener)
 	}()
 
-	// Cleanup: close codeCh so parent select unblocks on any exit path
 	defer func() {
 		_ = server.Close()
 	}()
 
-	// Step 3: Open browser
-	authorizeURL := buildAuthorizeURL(gatewayURL, cliClientID, redirectURI, state, challenge)
+	authorizeURL := buildAuthorizeURL(origin, cliClientID, redirectURI, state, challenge, principalFor(profile))
+	fmt.Fprintln(diagnostic, sessionKindNotice(profile))
 	if err := openBrowser(authorizeURL); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
+		fmt.Fprintf(diagnostic, "Could not open browser automatically. Please visit:\n%s\n", authorizeURL)
 	}
 
-	// Step 4: Wait for callback
 	var authCode string
 	select {
 	case code := <-codeCh:
@@ -126,34 +139,39 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 	case err := <-errCh:
 		return nil, err
 	case <-ctx.Done():
+		if errors.Is(parent.Err(), context.Canceled) {
+			return nil, fmt.Errorf("login cancelled")
+		}
 		return nil, fmt.Errorf("login timed out after %s", loginTimeout)
 	}
 
-	// Step 5: Exchange code for tokens
-	resp, err := exchangeCode(gatewayURL, authCode, verifier, redirectURI)
+	exchangeCtx, cancelExchange := context.WithTimeout(parent, exchangeTimeout)
+	defer cancelExchange()
+	binding := newDeviceBinding(diagnostic)
+	resp, err := exchangeCodeContext(exchangeCtx, origin, authCode, verifier, redirectURI, binding)
 	if err != nil {
+		binding.discard()
+		if errors.Is(parent.Err(), context.Canceled) {
+			return nil, fmt.Errorf("login cancelled")
+		}
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 
-	// Step 6: Store in keychain
-	if err := keychain.WriteToken(resp.Email, keychain.TokenData{
+	keyRef := binding.settle(resp.TokenType, diagnostic)
+	dropReplacedKey(profile, origin, resp.Email, keyRef)
+	if err := keychain.WriteProfileToken(profile, origin, resp.Email, keychain.TokenData{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
-		Email:        resp.Email,
 		ExpiresIn:    resp.ExpiresIn,
 		ExpiresAt:    time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second).Unix(),
+		DPoPKey:      keyRef,
 	}); err != nil {
+		if keyRef != "" {
+			_ = dpop.Delete(keyRef)
+		}
 		return nil, err // keychain error is user-visible, caller exits 1
 	}
-
-	// Persist the logged-in email so subsequent commands don't require
-	// RELAY_EMAIL to be set (client.Resolve / config.ResolveEmail). Best
-	// effort — a failure here doesn't invalidate the login itself (the
-	// keychain write above already succeeded); RELAY_EMAIL remains an
-	// explicit fallback for the user.
-	if err := config.SetEmail(resp.Email); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not persist login email to config: %v\n", err)
-	}
+	persistLogin(profile, resp.Email, diagnostic)
 
 	return &LoginResult{
 		Email:        resp.Email,
@@ -161,6 +179,15 @@ func Login(ctx context.Context, gatewayURL string) (*LoginResult, error) {
 		RefreshToken: resp.RefreshToken,
 		ExpiresIn:    resp.ExpiresIn,
 	}, nil
+}
+
+// sessionKindNotice tells the person which kind of session the login asked
+// for; the browser flow shows nothing of its own about it.
+func sessionKindNotice(profile keychain.Profile) string {
+	if profile == keychain.ProfileAgent {
+		return "Requesting an agent session: its writes wait for a person to approve them."
+	}
+	return "Requesting a personal session."
 }
 
 // generatePKCE generates a PKCE verifier and S256 challenge.
@@ -184,8 +211,22 @@ func randomHex(n int) (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
+// The principal a CLI login asks the gateway to issue the session to. The
+// gateway holds both to approvals; only a browser session is unrestricted.
+const (
+	principalPersonal = "cli_personal"
+	principalAgent    = "cli_agent"
+)
+
+func principalFor(profile keychain.Profile) string {
+	if profile == keychain.ProfileAgent {
+		return principalAgent
+	}
+	return principalPersonal
+}
+
 // buildAuthorizeURL constructs the /api/cli/authorize URL.
-func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge string) string {
+func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge, principal string) string {
 	u := fmt.Sprintf("%s/api/cli/authorize", strings.TrimRight(gatewayURL, "/"))
 	params := url.Values{
 		"client_id":             {clientID},
@@ -194,12 +235,20 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge strin
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 		"response_type":         {"code"},
+		"principal":             {principal},
 	}
 	return u + "?" + params.Encode()
 }
 
 // exchangeCode exchanges an authorization code for a token pair.
 func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
+	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI, nil)
+}
+
+// exchangeCodeContext sends the code with a DPoP proof from binding, when
+// there is one, and says where the key lives, so a strict organisation can
+// bind the session to it and enforce a hardware-key requirement.
+func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string, binding *deviceBinding) (*tokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/cli/token", strings.TrimRight(gatewayURL, "/"))
 
 	data := url.Values{
@@ -207,26 +256,90 @@ func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenRespons
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
 	}
+	if binding != nil {
+		data.Set("dpop_key_type", binding.keyType())
+	}
+	if id, err := config.InstallID(); err == nil {
+		data.Set("install_id", id)
+	}
 
-	resp, err := http.PostForm(endpoint, data)
+	// Token exchange must never follow a redirect — a compromised or
+	// misconfigured gateway could otherwise relocate the response carrying
+	// the minted token pair to another origin. http.PostForm uses
+	// http.DefaultClient, which follows redirects, so build the request
+	// explicitly instead.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("create token exchange request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := binding.sign(req); err != nil {
+		return nil, fmt.Errorf("sign the token request: %w", err)
+	}
+
+	resp, err := client.NoRedirectHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var errBody map[string]string
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		desc := errBody["error_description"]
-		if desc == "" {
-			desc = errBody["error"]
+		var refusal struct {
+			Error string `json:"error"`
 		}
-		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, desc)
+		_ = decodeJSONCapped(resp.Body, &refusal)
+		if hint := tokenErrorHint(refusal.Error); hint != nil {
+			return nil, hint
+		}
+		return nil, fmt.Errorf("token exchange failed (HTTP %d)", resp.StatusCode)
 	}
 
 	var tr tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	if err := decodeJSONCapped(resp.Body, &tr); err != nil {
 		return nil, fmt.Errorf("decode token response: %w", err)
 	}
+	if tr.AccessToken == "" || tr.RefreshToken == "" || tr.Email == "" || tr.ExpiresIn <= 0 || tr.ExpiresIn > 86400*365 {
+		return nil, fmt.Errorf("invalid token response: required session fields missing or expiry invalid")
+	}
 	return &tr, nil
+}
+
+func oauthCallbackHandler(state string, codeCh chan<- string, errCh chan<- error) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/callback" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		q := r.URL.Query()
+		if q.Get("state") != state {
+			http.Error(w, "Invalid authorization response", http.StatusBadRequest)
+			return
+		}
+		if q.Get("error") != "" {
+			select {
+			case errCh <- fmt.Errorf("authorization was denied by the identity provider"):
+			default:
+			}
+			http.Error(w, "Authentication failed. You can close this tab.", http.StatusBadRequest)
+			return
+		}
+		code := q.Get("code")
+		if code == "" || len(code) > 4096 {
+			http.Error(w, "Invalid authorization response", http.StatusBadRequest)
+			return
+		}
+		select {
+		case codeCh <- code:
+		default:
+			http.Error(w, "Authorization response already received", http.StatusConflict)
+			return
+		}
+		_, _ = fmt.Fprintln(w, "Authentication complete. You can close this tab.")
+	})
 }

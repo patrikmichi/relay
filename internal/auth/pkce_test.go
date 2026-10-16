@@ -14,8 +14,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // init installs a mock keyring so these tests never touch the real OS keychain.
@@ -25,7 +25,7 @@ func init() {
 
 // withTempHome redirects os.UserHomeDir (via $HOME) to an isolated temp dir
 // for the duration of the test, so config.Load/Save never touch the real
-// developer machine's ~/.config/relay.
+// developer machine's ~/.config/zuano.
 func withTempHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -80,7 +80,7 @@ func TestRandomHex_LengthAndCharset(t *testing.T) {
 // ─── buildAuthorizeURL ──────────────────────────────────────────────────────
 
 func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
-	got := buildAuthorizeURL("https://gw.example.com/", "relay-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1")
+	got := buildAuthorizeURL("https://gw.example.com/", "zuano-cli", "http://127.0.0.1:1234/callback", "state-1", "challenge-1", "cli_personal")
 
 	u, err := url.Parse(got)
 	if err != nil {
@@ -92,12 +92,13 @@ func TestBuildAuthorizeURL_IncludesAllRequiredParams(t *testing.T) {
 
 	q := u.Query()
 	cases := map[string]string{
-		"client_id":             "relay-cli",
+		"client_id":             "zuano-cli",
 		"redirect_uri":          "http://127.0.0.1:1234/callback",
 		"state":                 "state-1",
 		"code_challenge":        "challenge-1",
 		"code_challenge_method": "S256",
 		"response_type":         "code",
+		"principal":             "cli_personal",
 	}
 	for k, want := range cases {
 		if got := q.Get(k); got != want {
@@ -159,8 +160,8 @@ func TestExchangeCode_NonOKWithErrorDescription(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "code already used") {
-		t.Errorf("error should surface status + description, got: %v", err)
+	if !strings.Contains(err.Error(), "400") || strings.Contains(err.Error(), "code already used") {
+		t.Errorf("error should surface status without the upstream body, got: %v", err)
 	}
 }
 
@@ -228,6 +229,9 @@ func driveCallback(t *testing.T, overrides map[string]string) (restore func()) {
 
 func TestLogin_HappyPath(t *testing.T) {
 	withTempHome(t)
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
+		t.Fatal(err)
+	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/cli/token" {
@@ -248,7 +252,7 @@ func TestLogin_HappyPath(t *testing.T) {
 	restore := driveCallback(t, map[string]string{"code": "fake-code"})
 	defer restore()
 
-	result, err := Login(context.Background(), srv.URL)
+	result, err := Login(context.Background(), srv.URL, keychain.ProfileHuman)
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -256,12 +260,15 @@ func TestLogin_HappyPath(t *testing.T) {
 		t.Errorf("unexpected LoginResult: %+v", result)
 	}
 
-	tok, err := keychain.ReadToken("user@example.com")
+	tok, err := keychain.ReadToken(srv.URL, "user@example.com")
 	if err != nil {
 		t.Fatalf("expected token persisted to keychain: %v", err)
 	}
 	if tok.AccessToken != "access-1" {
 		t.Errorf("keychain AccessToken: got %q, want access-1", tok.AccessToken)
+	}
+	if keychain.HasUnboundToken("user@example.com") {
+		t.Error("login must remove the email-only session it replaces")
 	}
 
 	email, err := config.ResolveEmail()
@@ -282,11 +289,11 @@ func TestLogin_OAuthErrorFromCallback(t *testing.T) {
 	})
 	defer restore()
 
-	_, err := Login(context.Background(), "https://gw.example.com")
+	_, err := Login(context.Background(), "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "access_denied") {
+	if !strings.Contains(err.Error(), "denied by the identity provider") {
 		t.Errorf("expected oauth error to surface, got: %v", err)
 	}
 }
@@ -297,11 +304,13 @@ func TestLogin_StateMismatchFromCallback(t *testing.T) {
 	restore := driveCallback(t, map[string]string{"code": "fake-code", "state": "tampered-state"})
 	defer restore()
 
-	_, err := Login(context.Background(), "https://gw.example.com")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := Login(ctx, "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "state mismatch") {
+	if !strings.Contains(err.Error(), "timed out") {
 		t.Errorf("expected state mismatch error, got: %v", err)
 	}
 }
@@ -317,7 +326,7 @@ func TestLogin_TimesOutWithNoCallback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := Login(ctx, "https://gw.example.com")
+	_, err := Login(ctx, "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}

@@ -2,30 +2,25 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 func TestSkillSearch_PrintsResultsTable(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/mcp" {
+		if r.URL.Path != "/api/catalog/skills/search" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"jsonrpc": "2.0",
-			"id": 1,
-			"result": {
-				"content": [{"type": "text", "text": "[{\"id\":\"res_abc\",\"slug\":\"pr-triage\",\"description\":\"triage PRs\",\"version\":\"1.4.2\",\"trustScore\":92}]"}]
-			}
-		}`))
+		_, _ = w.Write([]byte(`{"ok": true, "data": [{"id": "res_abc", "slug": "pr-triage", "description": "triage PRs", "version": "1.4.2", "trustScore": 92}]}`))
 	}))
 	defer srv.Close()
 
@@ -44,13 +39,10 @@ func TestSkillSearch_PrintsResultsTable(t *testing.T) {
 }
 
 func TestSkillSearch_JSONOutput(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{
-			"jsonrpc": "2.0", "id": 1,
-			"result": {"content": [{"type": "text", "text": "[{\"id\":\"res_abc\",\"slug\":\"pr-triage\"}]"}]}
-		}`))
+		_, _ = w.Write([]byte(`{"ok": true, "data": [{"id": "res_abc", "slug": "pr-triage"}]}`))
 	}))
 	defer srv.Close()
 
@@ -67,10 +59,10 @@ func TestSkillSearch_JSONOutput(t *testing.T) {
 }
 
 func TestSkillSearch_NoResults(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"[]"}]}}`))
+		_, _ = w.Write([]byte(`{"ok": true, "data": []}`))
 	}))
 	defer srv.Close()
 
@@ -87,7 +79,7 @@ func TestSkillSearch_NoResults(t *testing.T) {
 }
 
 func TestSkillSearch_AggregateDisabledDegradesWithGuidance(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -103,8 +95,8 @@ func TestSkillSearch_AggregateDisabledDegradesWithGuidance(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an error when the aggregate MCP endpoint is disabled")
 	}
-	if !strings.Contains(err.Error(), "relay skill install") {
-		t.Errorf("expected guidance pointing at `relay skill install`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano skill install") {
+		t.Errorf("expected guidance pointing at `zuano skill install`, got: %v", err)
 	}
 }
 
@@ -119,7 +111,7 @@ func TestSkillSearch_NoGatewayConfiguredDegrades(t *testing.T) {
 }
 
 func TestSkillSearch_RPCErrorSurfaces(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"bad args"}}`))
@@ -141,9 +133,9 @@ func TestSearchSkills_NonJSONRPCBodyWith200Errors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := searchSkills(client.New(srv.URL, "tok"), "")
-	if err == nil || !strings.Contains(err.Error(), "unexpected search response") {
-		t.Fatalf("expected an 'unexpected search response' error, got: %v", err)
+	_, err := searchSkills(context.Background(), client.New(srv.URL, "tok"), "")
+	if err == nil || !strings.Contains(err.Error(), "decode search results") {
+		t.Fatalf("expected a 'not valid JSON-RPC' error, got: %v", err)
 	}
 }
 
@@ -154,7 +146,7 @@ func TestSearchSkills_NonJSONRPCBodyWithErrorStatusErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := searchSkills(client.New(srv.URL, "tok"), "")
+	_, err := searchSkills(context.Background(), client.New(srv.URL, "tok"), "")
 	if err == nil || !strings.Contains(err.Error(), "search failed (502)") {
 		t.Fatalf("expected a 'search failed (502)' error, got: %v", err)
 	}
@@ -162,11 +154,11 @@ func TestSearchSkills_NonJSONRPCBodyWithErrorStatusErrors(t *testing.T) {
 
 func TestSearchSkills_MalformedResultTextErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"not-a-json-array"}]}}`))
+		_, _ = w.Write([]byte(`{"ok": true, "data": "not-a-json-array"}`))
 	}))
 	defer srv.Close()
 
-	_, err := searchSkills(client.New(srv.URL, "tok"), "")
+	_, err := searchSkills(context.Background(), client.New(srv.URL, "tok"), "")
 	if err == nil || !strings.Contains(err.Error(), "decode search results") {
 		t.Fatalf("expected a 'decode search results' error, got: %v", err)
 	}
@@ -174,21 +166,21 @@ func TestSearchSkills_MalformedResultTextErrors(t *testing.T) {
 
 func TestSearchSkills_EmptyContentReturnsNilNoError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`))
+		_, _ = w.Write([]byte(`{"ok":true,"data":[]}`))
 	}))
 	defer srv.Close()
 
-	results, err := searchSkills(client.New(srv.URL, "tok"), "")
+	results, err := searchSkills(context.Background(), client.New(srv.URL, "tok"), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results != nil {
+	if len(results) != 0 {
 		t.Fatalf("expected nil results for empty content, got: %+v", results)
 	}
 }
 
-// TestSearchSkills_HangingServerBoundedByTimeout is the m3 regression: a
-// gateway that never responds must not hang `relay skill search` forever —
+// TestSearchSkills_HangingServerBoundedByTimeout: a
+// gateway that never responds must not hang `zuano skill search` forever —
 // searchTimeout is shrunk for this test so it runs fast.
 func TestSearchSkills_HangingServerBoundedByTimeout(t *testing.T) {
 	orig := searchTimeout
@@ -209,7 +201,7 @@ func TestSearchSkills_HangingServerBoundedByTimeout(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := searchSkills(client.New(srv.URL, "tok"), "")
+	_, err := searchSkills(context.Background(), client.New(srv.URL, "tok"), "")
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -222,12 +214,12 @@ func TestSearchSkills_HangingServerBoundedByTimeout(t *testing.T) {
 
 func TestSearchSkills_DirectDoer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"[{\"id\":\"res_x\",\"slug\":\"x\"}]"}]}}`))
+		_, _ = w.Write([]byte(`{"ok": true, "data": [{"id": "res_x", "slug": "x"}]}`))
 	}))
 	defer srv.Close()
 
 	c := client.New(srv.URL, "tok")
-	results, err := searchSkills(c, "")
+	results, err := searchSkills(context.Background(), c, "")
 	if err != nil {
 		t.Fatalf("searchSkills: %v", err)
 	}

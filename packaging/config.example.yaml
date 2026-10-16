@@ -1,0 +1,43 @@
+# zuano-connector config. Copy to config.yaml, set `network` to the id the
+# enrollment printed, and list the targets the gateway may reach. Everything
+# not listed here is unreachable through this agent, whatever the gateway sends.
+# Validate with `zuano-connector check`; reload with SIGHUP or by saving the file.
+version: 1
+network: net_REPLACEME
+# name: erp-dc1-a            # label in the dashboard (default: the host name)
+# max_concurrency: 32
+# shutdown_grace: 30s
+# log:
+#   format: json             # json | text
+#   file: /var/log/zuano-connector/exchanges.log
+#   upload: errors           # off | errors | metadata
+# health:
+#   listen: 127.0.0.1:9464   # /healthz, /readyz, /metrics
+# update:
+#   auto: false              # also needs the network's auto_update setting
+#   channel: stable
+#   window: "Sat 02:00-04:00 Europe/Prague"
+targets: []
+#  - name: erp
+#    kind: http
+#    url: https://erp.internal.example:8443/api/v2
+#    cidrs: [10.20.0.0/16]
+#    methods: [GET, POST]
+#    paths: ["/invoices/**", "/customers/**"]
+#    timeout: 60s
+#    tls: { ca_file: /etc/ssl/internal-ca.pem, server_name: erp.internal.example }
+#    credentials:             # held here; never sent to the gateway
+#      header: Authorization
+#      value: "Bearer ${file:/run/secrets/erp-token}"
+#    rate: { per_second: 20, burst: 40 }
+#  - name: hr-mcp
+#    kind: mcp_stdio
+#    command: /opt/hr-mcp/bin/hr-mcp
+#    args: ["--readonly"]
+#    env: { HR_API_TOKEN: "${file:/run/secrets/hr-token}" }
+#    mcp: { tools: ["employees_*", "leave_*"] }
+#  - name: crm-mcp
+#    kind: mcp_http
+#    url: http://crm-mcp.internal:3000/mcp
+#    cidrs: [10.30.4.0/24]
+#    mcp: { methods: [initialize, tools/list, tools/call, ping] }

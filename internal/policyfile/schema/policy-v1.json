@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Organisation policy",
+  "description": "Risk policy, grants, groups, approvals, agent rules, firewall, DLP and security settings of one organisation.",
+  "type": "object",
+  "required": ["version", "org"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1, "description": "Schema major version." },
+    "org": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}$", "description": "Organisation slug; apply refuses a document for another organisation." },
+    "extends": {
+      "type": "array",
+      "description": "Policy packs the document builds on.",
+      "items": { "type": "string", "pattern": "^pack:[a-z0-9][a-z0-9-]*@\\d+(\\.\\d+){0,2}$|^[a-z0-9][a-z0-9-]*@\\d+(\\.\\d+){0,2}$" }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+        "firewall": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matrix": {
+          "type": "object",
+          "description": "Mode per service and risk class; \"*\" is every service.",
+          "propertyNames": { "pattern": "^(\\*|[a-z0-9][a-z0-9-]*)$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "read": { "$ref": "#/$defs/mode" },
+              "write": { "$ref": "#/$defs/mode" },
+              "destructive": { "$ref": "#/$defs/mode" },
+              "outward": { "$ref": "#/$defs/mode" }
+            }
+          }
+        },
+        "people_require_approval": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/risk" }, "uniqueItems": true }
+        },
+        "overrides": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "required": ["id", "tool", "mode"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "tool": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*\\.[A-Za-z0-9_*.-]+$" },
+              "mode": { "$ref": "#/$defs/mode" },
+              "when": { "$ref": "#/$defs/predicate" },
+              "note": { "type": "string", "maxLength": 500 }
+            }
+          }
+        }
+      }
+    },
+    "groups": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "description": { "type": "string", "maxLength": 500 },
+          "members": {
+            "oneOf": [
+              { "enum": ["scim", "dashboard"] },
+              { "type": "array", "items": { "type": "string", "format": "email" }, "uniqueItems": true }
+            ]
+          }
+        }
+      }
+    },
+    "tool_groups": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tools": { "type": "array", "items": { "type": "string" } },
+          "patterns": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "grants": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "type": "object",
+        "required": ["to"],
+        "additionalProperties": false,
+        "oneOf": [{ "required": ["allow"] }, { "required": ["deny"] }],
+        "properties": {
+          "allow": { "type": "string" },
+          "deny": { "type": "string" },
+          "to": { "type": "string", "pattern": "^(group|user|kind):.+$" }
+        }
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approvers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "groups": { "type": "array", "items": { "type": "string" } },
+            "users": { "type": "array", "items": { "type": "string", "format": "email" } }
+          }
+        },
+        "callback_url": { "type": "string", "pattern": "^https://" },
+        "in_session_form": { "enum": ["on", "off"] }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "stale_after_days": { "type": "integer", "minimum": 1 },
+              "review_every_days": { "type": "integer", "minimum": 1 },
+              "max_lifetime_days": { "type": "integer", "minimum": 1 },
+              "max_idle_days": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "enforce_reviews": { "type": "boolean" },
+        "clients": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "allow": { "type": "array", "items": { "type": "string" } } }
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["id", "match"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "match": { "type": "object" },
+              "deny": { "type": "object" },
+              "mode": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "firewall": { "type": "object", "description": "Per-upstream firewall settings." },
+    "dlp": { "type": "object", "description": "Data loss prevention profiles." },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strict_mode": { "type": "boolean" },
+        "require_mfa": { "type": "boolean" },
+        "session_idle_minutes": { "type": "integer", "minimum": 5, "maximum": 10080 }
+      }
+    },
+    "cedar": { "type": "string", "description": "Directory of .cedar files." }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+    "mode": { "enum": ["off", "approval", "allowed"] },
+    "risk": { "enum": ["read", "write", "destructive", "outward"] },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "required": ["param", "op", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "param": { "type": "string" },
+        "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"] },
+        "value": {}
+      }
+    }
+  }
+}

@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// AgentListCmd returns the `relay agent list` cobra command — the
+// AgentListCmd returns the `zuano agent list` cobra command — the
 // Agent-IR analogue of SkillListCmd. Enumerates agents present across
 // provider agent directories.
 func AgentListCmd() *cobra.Command {
@@ -17,6 +17,7 @@ func AgentListCmd() *cobra.Command {
 		providerFlag string
 		scopeFlag    string
 		provenance   bool
+		jsonFlag     bool
 	)
 
 	cmd := &cobra.Command{
@@ -24,16 +25,17 @@ func AgentListCmd() *cobra.Command {
 		Short: "List installed agents across agent providers",
 		Long: fmt.Sprintf(`Enumerate agents present in each provider's agent directory: name,
 provider, and scope. With --provenance, joins the manifest ledger to show
-where each agent was installed/migrated from (when relay recorded it).
+where each agent was installed/migrated from (when zuano recorded it).
 
 Scope 'project' is resolved relative to the current working directory only
-(no parent-directory search, unlike 'relay agent migrate --from').
+(no parent-directory search, unlike 'zuano agent migrate --from').
 
 Supported providers: %s.`, agentProviderIDsCSV()),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runAgentList(cmd, agentListOpts{provider: providerFlag, scope: scopeFlag, provenance: provenance})
+			return runAgentList(cmd, agentListOpts{provider: providerFlag, scope: scopeFlag, provenance: provenance, jsonOut: jsonFlag})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout")
 
 	cmd.Flags().StringVar(&providerFlag, "provider", "", fmt.Sprintf("Restrict to one provider: %s (default: all)", agentProviderIDsOxford()))
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to list: user or project")
@@ -46,9 +48,15 @@ type agentListOpts struct {
 	provider   string
 	scope      string
 	provenance bool
+	jsonOut    bool
 }
 
 func runAgentList(cmd *cobra.Command, opts agentListOpts) error {
+	doc, finish := beginAction(cmd, opts.jsonOut, "agent list")
+	return finish(doAgentList(cmd, opts, doc))
+}
+
+func doAgentList(cmd *cobra.Command, opts agentListOpts, doc actionDoc) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -75,6 +83,15 @@ func runAgentList(cmd *cobra.Command, opts agentListOpts) error {
 	}
 
 	out := cmd.OutOrStdout()
+	type listed struct {
+		Provider string `json:"provider"`
+		Name     string `json:"name"`
+		Scope    string `json:"scope"`
+		Path     string `json:"path"`
+		From     string `json:"from,omitempty"`
+	}
+	agents := []listed{}
+	doc.put("agents", agents)
 	if len(refs) == 0 {
 		fmt.Fprintln(out, "no agents found")
 		return nil
@@ -95,13 +112,17 @@ func runAgentList(cmd *cobra.Command, opts agentListOpts) error {
 		}
 	}
 
+	defer func() { doc.put("agents", agents) }()
 	for _, r := range refs {
+		item := listed{Provider: string(r.Provider), Name: r.Name, Scope: string(r.Scope), Path: r.Path}
 		if !opts.provenance {
+			agents = append(agents, item)
 			fmt.Fprintf(out, "%-10s %-24s %-8s %s\n", r.Provider, r.Name, r.Scope, r.Path)
 			continue
 		}
 		entry, ok := agentport.LastEntryFor(m, r.Name, r.Provider, r.Scope, agentport.KindAgent)
 		if !ok {
+			agents = append(agents, item)
 			fmt.Fprintf(out, "%-10s %-24s %-8s %s (no manifest record)\n", r.Provider, r.Name, r.Scope, r.Path)
 			continue
 		}
@@ -109,6 +130,8 @@ func runAgentList(cmd *cobra.Command, opts agentListOpts) error {
 		if src == "" {
 			src = "local"
 		}
+		item.From = src
+		agents = append(agents, item)
 		fmt.Fprintf(out, "%-10s %-24s %-8s %s (from %s: %s)\n", r.Provider, r.Name, r.Scope, r.Path, src, entry.Provenance.SourcePath)
 	}
 	return nil

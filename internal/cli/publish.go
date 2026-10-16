@@ -19,13 +19,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/nofollow"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // artifactMaxBytes is the client-side size cap for a bundle (25 MiB).
 // The server enforces its own cap; this is a client-side guard to fail fast.
 // Declared as var (not const) so tests can temporarily lower it.
 var artifactMaxBytes int64 = 25 << 20 // 25 MiB
+
+var artifactMaxEntries = 20000
 
 // publishAPIPath is the endpoint on the gateway.
 const publishAPIPath = "/api/marketplace/publish"
@@ -39,6 +45,8 @@ type publishResponse struct {
 	Semver     string `json:"semver"`
 	State      string `json:"state"`
 	Channel    string `json:"channel,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	ReviewURL  string `json:"reviewUrl,omitempty"`
 }
 
 // publishErrorDetail is one field-level error entry from a 422 response.
@@ -113,48 +121,51 @@ func parseFrontmatter(content []byte) frontmatter {
 	return fm
 }
 
-// ---- publishDoer interface — allows tests to swap in an httptest.Server ----
-
-// publishDoer is the minimal HTTP interface PublishCmd uses.
+// publishDoer is the POST a publish needs, bound to the command's context by
+// commandDoer.
 type publishDoer interface {
 	// Post sends a POST request to the given path with the given content-type and body.
 	Post(path, contentType string, body io.Reader) (*http.Response, error)
 }
 
-// publishStatusDoer is the minimal HTTP interface used to poll publish status
-// (GET /api/marketplace/publish/<versionId>/status). Kept as a SEPARATE
-// interface from publishDoer (rather than adding Get to it) so existing
-// publishDoer test fakes that only implement Post keep compiling unchanged.
+// publishStatusDoer is the GET that polls publish status
+// (GET /api/marketplace/publish/<versionId>/status).
 type publishStatusDoer interface {
 	Get(path string) (*http.Response, error)
 }
 
 // ---- PublishCmd + aliases ----
 
-// PublishCmd returns the `relay publish <path>` cobra command.
+// PublishCmd returns the `zuano publish <path>` cobra command.
 func PublishCmd() *cobra.Command {
-	return publishCmdWithDoer(nil)
+	return publishCmdWithDoer(nil, "")
 }
 
-// publishCmdWithDoer is the internal constructor; doer==nil means resolve at runtime.
-func publishCmdWithDoer(doer publishDoer) *cobra.Command {
+func publishCmdWithDoer(doer gatewayDoer, aliasKind agentport.ArtifactKind) *cobra.Command {
 	var (
 		flagType       string
 		flagName       string
 		flagSlug       string
 		flagChannel    string
+		flagScope      string
 		flagDryRun     bool
 		flagWatch      bool
 		flagGatewayURL string
+		flagManifest   string
+		flagInclude    []string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "publish <path>",
 		Short: "Publish a skill, agent, or MCP server to the marketplace",
-		Long: `Publish a resource to the relay marketplace.
+		Long: `Publish a resource to the zuano marketplace.
 
 <path> can be a single manifest file (SKILL.md / agent.md) or a directory.
 The resource type is detected from the manifest frontmatter; use --type to override.
+
+--type plugin publishes a bundle described by a plugin.yaml in <path> (or <path>
+itself): pinned skills and MCP servers, commands, rules and hooks. It is
+validated here and sent as components; see docs/reference/plugins.md.
 
 When publishing a directory, all files are bundled into a tar.gz.
 The bundle is validated client-side before upload: symlinks that escape the root,
@@ -165,6 +176,9 @@ Flags:
   --name <name>                                  Override the resource display name
   --slug <slug>                                  Override the resource slug
   --channel <stable|beta>                        Publish channel (default: stable)
+  --scope <personal|org>                         Skills only. A personal skill is visible to you alone, needs no review and is
+                                                  installed by 'zuano sync' on your own devices; 'zuano skill promote' submits
+                                                  it to the organisation. The gateway picks personal for members and org for admins
   --dry-run                                      Validate + print what WOULD be sent; do not call the API
   --watch                                        After publishing, poll status until it reaches a
                                                   terminal state; exits non-zero on changes_requested`,
@@ -182,18 +196,24 @@ Flags:
 			}
 			d := doer
 			resolvedURL := flagGatewayURL
-			if d == nil {
+
+			if d == nil && !flagDryRun {
 				var err error
 				d, resolvedURL, err = resolvePublishDoerWithURL(flagGatewayURL)
 				if err != nil {
 					return err
 				}
 			}
-			return runPublish(d, publishPath, publishOpts{
+			return runPublish(commandDoer{d, cmd.Context()}, publishPath, publishOpts{
+				out:               cmd.OutOrStdout(),
 				resourceType:      flagType,
+				aliasKind:         aliasKind,
+				manifestPath:      flagManifest,
+				includeFiles:      flagInclude,
 				name:              flagName,
 				slug:              flagSlug,
 				channel:           flagChannel,
+				scope:             flagScope,
 				dryRun:            flagDryRun,
 				watch:             flagWatch,
 				gatewayURL:        resolvedURL,
@@ -214,34 +234,37 @@ Flags:
 	cmd.Flags().StringVar(&flagName, "name", "", "Override resource display name")
 	cmd.Flags().StringVar(&flagSlug, "slug", "", "Override resource slug")
 	cmd.Flags().StringVar(&flagChannel, "channel", "stable", "Publish channel: stable or beta")
+	cmd.Flags().StringVar(&flagScope, "scope", "", "Skills only: personal (only you, no review) or org (the catalog, with review); default personal for members and org for admins")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Validate and print the payload without sending it")
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll publish status until terminal; exit non-zero on changes_requested")
-	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
+	cmd.Flags().StringVar(&flagManifest, "manifest", "", "Explicit path (relative to <path>) to the manifest/descriptor file — bypasses SKILL.md/agent.md convention discovery")
+	cmd.Flags().StringSliceVar(&flagInclude, "include", nil, "Force-include a bundle-relative path the default secret-screening policy would otherwise exclude (repeatable)")
 
 	cmd.AddCommand(publishStatusCmd())
 
 	return cmd
 }
 
-// skillPublishCmd returns `relay skill publish <path>` — thin alias.
 func skillPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, agentport.KindSkill)
 	cmd.Use = "publish <path>"
 	cmd.Short = "Publish a skill to the marketplace"
 	return cmd
 }
 
-// agentPublishCmd returns `relay agent publish <path>` — thin alias.
+// agentPublishCmd returns `zuano agent publish <path>` — thin alias. See
+// skillPublishCmd.
 func agentPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, agentport.KindAgent)
 	cmd.Use = "publish <path>"
 	cmd.Short = "Publish an agent to the marketplace"
 	return cmd
 }
 
-// mcpPublishCmd returns `relay mcp publish <path>` — thin alias.
+// mcpPublishCmd returns `zuano mcp publish <path>` — thin alias.
 func mcpPublishCmd() *cobra.Command {
-	cmd := publishCmdWithDoer(nil)
+	cmd := publishCmdWithDoer(nil, "")
 	cmd.Use = "publish [path]"
 	cmd.Short = "Publish an MCP server to the marketplace"
 	cmd.Args = cobra.MaximumNArgs(1)
@@ -283,10 +306,6 @@ func mcpPublishCmd() *cobra.Command {
 	return cmd
 }
 
-// SkillCmd returns the `relay skill` parent command with `publish`,
-// `migrate`, and the Wave 2 agentport manager sub-commands (install, list,
-// diff, scan, score, uninstall, rollback), plus the Phase-2 gateway-catalog
-// commands (search, and install's catalog-id source — see SkillInstallCmd).
 func SkillCmd() *cobra.Command {
 	skill := &cobra.Command{
 		Use:   "skill",
@@ -295,6 +314,7 @@ func SkillCmd() *cobra.Command {
 	skill.AddCommand(skillPublishCmd())
 	skill.AddCommand(SkillMigrateCmd())
 	skill.AddCommand(SkillInstallCmd())
+	skill.AddCommand(SkillInfoCmd())
 	skill.AddCommand(SkillSearchCmd())
 	skill.AddCommand(SkillListCmd())
 	skill.AddCommand(SkillDiffCmd())
@@ -302,12 +322,14 @@ func SkillCmd() *cobra.Command {
 	skill.AddCommand(SkillScoreCmd())
 	skill.AddCommand(SkillUninstallCmd())
 	skill.AddCommand(SkillRollbackCmd())
+	skill.AddCommand(skillFromSessionCmd())
+	skill.AddCommand(SkillPromoteCmd())
 	return skill
 }
 
-// AgentCmd returns the `relay agent` parent command with `publish`, the
+// AgentCmd returns the `zuano agent` parent command with `publish`, the
 // offline agent-manager sub-commands (migrate, list, diff, scan, uninstall,
-// rollback), and the gateway-catalog `install` sub-command (D5) —
+// rollback), and the gateway-catalog `install` sub-command —
 // mirroring SkillCmd's shape for the Agent IR. Supported agent providers are
 // whatever agentport.AllAgentAdapters() currently loads (see
 // agentProviderIDsCSV).
@@ -319,9 +341,8 @@ func AgentCmd() *cobra.Command {
 
 Supported agent providers: %s.`, agentProviderIDsCSV()),
 	}
-	agent.AddCommand(agentPublishCmd())
+	agent.AddCommand(agentPublishCmd(), AgentInstallCmd())
 	agent.AddCommand(AgentMigrateCmd())
-	agent.AddCommand(AgentInstallCmd())
 	agent.AddCommand(AgentListCmd())
 	agent.AddCommand(AgentDiffCmd())
 	agent.AddCommand(AgentScanCmd())
@@ -330,44 +351,39 @@ Supported agent providers: %s.`, agentProviderIDsCSV()),
 	return agent
 }
 
-// MCPCmd returns the `relay mcp` parent command with `publish` and the
-// read-only `list` sub-command (D6). `install`/`remove` are deliberately
-// NOT implemented — see McpListCmd's doc comment and the README's MCP
-// section for the descope rationale.
+// MCPCmd returns the `zuano mcp` parent command: `publish`, the read-only
+// `list`/`inspect` catalog views, and `install`/`remove`, which register
+// servers in the coding agents' own MCP config.
 func MCPCmd() *cobra.Command {
 	mcp := &cobra.Command{
 		Use:   "mcp",
-		Short: "MCP server commands",
-		Long: `MCP server commands.
+		Short: "Publish, list and inspect catalog MCP servers, and register servers in your coding agents",
+		Long: `Publish, list and inspect MCP servers in the gateway catalog, and register
+MCP servers in the config of your coding agents.
 
-'relay mcp install'/'relay mcp remove' are NOT implemented: writing an
-MCP-server registration into per-provider client config (~/.claude.json,
-~/.codex/config.toml, .cursor/mcp.json, ...) is a separate artifact kind
-with its own IR and per-provider codecs — a distinct design from anything
-this CLI currently ships. 'relay mcp list' is read-only.`,
+'zuano mcp list' and 'zuano mcp inspect' are read-only. 'zuano mcp install'
+and 'zuano mcp remove' write to the agents' own MCP config (~/.claude.json,
+~/.codex/config.toml, .cursor/mcp.json, ...) and never touch entries you
+created; 'zuano sync' keeps them current.`,
 	}
-	mcp.AddCommand(mcpPublishCmd())
-	mcp.AddCommand(McpListCmd())
+	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd(), McpInstallCmd(), McpRemoveCmd(), mcpLinkCmd(), McpWrapCmd(), McpPinsCmd(), McpChangesCmd())
 	return mcp
 }
 
 // ---- auth resolution (mirrors sync.go / resolveSyncDoer) ----
 
-// resolvePublishDoer resolves the gateway URL + OAuth token and returns a publishDoer.
+// resolvePublishDoer resolves the gateway URL + OAuth token and returns the client.
 // Used by tests that only need the doer.
-func resolvePublishDoer(overrideURL string) (publishDoer, error) {
+func resolvePublishDoer(overrideURL string) (gatewayDoer, error) {
 	d, _, err := resolvePublishDoerWithURL(overrideURL)
 	return d, err
 }
 
 // resolvePublishDoerWithURL resolves an authenticated client and returns both
-// the publishDoer and the resolved gateway URL (for catalog link
-// generation). Auth resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted
-// login email → keychain, with transparent OAuth refresh) is centralized in
-// client.Resolve — *client.Client already satisfies both publishDoer and
-// publishStatusDoer (matching Post/Get signatures), so no adapter type is
-// needed here anymore.
-func resolvePublishDoerWithURL(overrideURL string) (publishDoer, string, error) {
+// it and the resolved gateway URL (for catalog link generation). Auth
+// resolution (ZUANO_API_KEY / ZUANO_EMAIL / persisted login email →
+// keychain, with transparent OAuth refresh) is centralized in client.Resolve.
+func resolvePublishDoerWithURL(overrideURL string) (gatewayDoer, string, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(overrideURL)
 	if err != nil {
 		return nil, "", err
@@ -380,29 +396,23 @@ func resolvePublishDoerWithURL(overrideURL string) (publishDoer, string, error) 
 	return c, c.GatewayURL, nil
 }
 
-// resolvePublishStatusDoer resolves the gateway URL + OAuth token and returns
-// a publishStatusDoer for `relay publish status`. Shares auth resolution with
-// resolvePublishDoerWithURL — *client.Client satisfies both interfaces.
-func resolvePublishStatusDoer(overrideURL string) (publishStatusDoer, error) {
-	d, _, err := resolvePublishDoerWithURL(overrideURL)
-	if err != nil {
-		return nil, err
-	}
-	statusDoer, ok := d.(publishStatusDoer)
-	if !ok {
-		return nil, fmt.Errorf("internal error: resolved publish doer does not support status polling")
-	}
-	return statusDoer, nil
-}
-
 // ---- publish options ----
 
 type publishOpts struct {
+	out          io.Writer
 	resourceType string
+
+	aliasKind agentport.ArtifactKind
+
+	manifestPath string
+
+	includeFiles []string
 	name         string
 	slug         string
 	channel      string
-	dryRun       bool
+	// scope is personal or org for a skill; empty leaves the choice to the gateway.
+	scope  string
+	dryRun bool
 	// watch: after a successful publish, poll status until terminal (see
 	// watchPublishStatus). Exits non-zero on changes_requested.
 	watch             bool
@@ -416,7 +426,7 @@ type publishOpts struct {
 	mcpAuthScope      string
 	mcpTools          []string
 	// gatewayURL is the resolved gateway base URL, used for catalog link generation.
-	// Set by the command from the resolved doer; empty falls back to GATEWAY_URL env / default.
+	// Set by the command from the resolved doer; empty falls back to ZUANO_URL env / default.
 	gatewayURL string
 }
 
@@ -444,24 +454,27 @@ func mcpPublishOptionsFromContext(ctx context.Context) publishMcpOptions {
 }
 
 type mcpDescriptor struct {
-	Name          string   `json:"name,omitempty"`
-	Slug          string   `json:"slug,omitempty"`
-	Version       string   `json:"version,omitempty"`
-	Description   string   `json:"description,omitempty"`
-	Transport     string   `json:"transport"`
-	Endpoint      string   `json:"endpoint,omitempty"`
-	Command       string   `json:"command,omitempty"`
-	AuthRef       string   `json:"authRef,omitempty"`
-	Source        string   `json:"source,omitempty"`
-	AuthType      string   `json:"authType,omitempty"`
-	AuthScope     string   `json:"authScope,omitempty"`
-	DeclaredTools []string `json:"declaredTools,omitempty"`
+	RuntimeEgressHosts []string `json:"runtimeEgressHosts,omitempty"`
+	V                  int      `json:"v,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	Slug               string   `json:"slug,omitempty"`
+	Version            string   `json:"version,omitempty"`
+	Description        string   `json:"description,omitempty"`
+	Transport          string   `json:"transport"`
+	Endpoint           string   `json:"endpoint,omitempty"`
+	Command            string   `json:"command,omitempty"`
+	AuthRef            string   `json:"authRef,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	AuthType           string   `json:"authType,omitempty"`
+	AuthScope          string   `json:"authScope,omitempty"`
+	DeclaredTools      []string `json:"declaredTools,omitempty"`
 }
 
 // ---- core publish logic ----
 
 // runPublish implements the publish workflow.
 func runPublish(d publishDoer, path string, opts publishOpts) error {
+	out := outputWriter([]io.Writer{opts.out})
 	// Validate channel.
 	ch := opts.channel
 	if ch == "" {
@@ -471,10 +484,18 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		return fmt.Errorf("invalid --channel %q: must be stable or beta", ch)
 	}
 
+	if opts.aliasKind != "" && opts.resourceType != "" && opts.resourceType != string(opts.aliasKind) {
+		return fmt.Errorf("contradictory type: this is `zuano %s publish`, which publishes type %q, but --type=%q was given",
+			opts.aliasKind, opts.aliasKind, opts.resourceType)
+	}
+
 	// Resolve path.
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
+	}
+	if opts.resourceType == "plugin" {
+		return runPublishPlugin(d, absPath, opts, ch)
 	}
 
 	fi, err := os.Stat(absPath)
@@ -486,13 +507,18 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		manifestContent []byte
 		bundleBytes     []byte
 		bundleFiles     []string // for dry-run display
+		excludedFiles   []excludedBundleEntry
 		isDir           bool
 	)
 
 	if fi.IsDir() {
 		isDir = true
 		// Collect + validate the directory bundle.
-		manifestContent, bundleBytes, bundleFiles, err = buildBundle(absPath)
+		manifestContent, bundleBytes, bundleFiles, excludedFiles, err = buildBundleFor(absPath, bundleSelector{
+			kind:                resolveKindHint(opts),
+			explicitManifestRel: opts.manifestPath,
+			includeOverride:     toIncludeSet(opts.includeFiles),
+		})
 		if err != nil {
 			return err
 		}
@@ -526,17 +552,32 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		}
 	}
 
-	// Detect resource type from frontmatter, overridable by --type.
 	fm := parseFrontmatter(manifestContent)
 	resourceType := opts.resourceType
 	if resourceType == "" && descriptor != nil {
 		resourceType = "mcp_server"
+	}
+	if resourceType == "" && opts.aliasKind != "" {
+		if fm.Type != "" && fm.Type != string(opts.aliasKind) {
+			return fmt.Errorf("contradictory type: this is `zuano %s publish`, but the manifest frontmatter declares type %q — pass --type to override",
+				opts.aliasKind, fm.Type)
+		}
+		resourceType = string(opts.aliasKind)
 	}
 	if resourceType == "" {
 		resourceType = fm.Type
 	}
 	if resourceType == "" {
 		return fmt.Errorf("could not detect resource type from frontmatter — use --type to specify it")
+	}
+
+	if opts.scope != "" {
+		if opts.scope != "personal" && opts.scope != "org" {
+			return fmt.Errorf("--scope must be personal or org")
+		}
+		if resourceType != "skill" {
+			return fmt.Errorf("--scope applies to skills; a %s is always published to the organisation", resourceType)
+		}
 	}
 
 	// Apply flag overrides.
@@ -557,26 +598,47 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 
 	// --dry-run: print what WOULD be sent, exit 0, no API call.
 	if opts.dryRun {
-		fmt.Println("[dry-run] would publish to:", publishAPIPath)
-		fmt.Printf("[dry-run] type:    %s\n", resourceType)
-		fmt.Printf("[dry-run] name:    %s\n", name)
-		fmt.Printf("[dry-run] slug:    %s\n", slug)
-		fmt.Printf("[dry-run] channel: %s\n", ch)
+		fmt.Fprintln(out, "[dry-run] would publish to:", publishAPIPath)
+		fmt.Fprintf(out, "[dry-run] type:    %s\n", resourceType)
+		fmt.Fprintf(out, "[dry-run] name:    %s\n", name)
+		fmt.Fprintf(out, "[dry-run] slug:    %s\n", slug)
+		fmt.Fprintf(out, "[dry-run] channel: %s\n", ch)
+		if opts.scope != "" {
+			fmt.Fprintf(out, "[dry-run] scope:   %s\n", opts.scope)
+		}
 		if isDir {
-			fmt.Printf("[dry-run] bundle files (%d):\n", len(bundleFiles))
+			fmt.Fprintf(out, "[dry-run] bundle files (%d):\n", len(bundleFiles))
 			for _, f := range bundleFiles {
-				fmt.Printf("[dry-run]   %s\n", f)
+				fmt.Fprintf(out, "[dry-run]   %s\n", f)
 			}
-			fmt.Printf("[dry-run] bundle size: %d bytes\n", len(bundleBytes))
+			if len(excludedFiles) > 0 {
+				fmt.Fprintf(out, "[dry-run] excluded files (%d) — default secret-screening policy, use --include to override:\n", len(excludedFiles))
+				for _, x := range excludedFiles {
+					fmt.Fprintf(out, "[dry-run]   %s (%s)\n", x.rel, x.reason)
+				}
+			}
+			fmt.Fprintf(out, "[dry-run] bundle size: %d bytes\n", len(bundleBytes))
 		} else {
-			fmt.Printf("[dry-run] manifest file: %s (%d bytes)\n", bundleFiles[0], len(manifestContent))
+			fmt.Fprintf(out, "[dry-run] manifest file: %s (%d bytes)\n", bundleFiles[0], len(manifestContent))
 		}
 		if resourceType == "mcp_server" {
-			descriptorJSON, _ := json.MarshalIndent(descriptor, "", "  ")
-			fmt.Printf("[dry-run] MCP descriptor:\n%s\n", descriptorJSON)
+			descriptorJSON, _ := json.MarshalIndent(map[string]any{"source": descriptor.Source, "transport": descriptor.Transport, "authType": descriptor.AuthType, "authScope": descriptor.AuthScope, "hasAuthReference": descriptor.AuthRef != "", "declaredToolCount": len(descriptor.DeclaredTools)}, "", "  ")
+			fmt.Fprintf(out, "[dry-run] MCP descriptor:\n%s\n", descriptorJSON)
 		}
-		fmt.Println("[dry-run] no API call made")
+		fmt.Fprintln(out, "[dry-run] no API call made")
 		return nil
+	}
+
+	if isDir {
+		fmt.Fprintf(out, "publishing %d files", len(bundleFiles))
+		if len(excludedFiles) > 0 {
+			fmt.Fprintf(out, ", %d excluded by default secret-screening policy (use --include to override):\n", len(excludedFiles))
+			for _, x := range excludedFiles {
+				fmt.Fprintf(out, "  %s (%s)\n", x.rel, x.reason)
+			}
+		} else {
+			fmt.Fprintln(out)
+		}
 	}
 
 	// Build multipart body.
@@ -631,6 +693,12 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 		}
 	}
 
+	if opts.scope != "" {
+		if err := mw.WriteField("scope", opts.scope); err != nil {
+			return fmt.Errorf("write scope field: %w", err)
+		}
+	}
+
 	// Write bundle part (directory case).
 	if isDir && len(bundleBytes) > 0 {
 		bh := textproto.MIMEHeader{}
@@ -657,12 +725,12 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 	defer resp.Body.Close()
 
 	// Read capped response body.
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	rawBody, err := readLimitedResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
 
-	if err := handlePublishResponse(resp.StatusCode, resp.Header, rawBody, opts.gatewayURL); err != nil {
+	if err := handlePublishResponse(resp.StatusCode, resp.Header, rawBody, opts.gatewayURL, out); err != nil {
 		return err
 	}
 
@@ -676,8 +744,8 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 			if !ok {
 				return fmt.Errorf("--watch requires a client that supports status polling (internal error)")
 			}
-			fmt.Println()
-			return watchPublishStatus(statusDoer, pub.VersionID)
+			fmt.Fprintln(out)
+			return watchPublishStatus(statusDoer, pub.VersionID, out)
 		}
 	}
 
@@ -687,13 +755,29 @@ func runPublish(d publishDoer, path string, opts publishOpts) error {
 func resolveMcpDescriptor(opts publishOpts) (mcpDescriptor, error) {
 	var descriptor mcpDescriptor
 	if opts.mcpDescriptorPath != "" {
-		raw, err := os.ReadFile(opts.mcpDescriptorPath)
+		file, err := os.OpenFile(opts.mcpDescriptorPath, nofollow.ReadFlags, 0)
 		if err != nil {
-			return descriptor, fmt.Errorf("read MCP descriptor %s: %w", opts.mcpDescriptorPath, err)
+			return descriptor, fmt.Errorf("read MCP descriptor: %w", err)
 		}
-		if err := json.Unmarshal(raw, &descriptor); err != nil {
-			return descriptor, fmt.Errorf("parse MCP descriptor JSON: %w", err)
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			return descriptor, fmt.Errorf("MCP descriptor must be a regular file")
 		}
+		raw, err := readLimitedResponse(file, 1<<20)
+		if err != nil {
+			return descriptor, fmt.Errorf("MCP descriptor unreadable or too large")
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&descriptor); err != nil {
+			return descriptor, fmt.Errorf("invalid MCP descriptor fields: %w", err)
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			return descriptor, fmt.Errorf("MCP descriptor must contain one JSON object")
+		}
+
 	}
 
 	if opts.mcpTransport != "" {
@@ -721,23 +805,8 @@ func resolveMcpDescriptor(opts publishOpts) (mcpDescriptor, error) {
 		descriptor.DeclaredTools = opts.mcpTools
 	}
 
-	switch descriptor.Transport {
-	case "http", "sse":
-		if descriptor.Endpoint == "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q requires --endpoint or endpoint in descriptor JSON", descriptor.Transport)
-		}
-		if descriptor.Command != "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q must not include command", descriptor.Transport)
-		}
-	case "stdio-command":
-		if descriptor.Command == "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q requires --command or command in descriptor JSON", descriptor.Transport)
-		}
-		if descriptor.Endpoint != "" {
-			return descriptor, fmt.Errorf("MCP descriptor transport %q must not include endpoint", descriptor.Transport)
-		}
-	default:
-		return descriptor, fmt.Errorf("MCP descriptor transport is required and must be http, sse, or stdio-command")
+	if err := validateMcpDescriptor(descriptor); err != nil {
+		return descriptor, err
 	}
 
 	return descriptor, nil
@@ -800,36 +869,49 @@ func buildMcpManifestContent(descriptor mcpDescriptor, name, slug string) ([]byt
 // handlePublishResponse interprets the HTTP status + body and prints output or returns an error.
 // hdr is the response header (used for Retry-After on 429).
 // gatewayURL is the resolved gateway base URL for the catalog link; empty falls back to env/default.
-func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gatewayURL string) error {
+func handlePublishResponse(statusCode int, hdr http.Header, rawBody []byte, gatewayURL string, writers ...io.Writer) error {
+	out := outputWriter(writers)
 	switch statusCode {
 	case http.StatusCreated, http.StatusOK:
 		var pub publishResponse
 		if err := json.Unmarshal(rawBody, &pub); err != nil {
 			return fmt.Errorf("decode publish response: %w", err)
 		}
-		fmt.Printf("Published successfully\n")
-		fmt.Printf("  Resource ID: %s\n", pub.ResourceID)
-		fmt.Printf("  Version ID:  %s\n", pub.VersionID)
-		fmt.Printf("  Semver:      %s\n", pub.Semver)
+		fmt.Fprintf(out, "Published successfully\n")
+		fmt.Fprintf(out, "  Resource ID: %s\n", pub.ResourceID)
+		fmt.Fprintf(out, "  Version ID:  %s\n", pub.VersionID)
+		fmt.Fprintf(out, "  Semver:      %s\n", pub.Semver)
 		ch := pub.Channel
 		if ch == "" {
 			ch = "stable"
 		}
-		fmt.Printf("  Channel:     %s\n", ch)
-		fmt.Printf("  State:       %s\n", pub.State)
-		fmt.Printf("  Catalog URL: %s\n", catalogURL(pub.ResourceID, gatewayURL))
+		fmt.Fprintf(out, "  Channel:     %s\n", ch)
+		fmt.Fprintf(out, "  State:       %s\n", pub.State)
+		if pub.Scope != "" {
+			fmt.Fprintf(out, "  Scope:       %s\n", pub.Scope)
+		}
+		fmt.Fprintf(out, "  Catalog URL: %s\n", catalogURL(pub.ResourceID, gatewayURL))
+		if pub.Scope == "personal" {
+			fmt.Fprintf(out, "\nOnly you can see this skill. Install it on your agents with `%s`; submit it to your organisation with `%s`.\n", brand.Cmd("sync"), brand.Cmd("skill promote "+pub.ResourceID))
+		}
+		if pub.State == "pending_review" && pub.ReviewURL != "" {
+			fmt.Fprintf(out, "\nAn administrator reviews it first: %s\n", textsafe.Clean(pub.ReviewURL))
+		}
 		if pub.State == "changes_requested" {
-			fmt.Println()
-			fmt.Println("The version needs changes before it can be published.")
-			fmt.Println("Review the gate report at the catalog URL above, address the issues,")
-			fmt.Println("then re-run `relay publish <path>` with a bumped version number.")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "The version needs changes before it can be published.")
+			fmt.Fprintln(out, "Review the gate report at the catalog URL above, address the issues,")
+			fmt.Fprintln(out, "then re-run `zuano publish <path>` with a bumped version number.")
 		}
 		return nil
 
 	case http.StatusUnauthorized:
-		return fmt.Errorf("not authenticated — run `relay login` first")
+		return fmt.Errorf("not authenticated — run `zuano login` first")
 
 	case http.StatusForbidden:
+		if err := agentSessionDenied(client.ActiveProfile(), statusCode, rawBody); err != nil {
+			return err
+		}
 		return fmt.Errorf("not authorized to publish — you must be an author or admin for this organization")
 
 	case http.StatusConflict:
@@ -888,7 +970,7 @@ func formatValidationError(rawBody []byte) error {
 	var sb strings.Builder
 	sb.WriteString("validation error — fix the following fields and retry:\n")
 	for _, d := range eb.Error.Details {
-		sb.WriteString(fmt.Sprintf("  %s: %s\n", d.Field, d.Message))
+		fmt.Fprintf(&sb, "  %s: %s\n", d.Field, d.Message)
 	}
 	return errors.New(strings.TrimRight(sb.String(), "\n"))
 }
@@ -912,7 +994,7 @@ func catalogURL(resourceID, gatewayURL string) string {
 	return strings.TrimRight(gURL, "/") + "/catalog/" + resourceID
 }
 
-// ---- publish status (relay publish status <versionId> / relay publish --watch) ----
+// ---- publish status (zuano publish status <versionId> / zuano publish --watch) ----
 
 // publishStatusPath is the REST polling endpoint on the gateway — the
 // counterpart to the management.publish_status MCP tool (gateway
@@ -979,7 +1061,7 @@ func fetchPublishStatus(d publishStatusDoer, versionID string) (*publishStatusRe
 	}
 	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	rawBody, err := readLimitedResponse(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -1000,33 +1082,35 @@ func fetchPublishStatus(d publishStatusDoer, versionID string) (*publishStatusRe
 }
 
 // printPublishStatus renders a publishStatusResult as human-readable text.
-func printPublishStatus(status *publishStatusResult) {
-	fmt.Printf("Version:  %s\n", status.VersionID)
-	fmt.Printf("State:    %s\n", status.State)
+func printPublishStatus(status *publishStatusResult, writers ...io.Writer) {
+	out := outputWriter(writers)
+	fmt.Fprintf(out, "Version:  %s\n", status.VersionID)
+	fmt.Fprintf(out, "State:    %s\n", status.State)
 	if len(status.Gates) > 0 {
-		fmt.Println("Gates:")
+		fmt.Fprintln(out, "Gates:")
 		for _, g := range status.Gates {
 			approval := ""
 			if g.RequiresAdminApproval {
 				approval = " (requires admin approval)"
 			}
-			fmt.Printf("  %-14s %s%s\n", g.Gate, g.Status, approval)
+			fmt.Fprintf(out, "  %-14s %s%s\n", g.Gate, g.Status, approval)
 		}
 	}
 	trustScore := "n/a"
 	if status.AiScan.TrustScore != nil {
 		trustScore = fmt.Sprintf("%d/100", *status.AiScan.TrustScore)
 	}
-	fmt.Printf("AI scan:  %s (trust score: %s, findings: %d)\n", status.AiScan.Status, trustScore, status.AiScan.Findings)
-	fmt.Printf("Approvable now: %t\n", status.Approvable)
+	fmt.Fprintf(out, "AI scan:  %s (trust score: %s, findings: %d)\n", status.AiScan.Status, trustScore, status.AiScan.Findings)
+	fmt.Fprintf(out, "Approvable now: %t\n", status.Approvable)
 }
 
 // watchPublishStatus polls fetchPublishStatus until the version reaches a
 // terminal state (see terminalPublishStates), printing status on each change.
 // Returns a non-nil error when the final state is changes_requested — so
-// `relay publish --watch` / `relay publish status --watch` exit non-zero and
+// `zuano publish --watch` / `zuano publish status --watch` exit non-zero and
 // CI can gate on it.
-func watchPublishStatus(d publishStatusDoer, versionID string) error {
+func watchPublishStatus(d publishStatusDoer, versionID string, writers ...io.Writer) error {
+	out := outputWriter(writers)
 	var last string
 	for i := 0; i < publishStatusMaxPolls; i++ {
 		status, err := fetchPublishStatus(d, versionID)
@@ -1034,8 +1118,8 @@ func watchPublishStatus(d publishStatusDoer, versionID string) error {
 			return err
 		}
 		if status.State != last {
-			printPublishStatus(status)
-			fmt.Println()
+			printPublishStatus(status, out)
+			fmt.Fprintln(out)
 			last = status.State
 		}
 		if terminalPublishStates[status.State] {
@@ -1044,12 +1128,14 @@ func watchPublishStatus(d publishStatusDoer, versionID string) error {
 			}
 			return nil
 		}
-		sleepFn(publishStatusPollInterval)
+		if err := waitForPublish(d, publishStatusPollInterval); err != nil {
+			return err
+		}
 	}
 	return fmt.Errorf("timed out waiting for version %s to reach a terminal state after %d polls", versionID, publishStatusMaxPolls)
 }
 
-// publishStatusCmd returns the `relay publish status <versionId>` cobra command.
+// publishStatusCmd returns the `zuano publish status <versionId>` cobra command.
 func publishStatusCmd() *cobra.Command {
 	var (
 		flagWatch      bool
@@ -1068,19 +1154,21 @@ changes_requested, suspended, archived) and exits non-zero if it lands on
 changes_requested — useful for gating CI on a publish.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
 			versionID := args[0]
-			d, err := resolvePublishStatusDoer(flagGatewayURL)
+			base, err := resolvePublishDoer(flagGatewayURL)
 			if err != nil {
 				return err
 			}
+			d := commandDoer{base, cmd.Context()}
 			if flagWatch {
-				return watchPublishStatus(d, versionID)
+				return watchPublishStatus(d, versionID, out)
 			}
 			status, err := fetchPublishStatus(d, versionID)
 			if err != nil {
 				return err
 			}
-			printPublishStatus(status)
+			printPublishStatus(status, out)
 			if status.State == "changes_requested" {
 				return fmt.Errorf("publish status: %s — the version needs changes before it can be published", status.State)
 			}
@@ -1089,22 +1177,103 @@ changes_requested — useful for gating CI on a publish.`,
 	}
 
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll status until terminal; exit non-zero on changes_requested")
-	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 
 	return cmd
 }
 
 // ---- bundle builder (path-safe tar.gz) ----
 
+// bundleSelector controls manifest discovery and file-inclusion policy for
+// buildBundleFor. The zero value auto-detects the manifest by canonical
+// filename and applies the default secret-screening exclusion policy.
+type bundleSelector struct {
+	kind agentport.ArtifactKind
+
+	explicitManifestRel string
+
+	includeOverride map[string]bool
+}
+
+var canonicalManifestNames = map[agentport.ArtifactKind]string{
+	agentport.KindSkill: "SKILL.md",
+	agentport.KindAgent: "agent.md",
+}
+
+type excludedBundleEntry struct {
+	rel    string
+	reason string
+}
+
+// resolveKindHint derives the manifest-selection kind hint from an explicit
+// --type flag (if it names a known artifact kind) or, failing that, the
+// skill/agent parent-command alias.
+func resolveKindHint(opts publishOpts) agentport.ArtifactKind {
+	switch opts.resourceType {
+	case string(agentport.KindSkill):
+		return agentport.KindSkill
+	case string(agentport.KindAgent):
+		return agentport.KindAgent
+	}
+	return opts.aliasKind
+}
+
+// toIncludeSet builds the includeOverride lookup from --include values,
+// keyed by both OS-native and slash-separated relative-path forms.
+func toIncludeSet(paths []string) map[string]bool {
+	if len(paths) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(paths)*2)
+	for _, p := range paths {
+		clean := filepath.Clean(p)
+		set[clean] = true
+		set[filepath.ToSlash(clean)] = true
+	}
+	return set
+}
+
+func secretExclusionReason(rel string) string {
+	base := strings.ToLower(filepath.Base(rel))
+	switch base {
+	case ".env":
+		return "default-excluded secret-bearing filename (.env)"
+	case "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
+		return "default-excluded private key filename"
+	case ".npmrc", ".netrc", ".pgpass", "credentials", "credentials.json":
+		return "default-excluded credential-store filename"
+	}
+	if strings.HasPrefix(base, ".env.") {
+		switch base {
+		case ".env.example", ".env.sample", ".env.template":
+			return ""
+		default:
+			return "default-excluded secret-bearing filename pattern (.env.*)"
+		}
+	}
+	switch filepath.Ext(base) {
+	case ".pem", ".key", ".p12", ".pfx":
+		return "default-excluded private key/certificate extension"
+	}
+	return ""
+}
+
 // buildBundle reads a directory, validates every file entry for path safety,
-// enforces the artifactMaxBytes cap, and returns:
-//   - the content of the manifest file (the .md file at the root, or the first .md found)
-//   - the tar.gz bytes of the entire directory
-//   - the list of relative paths included (for dry-run display)
+// enforces size/entry caps, applies the default secret-screening exclusion
+// policy, and returns the auto-detected manifest, the tar.gz bytes, and the
+// list of packaged relative paths. It is a thin wrapper over buildBundleFor
+// for callers that don't need kind hints, explicit manifest paths, or
+// visibility into excluded files.
 func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files []string, err error) {
+	manifestContent, bundleBytes, files, _, err = buildBundleFor(root, bundleSelector{})
+	return manifestContent, bundleBytes, files, err
+}
+
+func buildBundleFor(root string, sel bundleSelector) (manifestContent []byte, bundleBytes []byte, files []string, excluded []excludedBundleEntry, err error) {
 	// Collect files.
 	var entries []bundleEntry
 	totalSize := int64(0)
+	visited := 0
 
 	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -1114,12 +1283,17 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			return nil
 		}
 
-		// H1: skip non-regular, non-symlink entries (FIFOs, devices, sockets) to prevent
+		// Skip non-regular, non-symlink entries (FIFOs, devices, sockets) to prevent
 		// os.ReadFile blocking forever on a FIFO or reading device garbage.
 		// Symlinks are allowed to fall through so checkSymlink can validate them below.
 		t := d.Type()
 		if t&os.ModeSymlink == 0 && !t.IsRegular() {
 			return nil // skip FIFO / device / socket / irregular
+		}
+
+		visited++
+		if visited > artifactMaxEntries {
+			return fmt.Errorf("bundle exceeds entry-count cap (%d files); reduce the directory contents and retry", artifactMaxEntries)
 		}
 
 		// Compute relative path.
@@ -1133,9 +1307,14 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			return err
 		}
 
-		// Symlink check: reject symlinks that escape the bundle root.
 		if err := checkSymlink(path, root); err != nil {
 			return err
+		}
+
+		if reason := secretExclusionReason(rel); reason != "" &&
+			!sel.includeOverride[rel] && !sel.includeOverride[filepath.ToSlash(rel)] {
+			excluded = append(excluded, excludedBundleEntry{rel: rel, reason: reason})
+			return nil
 		}
 
 		// Use os.Stat (follows symlinks) for an accurate size of the content we will read.
@@ -1153,7 +1332,7 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 		return nil
 	})
 	if walkErr != nil {
-		return nil, nil, nil, walkErr
+		return nil, nil, nil, nil, walkErr
 	}
 
 	// Build the tar.gz in memory.
@@ -1164,7 +1343,7 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 	for _, e := range entries {
 		data, readErr := os.ReadFile(e.abs)
 		if readErr != nil {
-			return nil, nil, nil, fmt.Errorf("read %s: %w", e.abs, readErr)
+			return nil, nil, nil, nil, fmt.Errorf("read %s: %w", e.abs, readErr)
 		}
 
 		hdr := &tar.Header{
@@ -1174,30 +1353,32 @@ func buildBundle(root string) (manifestContent []byte, bundleBytes []byte, files
 			ModTime: time.Unix(0, 0), // deterministic
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
-			return nil, nil, nil, fmt.Errorf("tar header %s: %w", e.rel, err)
+			return nil, nil, nil, nil, fmt.Errorf("tar header %s: %w", e.rel, err)
 		}
 		if _, err := tw.Write(data); err != nil {
-			return nil, nil, nil, fmt.Errorf("tar write %s: %w", e.rel, err)
+			return nil, nil, nil, nil, fmt.Errorf("tar write %s: %w", e.rel, err)
 		}
 
 		files = append(files, e.rel)
 	}
 
 	if err := tw.Close(); err != nil {
-		return nil, nil, nil, fmt.Errorf("close tar: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("close tar: %w", err)
 	}
 	if err := gzw.Close(); err != nil {
-		return nil, nil, nil, fmt.Errorf("close gzip: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("close gzip: %w", err)
 	}
 	bundleBytes = buf.Bytes()
 
-	// Find the manifest: prefer a .md file at the root level.
-	manifestContent = findManifestInEntries(root, entries)
+	manifestContent, _, err = selectManifest(entries, sel)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 	if manifestContent == nil {
-		return nil, nil, nil, fmt.Errorf("no .md manifest file found in %s", root)
+		return nil, nil, nil, nil, fmt.Errorf("no manifest file found in %s — pass --manifest to specify one explicitly", root)
 	}
 
-	return manifestContent, bundleBytes, files, nil
+	return manifestContent, bundleBytes, files, excluded, nil
 }
 
 type bundleEntry struct {
@@ -1261,28 +1442,103 @@ func checkSymlink(path, root string) error {
 	if !strings.HasPrefix(resolved+string(filepath.Separator), absRoot+string(filepath.Separator)) {
 		return fmt.Errorf("symlink %s → %s escapes the bundle root — refusing to package it", path, resolved)
 	}
+
+	resolvedInfo, statErr := os.Stat(path)
+	if statErr != nil {
+		return fmt.Errorf("stat symlink target for %s: %w", path, statErr)
+	}
+	if !resolvedInfo.Mode().IsRegular() {
+		return fmt.Errorf("symlink %s resolves to a non-regular file (%s) — refusing to package it", path, resolvedInfo.Mode())
+	}
 	return nil
 }
 
-// findManifestInEntries returns the content of the first root-level .md file.
-func findManifestInEntries(root string, entries []bundleEntry) []byte {
-	// Prefer a root-level .md (no directory separator in rel).
+func selectManifest(entries []bundleEntry, sel bundleSelector) (data []byte, rel string, err error) {
+	readEntry := func(e bundleEntry) ([]byte, string, error) {
+		data, err := os.ReadFile(e.abs)
+		if err != nil {
+			return nil, "", fmt.Errorf("read manifest %s: %w", e.rel, err)
+		}
+		return data, e.rel, nil
+	}
+
+	if sel.explicitManifestRel != "" {
+		want := filepath.ToSlash(filepath.Clean(sel.explicitManifestRel))
+		for _, e := range entries {
+			if filepath.ToSlash(e.rel) == want {
+				return readEntry(e)
+			}
+		}
+		return nil, "", fmt.Errorf("--manifest %q not found in the bundle", sel.explicitManifestRel)
+	}
+
+	isRoot := func(rel string) bool { return !strings.Contains(rel, string(filepath.Separator)) }
+
+	if want, ok := canonicalManifestNames[sel.kind]; ok {
+		for _, e := range entries {
+			if isRoot(e.rel) && strings.EqualFold(e.rel, want) {
+				return readEntry(e)
+			}
+		}
+		return nil, "", fmt.Errorf("no %s found at the root of the bundle for type %q — pass --manifest to specify one explicitly", want, sel.kind)
+	}
+
+	var canonical []bundleEntry
 	for _, e := range entries {
-		if !strings.Contains(e.rel, string(filepath.Separator)) && strings.HasSuffix(strings.ToLower(e.rel), ".md") {
-			data, err := os.ReadFile(e.abs)
-			if err == nil {
-				return data
+		if !isRoot(e.rel) {
+			continue
+		}
+		for _, want := range canonicalManifestNames {
+			if strings.EqualFold(e.rel, want) {
+				canonical = append(canonical, e)
+				break
 			}
 		}
 	}
-	// Fall back to any .md.
+	if len(canonical) > 1 {
+		names := make([]string, len(canonical))
+		for i, e := range canonical {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: found both %s at the bundle root — pass --type or --manifest to disambiguate", strings.Join(names, " and "))
+	}
+	if len(canonical) == 1 {
+		return readEntry(canonical[0])
+	}
+
+	var rootMd []bundleEntry
+	for _, e := range entries {
+		if isRoot(e.rel) && strings.HasSuffix(strings.ToLower(e.rel), ".md") {
+			rootMd = append(rootMd, e)
+		}
+	}
+	if len(rootMd) == 1 {
+		return readEntry(rootMd[0])
+	}
+	if len(rootMd) > 1 {
+		names := make([]string, len(rootMd))
+		for i, e := range rootMd {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: multiple root .md files (%s) match no canonical skill/agent filename — pass --type or --manifest to disambiguate", strings.Join(names, ", "))
+	}
+
+	var anyMd []bundleEntry
 	for _, e := range entries {
 		if strings.HasSuffix(strings.ToLower(e.rel), ".md") {
-			data, err := os.ReadFile(e.abs)
-			if err == nil {
-				return data
-			}
+			anyMd = append(anyMd, e)
 		}
 	}
-	return nil
+	if len(anyMd) == 1 {
+		return readEntry(anyMd[0])
+	}
+	if len(anyMd) > 1 {
+		names := make([]string, len(anyMd))
+		for i, e := range anyMd {
+			names[i] = e.rel
+		}
+		return nil, "", fmt.Errorf("ambiguous manifest: multiple nested .md files (%s) and no root candidate — pass --manifest to disambiguate", strings.Join(names, ", "))
+	}
+
+	return nil, "", nil
 }

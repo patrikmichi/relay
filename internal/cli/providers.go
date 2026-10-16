@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 // providerIDsCSV returns every loaded skill-provider id, comma-separated,
@@ -74,9 +74,9 @@ func agentProviderIDsOxford() string {
 	return providerIDsOxfordOr(ids)
 }
 
-// ProvidersCmd returns the `relay providers` cobra command — lists every
+// ProvidersCmd returns the `zuano providers` cobra command — lists every
 // built-in agent-skill provider, whether each is detected as installed on
-// this machine, the user/project skill directories relay searches for
+// this machine, the user/project skill directories zuano searches for
 // each, and whether the same provider id also has an agent-provider
 // adapter loaded (skills: yes always; agents: yes/no).
 func ProvidersCmd() *cobra.Command {
@@ -85,8 +85,8 @@ func ProvidersCmd() *cobra.Command {
 		Short: "List supported agent-skill/agent providers and detection status",
 		Long: fmt.Sprintf(`List the built-in skill-manager providers (%s):
 whether each is detected as installed on this machine (any of its user skill
-directories exist), the user/project directories relay searches for skills
-of that provider, and whether relay also supports agent management for
+directories exist), the user/project directories zuano searches for skills
+of that provider, and whether zuano also supports agent management for
 that provider id (agents: %s).`, providerIDsCSV(), agentProviderIDsCSV()),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()

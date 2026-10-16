@@ -1,19 +1,18 @@
 package cli
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/auth"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
-// TokensCmd returns the `relay tokens` cobra command with list and revoke subcommands.
+// TokensCmd returns the `zuano tokens` cobra command with list and revoke subcommands.
 func TokensCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tokens",
@@ -23,7 +22,7 @@ func TokensCmd() *cobra.Command {
 	return cmd
 }
 
-// tokensListCmd returns `relay tokens list`.
+// tokensListCmd returns `zuano tokens list`.
 // Calls GET /api/cli/whoami and prints active session info.
 func tokensListCmd() *cobra.Command {
 	var gatewayURL string
@@ -31,29 +30,35 @@ func tokensListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Show active session info (email, services, issued at, expires at)",
-		RunE: func(cmd *cobra.Command, _args []string) error {
+		RunE: func(cmd *cobra.Command, _args []string) (err error) {
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
-			resp, err := c.Get("/api/cli/whoami")
+			ctx, cancel, err := requestContext(cmd.Context(), controlRequest)
+			if err != nil {
+				return err
+			}
+			defer cancel()
+			defer func() { err = timeoutCause(ctx, err) }()
+			resp, err := c.GetContext(ctx, "/api/cli/whoami")
 			if err != nil {
 				return fmt.Errorf("GET /api/cli/whoami: %w", err)
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusUnauthorized {
-				fmt.Fprintln(os.Stderr, "Token expired or revoked — run `relay login` to re-authenticate.")
-				os.Exit(1)
+				return errors.New("token expired or revoked — run `zuano login` to re-authenticate")
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				var errBody map[string]string
-				_ = json.NewDecoder(resp.Body).Decode(&errBody)
-				return fmt.Errorf("tokens list failed (%d): %s", resp.StatusCode, errBody["error"])
+				return fmt.Errorf("tokens list failed (HTTP %d)", resp.StatusCode)
 			}
 
 			// whoamiResponse mirrors auth.WhoamiResponse but is local to avoid import cycle.
@@ -64,91 +69,96 @@ func tokensListCmd() *cobra.Command {
 				IssuedAt  string   `json:"issuedAt"`
 				ExpiresAt string   `json:"expiresAt,omitempty"`
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			if err := client.DecodeJSON(resp.Body, &info); err != nil {
 				return fmt.Errorf("decode response: %w", err)
 			}
 
-			fmt.Printf("Email:     %s\n", info.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Email:     %s\n", info.Email)
 			if len(info.Services) > 0 {
-				fmt.Printf("Services:  %s\n", strings.Join(info.Services, ", "))
+				fmt.Fprintf(cmd.OutOrStdout(), "Services:  %s\n", strings.Join(info.Services, ", "))
 			} else {
-				fmt.Println("Services:  all")
+				fmt.Fprintln(cmd.OutOrStdout(), "Services:  all")
 			}
-			fmt.Printf("Issued at: %s\n", info.IssuedAt)
+			if info.IssuedAt != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Issued at: %s\n", info.IssuedAt)
+			}
 			if info.ExpiresAt != "" {
-				fmt.Printf("Expires:   %s\n", info.ExpiresAt)
+				fmt.Fprintf(cmd.OutOrStdout(), "Expires:   %s\n", info.ExpiresAt)
 			}
-			// Indicate token is stored in keychain (not printed for security)
-			fmt.Printf("Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
+			// The token value is never printed. Only a login session lives in
+			// the keychain; a ZUANO_API_KEY is read from the environment.
+			if c.Email() == "" {
+				fmt.Fprintln(cmd.OutOrStdout(), "Token:     ZUANO_API_KEY (not stored by zuano)")
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
+			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }
 
-// tokensRevokeCmd returns `relay tokens revoke`.
-// Calls POST /api/cli/logout and removes the local keychain entry.
-//
-// Same two-halves shape as LogoutCmd (logout.go) — deleting the local OS
-// keychain entry never needs the network and must work under --offline;
-// only the server-side revoke (POST /api/cli/logout) is gateway-touching
-// and subject to fail-closed resolution. See logout.go's doc comment for
-// the full rationale; kept identical here since `tokens revoke` and
-// `logout` perform the exact same two operations through two different
-// command surfaces.
+// tokensRevokeCmd returns `zuano tokens revoke`.
 func tokensRevokeCmd() *cobra.Command {
 	var gatewayURL string
 
 	cmd := &cobra.Command{
 		Use:   "revoke",
 		Short: "Revoke the current session token",
-		RunE: func(cmd *cobra.Command, _args []string) error {
-			// Building the client never dials the network — it only reads
-			// GATEWAY_API_KEY / the OS keychain.
-			c := resolveClient(gatewayURL)
-			if c.Email() == "" {
-				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke.")
-				os.Exit(1)
-			}
-
-			if Offline() {
-				if err := keychain.DeleteToken(c.Email()); err != nil {
-					return fmt.Errorf("delete keychain entry: %w", err)
-				}
-				fmt.Printf("Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
-				return nil
-			}
-
-			resolvedURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
+		RunE: func(cmd *cobra.Command, _args []string) (err error) {
+			// The keychain lookup below is scoped to (gateway, email), so
+			// the gateway must be identified before building a client —
+			// resolved locally (no network) so this still works offline.
+			gURL, err := resolveGatewayIdentityLocal(gatewayURL)
 			if err != nil {
 				return err
 			}
-			c.GatewayURL = strings.TrimRight(resolvedURL, "/")
-
-			resp, err := c.Post("/api/cli/logout", "application/json", nil)
-			if err != nil {
-				// Server unavailable — still delete local keychain entry
-				fmt.Fprintf(os.Stderr, "Warning: could not reach gateway to revoke session: %v\n", err)
-			} else {
-				defer resp.Body.Close()
-				if resp.StatusCode != http.StatusOK {
-					body, _ := io.ReadAll(resp.Body)
-					fmt.Fprintf(os.Stderr, "Warning: server returned %d during revoke: %s\n", resp.StatusCode, body)
+			if gURL == "" {
+				if Offline() {
+					return errors.New("no gateway configured — cannot determine which session to remove; pass --gateway-url")
 				}
+				return errors.New(offlineGuidance)
 			}
 
-			// Always delete the keychain entry
-			if err := keychain.DeleteToken(c.Email()); err != nil {
-				return fmt.Errorf("delete keychain entry: %w", err)
+			// Building the client never dials the network — it only reads
+			// ZUANO_API_KEY / the OS keychain.
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			if c.Email() == "" {
+				return errors.New("authenticated via ZUANO_API_KEY — there is no local CLI session to revoke")
 			}
 
-			fmt.Println("Session revoked")
+			if Offline() {
+				if err := auth.ForgetSession(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
+					return fmt.Errorf("delete keychain entry: %w", err)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s (NOT revoked on gateway)\n", c.Email())
+				return nil
+			}
+
+			ctx, cancel, err := requestContext(cmd.Context(), controlRequest)
+			if err != nil {
+				return err
+			}
+			defer cancel()
+			defer func() { err = timeoutCause(ctx, err) }()
+			result, err := auth.Logout(ctx, c)
+			if err != nil {
+				return fmt.Errorf("revoke failed: %w", err)
+			}
+			if err := remoteRevokeFailure(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "Session revoked")
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }

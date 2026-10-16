@@ -20,7 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // ---- fetchIntegrations (discovery repoint) ----
@@ -129,7 +129,7 @@ func TestCallTool_PostsJSONRPCToolsCall(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "bearer-tok"), "clockify", "list_workspaces", []string{"workspaceId=ws1"})
+	err := callTool(client.New(srv.URL, "bearer-tok"), "clockify", "list_workspaces", []string{"workspaceId=ws1"}, false)
 	if err != nil {
 		t.Fatalf("callTool: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestCallTool_AccountLabelPassthrough(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "google-workspace", "list_files", []string{"account=work", "folderId=f1"})
+	err := callTool(client.New(srv.URL, "tok"), "google-workspace", "list_files", []string{"account=work", "folderId=f1"}, false)
 	if err != nil {
 		t.Fatalf("callTool: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestCallTool_MapsJSONRPCErrorToGoError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "clockify", "delete_project", nil)
+	err := callTool(client.New(srv.URL, "tok"), "clockify", "delete_project", nil, false)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -225,7 +225,7 @@ func TestCallTool_MapsRateLimitedWithRetryAfter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := callTool(client.New(srv.URL, "tok"), "clockify", "list_workspaces", nil)
+	err := callTool(client.New(srv.URL, "tok"), "clockify", "list_workspaces", nil, false)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -248,7 +248,7 @@ func TestCallTool_PrintsResultText(t *testing.T) {
 	defer srv.Close()
 
 	stdout := captureStdout(t, func() {
-		if err := callTool(client.New(srv.URL, "tok"), "clockify", "list_projects", nil); err != nil {
+		if err := callTool(client.New(srv.URL, "tok"), "clockify", "list_projects", nil, false); err != nil {
 			t.Fatalf("callTool: %v", err)
 		}
 	})
@@ -287,25 +287,89 @@ func captureStdout(t *testing.T, fn func()) string {
 // ---- BuildServiceCommands (dynamic sub-command registration) ----
 
 func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testing.T) {
-	// BuildServiceCommands resolves a client.Client (GATEWAY_API_KEY /
-	// RELAY_EMAIL+keychain / persisted login email+keychain) before it does
+	// BuildServiceCommands resolves a client.Client (ZUANO_API_KEY /
+	// ZUANO_EMAIL+keychain / persisted login email+keychain) before it does
 	// anything network-related; without any of those it must no-op.
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
-	root := &cobra.Command{Use: "relay"}
-	BuildServiceCommands(root, "http://example.invalid")
+	root := &cobra.Command{Use: "zuano"}
+	if err := BuildServiceCommands(root, "http://example.invalid"); err != nil {
+		t.Fatalf("BuildServiceCommands: %v", err)
+	}
 
 	if len(root.Commands()) != 0 {
 		t.Errorf("expected no dynamic commands registered without a session, got %d", len(root.Commands()))
 	}
 }
 
+// TestBuildServiceCommandsRejectsCollisionWithStaticCommand: a
+// discovered service name matching an already-registered command must be
+// rejected outright, never silently shadowing (or being shadowed by) it.
+func TestBuildServiceCommandsRejectsCollisionWithStaticCommand(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(IntegrationsResponse{
+			OK: true, ServiceCount: 1, ToolCount: 1,
+			Services: []DiscoveryService{
+				{
+					ID: "login", Name: "Colliding Service", Accessible: true, ToolCount: 1,
+					Tools: []DiscoveryTool{{Name: "x"}},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	root := &cobra.Command{Use: "zuano"}
+	root.AddCommand(&cobra.Command{Use: "login"}) // pre-registered static command
+
+	err := BuildServiceCommands(root, srv.URL)
+	if err == nil {
+		t.Fatal("expected a collision error when a discovered service name matches a static command")
+	}
+	for _, c := range root.Commands() {
+		if c.Name() == "login" && len(c.Commands()) != 0 {
+			t.Fatalf("static login command must not be extended/shadowed by the discovered service, got children: %v", c.Commands())
+		}
+	}
+}
+
+// TestBuildServiceCommandsRejectsReservedName covers cobra's own
+// lazily-registered "help"/"completion" commands — these never appear in
+// root.Commands() until Cobra's Find()/Execute() runs, so a discovered
+// service named "help" needs its own explicit check (reservedCommandNames)
+// rather than relying solely on the live command-tree walk.
+func TestBuildServiceCommandsRejectsReservedName(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(IntegrationsResponse{
+			OK: true, ServiceCount: 1, ToolCount: 1,
+			Services: []DiscoveryService{
+				{ID: "help", Name: "Colliding Service", Accessible: true, ToolCount: 1, Tools: []DiscoveryTool{{Name: "x"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	root := &cobra.Command{Use: "zuano"} // "help" not yet materialized in root.Commands()
+	err := BuildServiceCommands(root, srv.URL)
+	if err == nil {
+		t.Fatal("expected a collision error when a discovered service is named \"help\"")
+	}
+}
+
 // ---- buildToolCmd offline fail-closed (Fix 1) ----
 
 // TestBuildToolCmd_OfflineFlag_FailsClosedWithoutNetworkCall confirms a
-// dynamic tool leaf command built by BuildServiceCommands (e.g. `relay
+// dynamic tool leaf command built by BuildServiceCommands (e.g. `zuano
 // clockify list_time_entries`) refuses to dial the gateway when --offline
 // is set — even though it already has a concrete, non-empty gatewayURL
 // closed over from discovery time. Points gatewayURL at a server that would

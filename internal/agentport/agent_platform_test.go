@@ -155,7 +155,7 @@ func TestAgentList_UsesProviderFileExtension(t *testing.T) {
 
 // TestAgentList_SkipsMissingDirAndDedupsByPriority exercises opencode's two
 // own user dirs (plural "agents" dirs[0], legacy singular "agent"
-// fallback — the C0 opencode fix): a name present in BOTH dirs is reported
+// fallback): a name present in BOTH dirs is reported
 // once (dirs[0]'s copy wins), and a dir that doesn't exist on disk at all
 // is silently skipped rather than erroring.
 func TestAgentList_SkipsMissingDirAndDedupsByPriority(t *testing.T) {

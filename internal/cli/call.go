@@ -5,41 +5,77 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CallCmd returns the `relay call <service> <tool> [--arg key=value...]` cobra command.
+// CallCmd returns the `zuano call <service> <tool> [--arg key=value...]` cobra command.
 //
 // Delegates to callTool (service_cmd.go) — the same execution path the
-// dynamic `relay <service> <tool>` sub-commands use — which POSTs a JSON-RPC
+// dynamic `zuano <service> <tool>` sub-commands use — which POSTs a JSON-RPC
 // tools/call request to /api/<service>/mcp. Previously this command built
 // its own REST POST /api/<service>/call request inline; that duplicated
 // callTool's logic and used the REST surface instead of the canonical MCP
 // one. See callTool's doc comment for the full execution-repoint rationale.
 func CallCmd() *cobra.Command {
 	var gatewayURL string
-	var rawArgs []string
+	var rawArgs, jsonArgs []string
+	var jsonOut, noBrowser bool
+	var wait, saveFiles string
+	var files []string
 
 	cmd := &cobra.Command{
 		Use:   "call <service> <tool>",
 		Short: "Call a tool on a gateway service",
 		Long: `Call a tool on a gateway service via the MCP JSON-RPC endpoint (POST /api/<service>/mcp, method "tools/call").
 
-Arguments are passed as key=value pairs via --arg flags.
+Arguments are passed as key=value pairs via --arg flags; the value is always a
+string, so an id such as 007 stays "007". Use --arg-json key=<json> for a
+number, boolean, object or array.
+
+--file param=@path uploads a local file to the gateway's file store, waits for
+it to be ready and passes it as the argument param (file:fil_...), so the file
+is not limited by the size of a request body. --save-files DIR saves the files
+a result refers to.
+
+A call the gateway holds for approval (an agent session's writes) prints the
+approval id, risk and expiry and exits 12. With --wait[=SECONDS] the command
+waits for the decision and prints the result instead; exit status as for
+'zuano approvals wait'.
+
+When the gateway answers with an approval page to visit (URL elicitation),
+zuano prints the link with its host highlighted, opens it in your browser
+after you confirm (--no-browser only prints it), waits for the decision and
+runs the call once more. Without a person at the keyboard, or with --json, it
+opens nothing and waits only with --wait.
 
 Example:
-  relay call clockify list_time_entries
-  relay call google-workspace search_emails --arg query="is:unread" --arg maxResults=10`,
+  zuano call clockify list_time_entries
+  zuano call google-workspace search_emails --arg query="is:unread" --arg-json maxResults=10`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts, err := callOptsFor(cmd, wait)
+			if err != nil {
+				return err
+			}
+			opts.jsonArgs = jsonArgs
+			opts.bindPresence(cmd, noBrowser)
+			opts.files, opts.saveFiles = files, saveFiles
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
 			}
 
-			c := resolveClient(gURL)
-			return callTool(c, args[0], args[1], rawArgs)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			return callToolWithContext(cmd.Context(), c, args[0], args[1], rawArgs, jsonOut, cmd.OutOrStdout(), opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
-	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
+	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value; the value is always a string (repeatable)")
+	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
+	addWaitFlag(cmd, &wait)
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print an approval link instead of opening it in a browser")
+	addFileFlags(cmd, &files, &saveFiles)
 	return cmd
 }

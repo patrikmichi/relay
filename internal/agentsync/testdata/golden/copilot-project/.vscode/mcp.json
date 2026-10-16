@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "zuano": {
+      "type": "http",
+      "url": "https://gateway.example.com/api/mcp"
+    },
+    "docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  }
+}

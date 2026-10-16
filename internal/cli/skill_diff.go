@@ -7,16 +7,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillDiffCmd returns the `relay skill diff <name>` cobra command — a
-// preview of `relay skill migrate` that writes nothing.
+// SkillDiffCmd returns the `zuano skill diff <name>` cobra command — a
+// preview of `zuano skill migrate` that writes nothing.
 func SkillDiffCmd() *cobra.Command {
 	var (
 		fromFlag  string
 		toFlag    string
 		scopeFlag string
+		jsonFlag  bool
 	)
 
 	cmd := &cobra.Command{
@@ -25,12 +26,13 @@ func SkillDiffCmd() *cobra.Command {
 		Long: `Load <name> from --from's directory (in the given --scope), project it
 to --to, and print the field-level differences plus the fidelity-loss
 report — without writing anything to --to's real skill directory or
-recording a manifest entry. This is a preview of 'relay skill migrate'.`,
+recording a manifest entry. This is a preview of 'zuano skill migrate'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSkillDiff(cmd, args[0], skillDiffOpts{from: fromFlag, to: toFlag, scope: scopeFlag})
+			return runSkillDiff(cmd, args[0], skillDiffOpts{from: fromFlag, to: toFlag, scope: scopeFlag, jsonOut: jsonFlag})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout")
 
 	cmd.Flags().StringVar(&fromFlag, "from", "", "Source provider (required)")
 	cmd.Flags().StringVar(&toFlag, "to", "", "Target provider (required)")
@@ -43,9 +45,16 @@ type skillDiffOpts struct {
 	from  string
 	to    string
 	scope string
+
+	jsonOut bool
 }
 
 func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
+	doc, finish := beginAction(cmd, opts.jsonOut, "skill diff")
+	return finish(doSkillDiff(cmd, name, opts, doc))
+}
+
+func doSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts, doc actionDoc) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -77,6 +86,12 @@ func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
 		return fmt.Errorf("migrate to %s: %w", opts.to, err)
 	}
 
+	doc.put("from", string(fromAdapter.ID()))
+	doc.put("to", string(toAdapter.ID()))
+	doc.put("scope", string(scope))
+	doc.put("wouldWrite", plan.TargetPaths)
+	doc.put("fidelity", lossReports(plan.Loss))
+	doc.put("fieldDiff", []string{})
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "== %s -> %s (%s scope, preview only) ==\n", fromAdapter.ID(), toAdapter.ID(), scope)
 	fmt.Fprintf(out, "would write to: %s\n", plan.TargetPaths)
@@ -85,7 +100,7 @@ func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
 	// Project into a scratch temp dir (never plan.TargetPaths) so we can
 	// re-Load it and report field-level differences without writing
 	// anything under the real target directory or touching the manifest.
-	tmp, err := os.MkdirTemp("", "relay-skill-diff-*")
+	tmp, err := os.MkdirTemp("", "zuano-skill-diff-*")
 	if err != nil {
 		return fmt.Errorf("create scratch dir: %w", err)
 	}
@@ -102,6 +117,13 @@ func runSkillDiff(cmd *cobra.Command, name string, opts skillDiffOpts) error {
 	}
 
 	diffs := agentport.FieldDiff(src, projected)
+	if doc != nil && len(diffs) > 0 {
+		lines := make([]string, len(diffs))
+		for i, d := range diffs {
+			lines[i] = fmt.Sprint(d)
+		}
+		doc.put("fieldDiff", lines)
+	}
 	if len(diffs) == 0 {
 		fmt.Fprintln(out, "field diff: no differences")
 		return nil

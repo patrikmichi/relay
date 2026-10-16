@@ -1,0 +1,68 @@
+{
+  "mcpServers": {
+    "zuano": {
+      "httpUrl": "https://gateway.example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${ZUANO_API_KEY}"
+      }
+    },
+    "docs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  },
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "name": "zuano",
+            "type": "command",
+            "command": "/opt/zuano/notify.sh"
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "name": "zuano",
+            "type": "command",
+            "command": "/opt/zuano/guard.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "name": "zuano",
+            "type": "command",
+            "command": "/opt/zuano/ping.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "name": "zuano",
+            "type": "command",
+            "command": "/opt/zuano/context.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

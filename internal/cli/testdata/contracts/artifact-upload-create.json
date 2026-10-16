@@ -1,0 +1,1 @@
+{"upload_id":"aup_x1y2z3a4b5","files":[{"path":"index.html","file_key":"f1","upload":{"url":"https://store.example/artifacts/org_1/staging/aup_x1y2z3a4b5/f1?sig=redacted","method":"PUT","headers":{},"expires_at":"2026-10-16T12:15:00.000Z"}},{"path":"css/site.css","file_key":"f2","status":"present"}]}

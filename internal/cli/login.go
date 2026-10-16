@@ -2,19 +2,19 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/auth"
+	"github.com/patrikmichi/zuano/internal/auth"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// LoginCmd returns the `relay login` cobra command.
+// LoginCmd returns the `zuano login` cobra command.
 func LoginCmd() *cobra.Command {
 	var gatewayURL string
-	var deviceFlow bool
+	var deviceFlow, agent bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -23,7 +23,13 @@ func LoginCmd() *cobra.Command {
 
 By default, opens a browser window and starts a local callback server.
 Use --device for headless environments (SSH, containers) where a browser
-is not available.`,
+is not available.
+
+--agent (or ZUANO_AGENT=1) signs in the agent profile: the gateway marks the
+session as an autonomous agent's, so its writes wait for approval. It is
+stored apart from your own session; set ZUANO_AGENT=1 for the process that an
+agent drives and zuano uses it instead of your own. Approvals are decided
+with your own, unmarked session (zuano approvals approve).`,
 		RunE: func(cmd *cobra.Command, _args []string) error {
 			// login is a gateway command like any other catalog verb — it
 			// cannot succeed offline (there is nothing to authenticate
@@ -36,31 +42,44 @@ is not available.`,
 				return err
 			}
 
-			ctx := context.Background()
+			// cmd.Context() carries the root command's signal-aware
+			// cancellation (see cmd/zuano/main.go) — Login/DeviceLogin each
+			// narrow it further with their own operation-specific deadline.
+			ctx := cmd.Context()
+
+			profile := client.ActiveProfile()
+			if agent {
+				profile = keychain.ProfileAgent
+			}
+			suffix := ""
+			if profile == keychain.ProfileAgent {
+				suffix = " (agent profile)"
+			}
 
 			if deviceFlow {
-				result, err := auth.DeviceLogin(ctx, resolvedURL)
+				result, err := auth.DeviceLogin(ctx, resolvedURL, profile, cmd.OutOrStdout())
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Login failed:", err)
-					os.Exit(1)
+					return fmt.Errorf("login failed: %w", err)
 				}
-				fmt.Printf("Logged in as %s\n", result.Email)
+				fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s%s\n", result.Email, suffix)
+				pinLoginKeys(ctx, resolvedURL, cmd.OutOrStdout())
 				return nil
 			}
 
-			result, err := auth.Login(ctx, resolvedURL)
+			result, err := auth.Login(ctx, resolvedURL, profile, cmd.ErrOrStderr())
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Login failed:", err)
-				os.Exit(1)
+				return fmt.Errorf("login failed: %w", err)
 			}
 
-			fmt.Printf("Logged in as %s\n", result.Email)
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s%s\n", result.Email, suffix)
+			pinLoginKeys(ctx, resolvedURL, cmd.OutOrStdout())
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&deviceFlow, "device", false, "Use device-code flow for headless environments")
+	cmd.Flags().BoolVar(&agent, "agent", false, "Sign in the agent profile (also selected by ZUANO_AGENT=1): a session marked as an agent's, held to approvals")
 
 	return cmd
 }

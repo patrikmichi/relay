@@ -1,11 +1,12 @@
 package auth
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net/http"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // WhoamiResponse is the JSON returned by /api/cli/whoami.
@@ -15,36 +16,41 @@ type WhoamiResponse struct {
 	Services  []string `json:"services"`
 	IssuedAt  string   `json:"issuedAt"`
 	Groups    []string `json:"groups,omitempty"`
+	// IdentityID and IdentityStatus name the credential's identity in the
+	// gateway's agent inventory.
+	IdentityID     string `json:"identityId,omitempty"`
+	IdentityStatus string `json:"identityStatus,omitempty"`
 }
 
 // Whoami calls /api/cli/whoami and returns the user info. If full is true,
-// requests groups via ?groups=true. Dispatched through c.Get so an
-// expired/near-expiry OAuth session transparently refreshes (see
-// internal/client's Do) instead of failing outright.
-func Whoami(c *client.Client, full bool) (*WhoamiResponse, error) {
+// requests groups via ?groups=true. Dispatched through c.GetContext (bounded
+// by ctx) so an expired/near-expiry OAuth session transparently refreshes
+// (see internal/client's Do) instead of failing outright, without letting a
+// stalled request hang past the caller's deadline.
+func Whoami(ctx context.Context, c *client.Client, full bool) (*WhoamiResponse, error) {
 	path := "/api/cli/whoami"
 	if full {
 		path += "?groups=true"
 	}
 
-	resp, err := c.Get(path)
+	resp, err := c.GetContext(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("token expired or revoked — run `relay login` to re-authenticate")
+		return nil, fmt.Errorf("token expired or revoked — run `%s` to re-authenticate", brand.Cmd("login"))
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		var errBody map[string]string
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		_ = client.DecodeJSON(resp.Body, &errBody)
 		return nil, fmt.Errorf("whoami failed (%d): %s", resp.StatusCode, errBody["error"])
 	}
 
 	var wr WhoamiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := client.DecodeJSON(resp.Body, &wr); err != nil {
 		return nil, fmt.Errorf("decode whoami response: %w", err)
 	}
 	return &wr, nil

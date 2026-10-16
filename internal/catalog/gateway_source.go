@@ -1,16 +1,16 @@
-// Package catalog implements relay's Phase-2 "GatewaySource" — the
+// Package catalog implements zuano's "GatewaySource" — the
 // gateway-backed counterpart to agentport.LoadGenericSkill's local-path
 // source. It downloads a governed skill bundle from the gateway catalog's
 // download endpoint, verifies it end to end (content hash + scan verdict),
 // path-safe extracts it, and loads it through the SAME
-// agentport.LoadGenericSkill code path a local `relay skill install <path>`
-// uses — so everything downstream (Migrate/Write/manifest) is unmodified,
-// shipped Phase-1 code.
+// agentport.LoadGenericSkill code path a local `zuano skill install <path>`
+// uses — so everything downstream (Migrate/Write/manifest) is the same
+// code a local install runs.
 //
 // Deliberately NOT part of internal/agentport: that package is intentionally
 // gateway-agnostic (stdlib + gopkg.in/yaml.v3 only, see its package doc) so
 // it can later be extracted verbatim into a standalone OSS module. This
-// package is the only place relay-proprietary gateway/auth code meets the
+// package is the only place zuano-proprietary gateway/auth code meets the
 // skill-manager engine — see FetchSkill's Doer parameter.
 package catalog
 
@@ -27,12 +27,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 // Doer is the minimal HTTP interface FetchSkill needs to reach the gateway's
-// governed download endpoint. *client.Client (relay's auto-refreshing
-// OAuth/keychain-backed gateway client, or a GATEWAY_API_KEY bearer client)
+// governed download endpoint. *client.Client (zuano's auto-refreshing
+// OAuth/keychain-backed gateway client, or a ZUANO_API_KEY bearer client)
 // satisfies this directly — this package never imports internal/client, to
 // keep the dependency direction one-way (cli -> catalog -> agentport;
 // catalog -> client only via this narrow interface at the call site, not a
@@ -44,7 +44,7 @@ type Doer interface {
 	// a context.WithTimeout(downloadTimeout) — a hanging gateway aborts the
 	// request instead of blocking forever, without imposing a client-wide
 	// timeout that would also affect unrelated, legitimately long-running
-	// gateway calls (m3 in the Go review).
+	// gateway calls.
 	GetContext(ctx context.Context, path string) (*http.Response, error)
 }
 
@@ -115,7 +115,7 @@ var (
 //
 // The returned Skill's Provenance is
 // {SourceProvider: "gateway", CatalogID: id, Version: <resolved version>}.
-func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error) {
+func FetchSkill(doer Doer, id, version, channel string, opts ...Option) (*agentport.Skill, error) {
 	if doer == nil {
 		return nil, fmt.Errorf("catalog: no gateway client configured")
 	}
@@ -148,8 +148,11 @@ func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error
 	if err := verifyScanVerdict(resp.Header.Get(headerScanVerdict)); err != nil {
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
+	if err := newFetchOptions(opts).verify(resp.Header, body, id, version); err != nil {
+		return nil, fmt.Errorf("catalog: %s: %w", id, err)
+	}
 
-	tmpDir, err := os.MkdirTemp("", "relay-catalog-skill-*")
+	tmpDir, err := os.MkdirTemp("", "zuano-catalog-skill-*")
 	if err != nil {
 		return nil, fmt.Errorf("catalog: create temp extraction dir: %w", err)
 	}
@@ -189,11 +192,9 @@ func downloadPath(id, version, channel string) string {
 // buildDownloadPath is the prefix-parameterized path builder shared by
 // downloadPath (this file, the legacy skill-only endpoint) and
 // resourceDownloadPath (agent_source.go, the generalized skill+agent
-// endpoint added by gateway D2) — lifted out so both FetchSkill and
-// FetchAgent build query strings identically without duplicating the
-// escaping/query-encoding logic. Behavior-identical to the pre-D4 inline
-// downloadPath body; FetchSkill's own tests (gateway_source_test.go) pass
-// unchanged after this refactor.
+// endpoint) — shared so both FetchSkill and FetchAgent build query
+// strings identically without duplicating the escaping/query-encoding
+// logic.
 func buildDownloadPath(prefix, id, version, channel string) string {
 	p := prefix + url.PathEscape(id) + downloadPathSuffix
 	q := url.Values{}

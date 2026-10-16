@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "from": "2026-09-16",
+  "to": "2026-10-16",
+  "events": 18234,
+  "checkpoints": 30,
+  "firstBadSeq": null,
+  "reason": null
+}

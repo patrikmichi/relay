@@ -1,18 +1,4 @@
-// Package client provides an HTTP client for making authenticated calls to
-// the gateway, with automatic OAuth refresh-token rotation.
-//
-// A Client built via Resolve (the normal entry point for CLI commands)
-// transparently:
-//   - proactively refreshes the access token shortly before its recorded
-//     expiry, and
-//   - reactively refreshes-and-retries ONCE on a 401 response (covers a
-//     token revoked/expired server-side ahead of the local clock, or a
-//     Client whose expiry metadata is unknown/stale),
-//
-// persisting the rotated pair to the OS keychain before returning. A Client
-// built via the bare New constructor (e.g. GATEWAY_API_KEY bearer auth) has
-// no refresh capability and behaves exactly like a plain bearer-token HTTP
-// client — see canRefresh.
+// Package client provides an HTTP client for making authenticated calls to the gateway, with automatic OAuth refresh-token rotation.
 package client
 
 import (
@@ -23,18 +9,35 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// ErrNotLoggedIn is returned by Resolve when neither GATEWAY_API_KEY nor a
-// usable CLI session (RELAY_EMAIL / persisted login email + a matching OS
+// ErrNotLoggedIn is returned by Resolve when neither ZUANO_API_KEY nor a
+// usable CLI session (ZUANO_EMAIL / persisted login email + a matching OS
 // keychain entry) can be found.
-var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or set GATEWAY_API_KEY for non-interactive auth")
+var ErrNotLoggedIn = errors.New("not logged in — run `" + brand.Cmd("login") + "` first, or set ZUANO_API_KEY for non-interactive auth")
+
+// ErrAgentNotLoggedIn is returned by Resolve when ZUANO_AGENT selects the
+// agent profile and no agent session is stored. It never falls back to the
+// human session: that session is not held to approvals.
+var ErrAgentNotLoggedIn = errors.New("no agent session. Run `" + brand.Cmd("login --agent") + "` (ZUANO_AGENT=1 selects the agent profile), or unset ZUANO_AGENT to use your own session")
+
+// ActiveProfile is the keychain profile this process uses: the agent
+// profile when ZUANO_AGENT is set, the human one otherwise.
+func ActiveProfile() keychain.Profile {
+	if config.AgentMode() {
+		return keychain.ProfileAgent
+	}
+	return keychain.ProfileHuman
+}
 
 // refreshSkew is how far ahead of the recorded expiry Client proactively
 // refreshes — avoids a request racing an access token that expires mid-flight.
@@ -46,13 +49,114 @@ type Client struct {
 	AccessToken string
 	httpClient  *http.Client
 
-	// Refresh context — populated only by Resolve for a keychain-backed
-	// OAuth session. Zero values (email == "") mean "no refresh capability"
-	// — see canRefresh. Never set for a GATEWAY_API_KEY bearer client.
-	mu           sync.Mutex
-	email        string
-	refreshToken string
-	expiresAt    time.Time
+	// Refresh context — populated only by Resolve for a keychain-backed OAuth session.
+	mu            sync.Mutex
+	profile       keychain.Profile
+	email         string
+	gatewayOrigin string
+	refreshToken  string
+	expiresAt     time.Time
+
+	// store/locker coordinate refresh across independently invoked `zuano`
+	// processes sharing the same (gatewayOrigin, email) keychain entry —
+	// see refreshLocked. Defaulted by New/Resolve; overridable via
+	// WithSessionStore/WithSessionLocker for tests.
+	store  SessionStore
+	locker SessionLocker
+
+	// mcpSessions holds the Mcp-Session-Id of each MCP endpoint this client
+	// has initialized, keyed by path; "" records an endpoint that issued none.
+	mcpMu       sync.Mutex
+	mcpSessions map[string]string
+
+	stepUp StepUpHandler
+	proofs ProofSigner
+	// dpopKey is the reference of the device key the session is bound to.
+	dpopKey string
+}
+
+// errRedirectRefused is returned via http.Client.CheckRedirect to refuse
+// every HTTP redirect outright — a redirect could relocate a
+// credential-bearing request (bearer header, or a secret in a token
+// exchange/refresh body) to an origin the user never selected.
+var errRedirectRefused = errors.New("refusing to follow HTTP redirect")
+
+func refuseRedirects(_ *http.Request, _ []*http.Request) error {
+	return errRedirectRefused
+}
+
+// tokenEndpointTimeout bounds each OAuth token-endpoint request. Gateway API
+// requests have no client-wide limit; callers bound them with a context.
+const tokenEndpointTimeout = 30 * time.Second
+
+// NoRedirectHTTPClient returns an HTTP client for OAuth token-endpoint calls
+// (code exchange, device flow, refresh): it never follows redirects and caps
+// each request at tokenEndpointTimeout.
+func NoRedirectHTTPClient() *http.Client {
+	return &http.Client{CheckRedirect: refuseRedirects, Timeout: tokenEndpointTimeout, Transport: versionTransport{}}
+}
+
+const (
+	// responseHeaderTimeout is the backstop for a gateway that accepts the
+	// connection and never answers. It is far above any tool call a caller
+	// allows, so a caller's own context is what normally ends a request.
+	responseHeaderTimeout = 10 * time.Minute
+)
+
+// defaultRequestTimeout bounds Get and Post, whose callers pass no context.
+var defaultRequestTimeout = 2 * time.Minute
+
+var gatewayTransport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = responseHeaderTimeout
+	return t
+}()
+
+// gatewayHTTPClient returns the client for gateway API requests. It has no
+// Timeout: a tool call may legitimately run for minutes, so a request is
+// bounded by its caller's context, with a response-header timeout as the
+// backstop.
+func gatewayHTTPClient() *http.Client {
+	return &http.Client{CheckRedirect: refuseRedirects, Transport: versionTransport{base: gatewayTransport}}
+}
+
+var clientVersion = "dev"
+
+// SetVersion sets the zuano version reported in the User-Agent and
+// Zuano-Client-Version headers of every gateway request.
+func SetVersion(v string) {
+	if v != "" {
+		clientVersion = v
+	}
+}
+
+// Version is the zuano version reported to gateways.
+func Version() string { return clientVersion }
+
+func userAgent() string {
+	return brand.Name + "/" + clientVersion + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
+}
+
+// versionTransport adds the zuano version headers and a correlation id to
+// every request. These are the only client details zuano sends.
+type versionTransport struct{ base http.RoundTripper }
+
+func (t versionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r := req.Clone(req.Context())
+	r.Header.Set("User-Agent", userAgent())
+	r.Header.Set(brand.Product+"-Client-Version", clientVersion)
+	if r.Header.Get(RequestIDHeader) == "" {
+		r.Header.Set(RequestIDHeader, NewCorrelationID())
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(r)
+	if err == nil {
+		recordRequestID(r, resp)
+	}
+	return resp, err
 }
 
 // New creates a gateway client with a fixed bearer token and NO refresh
@@ -62,62 +166,176 @@ func New(gatewayURL, accessToken string) *Client {
 	return &Client{
 		GatewayURL:  strings.TrimRight(gatewayURL, "/"),
 		AccessToken: accessToken,
-		httpClient:  &http.Client{},
+		httpClient:  gatewayHTTPClient(),
+		profile:     keychain.ProfileHuman,
+		store:       keychainSessionStore{profile: keychain.ProfileHuman},
+		locker:      flockSessionLocker{},
 	}
 }
 
+// checkAPIKeyOrigin keeps ZUANO_API_KEY from reaching a gateway that a flag
+// or environment variable redirected the CLI to. A local development gateway
+// is the one origin that needs no binding.
+func checkAPIKeyOrigin(origin string) error {
+	bound, err := config.APIKeyOrigin()
+	if err != nil {
+		return err
+	}
+	switch {
+	case bound == origin:
+		return nil
+	case bound == "" && config.IsLoopbackOrigin(origin):
+		return nil
+	case bound == "":
+		return fmt.Errorf("refusing to send ZUANO_API_KEY to %s: the key is not bound to a gateway. Set ZUANO_API_KEY_ORIGIN=%s, or save the gateway in the config file", origin, origin)
+	}
+	return fmt.Errorf("refusing to send ZUANO_API_KEY to %s: the key is bound to %s (ZUANO_API_KEY_ORIGIN or the saved gateway). Change ZUANO_API_KEY_ORIGIN deliberately to use another gateway", origin, bound)
+}
+
 // Resolve builds an authenticated Client for gateway calls.
-//
-// Resolution order:
-//  1. GATEWAY_API_KEY env var — non-interactive bearer auth (scripts, cron,
-//     CI). Mirrors the gateway's own bearer-key fallback (lib/api-keys.ts /
-//     verifyMcpAuth). No refresh capability: API keys don't rotate through
-//     the OAuth flow, so there's nothing to refresh.
-//  2. RELAY_EMAIL env var, or the email persisted at the last successful
-//     `relay login` (config.ResolveEmail) → the matching OS keychain OAuth
-//     pair, wrapped in a Client with automatic pre-expiry / on-401 refresh.
-//
-// Returns ErrNotLoggedIn when neither path resolves to usable credentials.
-func Resolve(gatewayURL string) (*Client, error) {
-	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
-		return New(gatewayURL, apiKey), nil
+func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return nil, err
 	}
 
-	email, err := config.ResolveEmail()
+	profile := ActiveProfile()
+	if apiKey := os.Getenv("ZUANO_API_KEY"); apiKey != "" {
+		if err := checkAPIKeyOrigin(origin); err != nil {
+			return nil, err
+		}
+		c := New(origin, apiKey)
+		c.profile = profile
+		c.stepUp = defaultStepUp
+		for _, opt := range opts {
+			opt(c)
+		}
+		return c, nil
+	}
+
+	agent := profile == keychain.ProfileAgent
+	var email string
+	if agent {
+		email, err = config.ResolveAgentEmail()
+	} else {
+		email, err = config.ResolveEmail()
+	}
 	if err != nil {
+		if agent {
+			return nil, ErrAgentNotLoggedIn
+		}
 		return nil, ErrNotLoggedIn
 	}
 
-	tokenData, err := keychain.ReadToken(email)
-	if err != nil {
+	tokenData, err := keychain.ReadProfileToken(profile, origin, email)
+	if errors.Is(err, keychain.ErrNotFound) {
+		if agent {
+			return nil, ErrAgentNotLoggedIn
+		}
 		return nil, ErrNotLoggedIn
 	}
+	if err != nil {
+		var unavailable *keychain.UnavailableError
+		switch {
+		case errors.As(err, &unavailable):
+			return nil, fmt.Errorf("keychain unavailable: %v. Use ZUANO_API_KEY for headless use", unavailable.Err)
+		default:
+			return nil, fmt.Errorf("%w; run `%s` to replace the stored session", err, brand.Cmd("login"))
+		}
+	}
 
-	c := New(gatewayURL, tokenData.AccessToken)
+	c := New(origin, tokenData.AccessToken)
+	c.profile = profile
+	c.stepUp = defaultStepUp
+	if tokenData.DPoPKey != "" {
+		key, err := dpop.Load(tokenData.DPoPKey)
+		if err != nil {
+			return nil, fmt.Errorf("this session is bound to a device key that cannot be used (%v); run `%s` to sign in again", err, brand.Cmd("login"))
+		}
+		c.proofs, c.dpopKey = dpop.NewSigner(key), tokenData.DPoPKey
+	}
+	c.store = keychainSessionStore{profile: profile}
 	c.email = email
+	c.gatewayOrigin = origin
 	c.refreshToken = tokenData.RefreshToken
 	if tokenData.ExpiresAt > 0 {
 		c.expiresAt = time.Unix(tokenData.ExpiresAt, 0)
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
 	return c, nil
 }
 
+// Profile returns the keychain profile this Client was resolved for.
+func (c *Client) Profile() keychain.Profile { return c.profile }
+
+// lockAccount names the refresh lock so the human and agent sessions of one
+// account never wait on each other.
+func (c *Client) lockAccount() string {
+	if c.profile == keychain.ProfileAgent {
+		return "agent:" + c.email
+	}
+	return c.email
+}
+
 // Email returns the identity this Client was resolved for, or "" for a
-// bearer-only Client (New / GATEWAY_API_KEY) that has no CLI session.
+// bearer-only Client (New / ZUANO_API_KEY) that has no CLI session.
 func (c *Client) Email() string {
 	return c.email
 }
 
-// canRefresh reports whether this Client holds enough context (email +
-// refresh token) to attempt a rotation.
-func (c *Client) canRefresh() bool {
-	return c.email != "" && c.refreshToken != ""
+// GatewayOrigin returns the normalized gateway identity this Client's
+// keychain-backed OAuth session (if any) is bound to, or "" for a
+// bearer-only Client (New / ZUANO_API_KEY) that has no CLI session.
+func (c *Client) GatewayOrigin() string {
+	return c.gatewayOrigin
 }
 
-// refreshLocked performs the refresh + keychain persistence. Caller must
-// hold c.mu.
-func (c *Client) refreshLocked() error {
-	result, err := refreshOAuthToken(c.GatewayURL, c.refreshToken)
+// canRefreshLocked reports whether this Client holds enough context (email
+// + gateway identity + refresh token) to attempt a rotation. Caller must
+// hold c.mu — refreshToken is mutable state (see the Client doc comment).
+func (c *Client) canRefreshLocked() bool {
+	return c.email != "" && c.gatewayOrigin != "" && c.refreshToken != ""
+}
+
+func (c *Client) bearerSnapshot() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.AccessToken
+}
+
+func (c *Client) refreshLocked(ctx context.Context) error {
+	unlock, err := c.locker.Lock(ctx, c.gatewayOrigin, c.lockAccount())
+	if err != nil {
+		return fmt.Errorf("acquire cross-process refresh lock: %w", err)
+	}
+	defer func() { _ = unlock.Unlock() }()
+
+	// Another process may have rotated the token while we waited for the
+	// lock. A single-use refresh token IS this session's generation marker:
+	// if the stored value no longer matches the one we're holding, someone
+	// else already spent it and rotated — adopt their result instead of
+	// submitting our now-stale copy, which the gateway would reject as
+	// reuse and revoke the whole token family for.
+	//
+	// A store that cannot be read fails the refresh: spending a token that
+	// may already be spent would revoke the family, and a missing entry means
+	// the session was removed (logged out) and must not be revived.
+	current, readErr := c.store.Read(c.gatewayOrigin, c.email)
+	if readErr != nil {
+		return fmt.Errorf("read the stored session before refreshing it (not refreshing, to avoid reusing a spent token): %w", readErr)
+	}
+	if current.RefreshToken != "" && current.RefreshToken != c.refreshToken {
+		c.AccessToken = current.AccessToken
+		c.refreshToken = current.RefreshToken
+		if current.ExpiresAt > 0 {
+			c.expiresAt = time.Unix(current.ExpiresAt, 0)
+		}
+		return nil
+	}
+
+	result, err := refreshOAuthToken(ctx, c.GatewayURL, c.refreshToken, c.proofs)
 	if err != nil {
 		return err
 	}
@@ -128,49 +346,41 @@ func (c *Client) refreshLocked() error {
 	}
 	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
 
-	// Persist the rotated pair BEFORE updating in-memory state — a refresh
-	// token is single-use with reuse detection (gateway
-	// lib/oauth/token-store.ts): if we update AccessToken/RefreshToken here
-	// but the keychain write then fails, this process's next call would
-	// still work (in-memory pair is valid), but every OTHER process reading
-	// the keychain (a concurrently-running `relay` invocation, or the very
-	// next command) would present the now-spent old refresh token and get
-	// its whole token family revoked. Failing the refresh outright on a
-	// write error is safer than risking that.
-	if err := keychain.WriteToken(c.email, keychain.TokenData{
-		AccessToken:  result.AccessToken,
-		RefreshToken: result.RefreshToken,
-		Email:        c.email,
-		ExpiresIn:    expiresIn,
-		ExpiresAt:    expiresAt.Unix(),
-	}); err != nil {
-		return fmt.Errorf("refresh succeeded but persisting the rotated token failed: %w", err)
-	}
-
+	// The gateway has already invalidated the old refresh token, so the new
+	// pair is the only working one: keep it in memory whatever the keychain says.
 	c.AccessToken = result.AccessToken
 	c.refreshToken = result.RefreshToken
 	c.expiresAt = expiresAt
+
+	if err := c.store.Write(c.gatewayOrigin, c.email, keychain.TokenData{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    expiresIn,
+		ExpiresAt:    expiresAt.Unix(),
+		DPoPKey:      c.dpopKey,
+	}); err != nil {
+		fmt.Fprintf(persistWarning, "%s: WARNING: the session was refreshed but could not be saved to the OS keychain (%v). This process keeps working, but the next %s command will find a revoked token and ask you to run `%s` again.\n", brand.Name, err, brand.Name, brand.Cmd("login"))
+	}
 	return nil
 }
 
-// maybeProactiveRefresh refreshes ahead of a known expiry. Best-effort: a
-// failure here is NOT fatal — the request proceeds with the current token,
-// and the reactive on-401 path in Do is the backstop.
-func (c *Client) maybeProactiveRefresh() {
-	if !c.canRefresh() || c.expiresAt.IsZero() {
-		return
-	}
-	if time.Now().Add(refreshSkew).Before(c.expiresAt) {
-		return
-	}
+// persistWarning receives the warning printed when a rotated session cannot
+// be saved.
+var persistWarning io.Writer = os.Stderr
+
+// maybeProactiveRefresh refreshes ahead of a known expiry, bounded by ctx.
+// Best-effort: a failure here is NOT fatal — the request proceeds with the
+// current token, and the reactive on-401 path in Do is the backstop.
+func (c *Client) maybeProactiveRefresh(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// Re-check after acquiring the lock — a concurrent call on this same
-	// Client may have already refreshed while we were waiting.
+	if !c.canRefreshLocked() || c.expiresAt.IsZero() {
+		return
+	}
 	if time.Now().Add(refreshSkew).Before(c.expiresAt) {
 		return
 	}
-	_ = c.refreshLocked() // best-effort — Do's reactive 401 path is the backstop
+	_ = c.refreshLocked(ctx) // best-effort — Do's reactive 401 path is the backstop
 }
 
 // unauthorizedResponse builds a synthetic 401 response with an empty,
@@ -209,41 +419,117 @@ func cloneRequest(req *http.Request) (*http.Request, error) {
 	return clone, nil
 }
 
-// Do performs an authenticated HTTP request. Sets Authorization: Bearer
-// <AccessToken> on every request.
-//
-// For a Client resolved via Resolve (OAuth, keychain-backed): proactively
-// refreshes when the access token is at/near its recorded expiry, and — as
-// a backstop — transparently refreshes and retries ONCE on a 401 response.
-// The rotated pair is persisted to the OS keychain before the retry.
-//
-// If the refresh itself fails (e.g. the refresh token was also
-// revoked/expired), or the original request's body cannot be safely
-// re-sent, the response returned is a 401 — indistinguishable in status
-// from "no refresh was attempted" — so every existing call site's
-//
-//	if resp.StatusCode == http.StatusUnauthorized { ...run `relay login`... }
-//
-// keeps working with zero changes; it now means "refresh was attempted and
-// did not resolve the problem" rather than "no refresh capability existed".
-//
-// A Client with no refresh capability (GATEWAY_API_KEY, or built via the
-// bare New constructor) skips all of the above — the request is sent
-// exactly once, matching the pre-refresh-support behavior of this package.
+// StepUpChallenge is a confirmation the gateway wants a person to give
+// before it runs an action.
+type StepUpChallenge struct {
+	ID  string
+	URL string
+	// Gateway is the origin the challenge came from; the handler opens URL
+	// only when it is on that origin.
+	Gateway string
+}
+
+// StepUpHandler gets a person to complete a StepUpChallenge and returns the
+// id to send in the X-Step-Up header of the retried request. It may use the
+// client to poll the gateway for the outcome.
+type StepUpHandler func(ctx context.Context, challenge StepUpChallenge, c *Client) (string, error)
+
+var defaultStepUp StepUpHandler
+
+// SetDefaultStepUpHandler sets the handler every client built by Resolve
+// starts with.
+func SetDefaultStepUpHandler(h StepUpHandler) { defaultStepUp = h }
+
+// SetStepUpHandler makes Do complete a step-up and retry once when the
+// gateway answers 401 step_up_required. Without a handler the refusal is
+// returned as a *StepUpRequiredError.
+func (c *Client) SetStepUpHandler(h StepUpHandler) { c.stepUp = h }
+
+// ProofSigner builds the DPoP proof (RFC 9449) that binds one request to the
+// device key the session was issued to.
+type ProofSigner interface {
+	Proof(method, rawURL, accessToken string) (string, error)
+}
+
+// SetProofSigner makes Do authorize requests with a DPoP proof instead of a
+// bare bearer token.
+func (c *Client) SetProofSigner(p ProofSigner) { c.proofs = p }
+
+func (c *Client) authorize(req *http.Request, token string) error {
+	if c.proofs == nil {
+		req.Header.Set("Authorization", "Bearer "+token)
+		return nil
+	}
+	proof, err := c.proofs.Proof(req.Method, req.URL.String(), token)
+	if err != nil {
+		return fmt.Errorf("sign DPoP proof: %w", err)
+	}
+	req.Header.Set("Authorization", "DPoP "+token)
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
+// Do performs an authenticated HTTP request. A refusal by the gateway's
+// billing gate, a quota or a step-up requirement comes back as a typed error
+// (EntitlementError, QuotaExceededError, StepUpRequiredError) instead of a
+// response, so every command reports it the same way.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	c.maybeProactiveRefresh()
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	resp, err := c.doAuthorized(req)
+	if err != nil {
+		return resp, err
+	}
+	refusal := refusalOf(resp)
+	if refusal == nil {
+		return resp, nil
+	}
+	_ = resp.Body.Close()
+	var challenge *StepUpRequiredError
+	if !errors.As(refusal, &challenge) || c.stepUp == nil {
+		return nil, refusal
+	}
+	id, err := c.stepUp(req.Context(), StepUpChallenge{ID: challenge.ID, URL: challenge.URL, Gateway: c.GatewayURL}, c)
+	if err != nil {
+		return nil, err
+	}
+	retry, err := cloneRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	retry.Header.Set("X-Step-Up", id)
+	resp, err = c.doAuthorized(retry)
+	if err != nil {
+		return resp, err
+	}
+	return classify(resp)
+}
+
+func (c *Client) doAuthorized(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	c.maybeProactiveRefresh(ctx)
+	if err := c.authorize(req, c.bearerSnapshot()); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.httpClient.Do(req)
-	if err != nil || resp.StatusCode != http.StatusUnauthorized || !c.canRefresh() {
+	c.mu.Lock()
+	refreshable := c.canRefreshLocked()
+	c.mu.Unlock()
+	if err != nil || resp.StatusCode != http.StatusUnauthorized || !refreshable {
 		return resp, err
+	}
+	// Neither a step-up nor a session the gateway rejects outright is an
+	// expired token: refreshing would only repeat the refusal.
+	switch refusalOf(resp).(type) {
+	case *StepUpRequiredError, *ReauthRequiredError:
+		return resp, nil
 	}
 
 	// 401 — attempt exactly one refresh-and-retry.
 	_ = resp.Body.Close()
 
 	c.mu.Lock()
-	refreshErr := c.refreshLocked()
+	refreshErr := c.refreshLocked(ctx)
+	retryToken := c.AccessToken
 	c.mu.Unlock()
 	if refreshErr != nil {
 		return unauthorizedResponse(req), nil
@@ -256,34 +542,53 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// THIS call still reports 401.
 		return unauthorizedResponse(req), nil
 	}
-	retryReq.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	if err := c.authorize(retryReq, retryToken); err != nil {
+		return nil, err
+	}
 	return c.httpClient.Do(retryReq)
 }
 
-// Post is a convenience method for POST requests with a JSON body. The
-// request carries context.Background() — i.e. no deadline. Callers that
-// need a bounded request (e.g. internal/catalog's search/download calls)
-// should use PostContext/GetContext instead so a hanging gateway can't wedge
-// the CLI forever; this method is left as-is for the many existing call
-// sites (sync, publish, service_cmd, tokens, ...) that legitimately want no
-// deadline here, so widening this signature doesn't ripple across them.
+// cancelOnClose releases a request's deadline timer once the body is closed:
+// the deadline has to outlive the call that returns the response.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b cancelOnClose) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
+}
+
+func withDefaultDeadline(do func(context.Context) (*http.Response, error)) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	resp, err := do(ctx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = cancelOnClose{resp.Body, cancel}
+	return resp, nil
+}
+
+// Post is PostContext bounded by defaultRequestTimeout, for callers that have
+// no context of their own. Prefer PostContext.
 func (c *Client) Post(path, contentType string, body io.Reader) (*http.Response, error) {
-	return c.PostContext(context.Background(), path, contentType, body)
+	return withDefaultDeadline(func(ctx context.Context) (*http.Response, error) {
+		return c.PostContext(ctx, path, contentType, body)
+	})
 }
 
-// Get is a convenience method for GET requests — see Post's doc comment on
-// why this has no deadline; use GetContext for a bounded request.
+// Get is GetContext bounded by defaultRequestTimeout. Prefer GetContext.
 func (c *Client) Get(path string) (*http.Response, error) {
-	return c.GetContext(context.Background(), path)
+	return withDefaultDeadline(func(ctx context.Context) (*http.Response, error) {
+		return c.GetContext(ctx, path)
+	})
 }
 
-// PostContext is Post with an explicit, caller-supplied context — the
-// request is aborted the moment ctx's deadline/cancellation fires, even if
-// the gateway never responds. Use with context.WithTimeout for any call site
-// that must be bounded (internal/catalog's download/search calls; see m3 in
-// the Go review) — this deliberately does NOT change the shared http.Client
-// itself (no Client-wide Timeout), so unrelated long-running relay dispatch
-// calls through Post/Get are unaffected.
+// PostContext sends an authenticated POST bounded only by ctx: the Client
+// itself sets no request timeout, so long tool calls are limited by the
+// caller's chosen deadline rather than a client-wide one.
 func (c *Client) PostContext(ctx context.Context, path, contentType string, body io.Reader) (*http.Response, error) {
 	url := c.GatewayURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)

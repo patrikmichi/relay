@@ -1,4 +1,8 @@
-/relay
-/relay.exe
+/zuano
+/zuano.exe
 /dist/
-
+/completions/
+/coverage.out
+/coverage.html
+*.test
+.DS_Store

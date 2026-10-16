@@ -1,0 +1,71 @@
+# Two replicas by default: the broker fails over between agents, so one pod
+# restarting does not take the network offline. Each pod keeps its own identity
+# on its volume.
+replicaCount: 2
+
+image:
+  repository: ghcr.io/patrikmichi/zuano-connector
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+enrollment:
+  # The gateway the pods enroll with on first start.
+  url: ""
+  # A multi-use token (uses at least replicaCount). Put it in a Secret you manage
+  # and name it in existingSecret instead of setting it here when you can: the
+  # chart then stores nothing secret.
+  token: ""
+  existingSecret: ""
+  existingSecretKey: token
+
+# The connector's config file. `network` is the id enrollment printed. The
+# allowlist lives here: change targets with `helm upgrade`, never from the
+# gateway. health.listen is set by the chart so probes can reach the pod.
+config:
+  network: ""
+  name: ""
+  targets: []
+  # Any other top-level key of the config schema, such as log or update.
+  extra: {}
+
+# Files mounted under /run/secrets/<name> for ${file:/run/secrets/<name>}
+# references in targets: names of existing Secrets, mounted whole.
+secretMounts: []
+#  - name: erp-token
+#    secretName: erp-token
+
+# Added to every pod's environment, such as HTTPS_PROXY.
+env: []
+
+persistence:
+  size: 64Mi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Spread the pods over nodes so one node going away leaves an agent.
+antiAffinity: soft
+
+nodeSelector: {}
+tolerations: []
+podAnnotations: {}
+serviceAccount:
+  create: true
+  name: ""
+
+metrics:
+  # Annotate pods for Prometheus scraping of /metrics.
+  scrape: false
+  port: 9464

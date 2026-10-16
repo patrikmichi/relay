@@ -9,21 +9,23 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillMigrateCmd returns the `relay skill migrate <name>` cobra command —
+// SkillMigrateCmd returns the `zuano skill migrate <name>` cobra command —
 // the flagship agentport command. It loads a skill by name from --from's
 // directory (in the given --scope), projects it to one or more --to
 // providers, prints a fidelity-loss report for each, and (unless --dry-run)
 // writes the projected files and records a manifest ledger entry.
 func SkillMigrateCmd() *cobra.Command {
 	var (
-		fromFlag  string
-		toFlags   []string
-		scopeFlag string
-		dryRun    bool
-		strict    bool
+		fromFlag   string
+		toFlags    []string
+		scopeFlag  string
+		dryRun     bool
+		strict     bool
+		acceptLoss bool
+		jsonOut    bool
 	)
 
 	cmd := &cobra.Command{
@@ -39,39 +41,50 @@ machine (excluding --from).
 Supported providers: %s.
 
 Examples:
-  relay skill migrate my-skill --from claude --to codex
-  relay skill migrate my-skill --from cursor --scope project --dry-run
-  relay skill migrate my-skill --from claude --strict`, providerIDsCSV()),
+  zuano skill migrate my-skill --from claude --to codex
+  zuano skill migrate my-skill --from cursor --scope project --dry-run
+  zuano skill migrate my-skill --from claude --strict`, providerIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkillMigrate(cmd, args[0], skillMigrateOpts{
-				from:   fromFlag,
-				to:     toFlags,
-				scope:  scopeFlag,
-				dryRun: dryRun,
-				strict: strict,
+				from:       fromFlag,
+				to:         toFlags,
+				scope:      scopeFlag,
+				dryRun:     dryRun,
+				strict:     strict,
+				acceptLoss: acceptLoss,
+				jsonOut:    jsonOut,
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document (plan, fidelity, writes, warnings) on stdout; prompts and progress go to stderr")
 
 	cmd.Flags().StringVar(&fromFlag, "from", "", fmt.Sprintf("Source provider: %s (required)", providerIDsOxford()))
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected providers except --from")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search/write: user or project")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the fidelity report; do not write files")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Abort if any field would be dropped")
+	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Proceed despite non-security fidelity loss without an interactive prompt")
 
 	return cmd
 }
 
 type skillMigrateOpts struct {
-	from   string
-	to     []string
-	scope  string
-	dryRun bool
-	strict bool
+	jsonOut    bool
+	from       string
+	to         []string
+	scope      string
+	dryRun     bool
+	strict     bool
+	acceptLoss bool
 }
 
 func runSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts) error {
+	finish, rep := beginJSON(cmd, opts.jsonOut, &artifactReport{Command: "skill migrate", DryRun: opts.dryRun})
+	return finish(doSkillMigrate(cmd, name, opts, rep))
+}
+
+func doSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts, rep *artifactReport) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -99,46 +112,71 @@ func runSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts) err
 		return err
 	}
 
-	return applyMigrationToTargets(cmd.OutOrStdout(), src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict)
+	return applyMigration(cmd.OutOrStdout(), rep, src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
-// applyMigrationToTargets projects src into each target (via
-// agentport.Migrate), printing a fidelity-loss report for each, and
-// (unless dryRun) writes the projected files and records a manifest entry.
-// Shared by `relay skill migrate` and `relay skill install` — the only
-// difference between the two commands is how src was loaded (a named skill
-// from a provider's directory vs. an arbitrary local path). fromLabel is
-// used only in the printed "== fromLabel -> target ==" header.
-func applyMigrationToTargets(out io.Writer, src *agentport.Skill, fromLabel string, targets []agentport.Adapter, scope agentport.Scope, dryRun, strict bool) error {
+// applyMigration projects src to every target and writes what passes the
+// checks. rep, when not nil, collects the plan, fidelity and outcome of each
+// target for --json; the text on out is the same either way.
+func applyMigration(out io.Writer, rep *artifactReport, src *agentport.Skill, fromLabel string, targets []agentport.Adapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
+	var toWrite []*agentport.Plan
+	entries := map[*agentport.Plan]*planReport{}
+
 	for _, target := range targets {
 		plan, err := agentport.Migrate(src, target, scope)
 		if err != nil {
 			return fmt.Errorf("migrate to %s: %w", target.ID(), err)
 		}
+		entry := rep.addPlan(fromLabel, string(target.ID()), scope, plan.TargetPaths, plan.Loss, plan.HasDropped())
+		entries[plan] = entry
 
 		fmt.Fprintf(out, "\n== %s -> %s (%s scope) ==\n", fromLabel, target.ID(), scope)
 		fmt.Fprintf(out, "target: %s\n", plan.TargetPaths)
 		printLossReport(out, plan.Loss)
 
+		if agentport.HasSecurityLoss(plan.Loss) {
+			entry.Status = "refused"
+			return fmt.Errorf("refusing %s -> %s: a permission/restriction field would be lost or degraded and cannot be represented on the target (see [security] items above) — this is not overridable by --strict, --dry-run, or an interactive prompt; migrate to a provider that fully supports it or wait for provider-fidelity mapping", fromLabel, target.ID())
+		}
+
 		if strict && plan.HasDropped() {
+			entry.Status = "refused"
 			return fmt.Errorf("aborting (--strict): %s -> %s would drop one or more fields", fromLabel, target.ID())
 		}
 
 		if dryRun {
+			entry.Status = "dry-run"
 			fmt.Fprintln(out, "[dry-run] no files written")
 			continue
 		}
 
-		if plan.HasDropped() && isInteractiveTerminal(os.Stdin) {
+		if plan.HasDropped() && !acceptLoss {
+			if !isInteractiveTerminal(os.Stdin) {
+				entry.Status = "refused"
+				return fmt.Errorf("refusing %s -> %s: fidelity loss above requires --accept-loss (or an interactive terminal) to proceed noninteractively — the absence of a terminal is never treated as consent", fromLabel, target.ID())
+			}
 			if !confirmPrompt(out, fmt.Sprintf("Proceed with %s -> %s despite the fidelity loss above?", fromLabel, target.ID())) {
+				entry.Status = "skipped"
 				fmt.Fprintln(out, "skipped")
 				continue
 			}
 		}
 
-		if err := agentport.Write(plan); err != nil {
-			return fmt.Errorf("write %s -> %s: %w", fromLabel, target.ID(), err)
+		toWrite = append(toWrite, plan)
+	}
+
+	for _, plan := range toWrite {
+		if err := agentport.PreflightWrite(plan); err != nil {
+			entries[plan].Status, entries[plan].Reason = "refused", err.Error()
+			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
+	}
+	for _, plan := range toWrite {
+		if err := agentport.Write(plan); err != nil {
+			entries[plan].Status, entries[plan].Reason = "refused", err.Error()
+			return fmt.Errorf("write %s -> %s: %w", fromLabel, plan.Target.ID(), err)
+		}
+		entries[plan].Status, entries[plan].Written = "written", plan.TargetPaths
 		fmt.Fprintf(out, "written: %s\n", plan.TargetPaths)
 	}
 	return nil
@@ -189,6 +227,10 @@ func printLossReport(out io.Writer, loss []agentport.LossItem) {
 	}
 	fmt.Fprintln(out, "fidelity report:")
 	for _, l := range loss {
+		if l.Security {
+			fmt.Fprintf(out, "  [%s] [security] %s — %s\n", l.Kind, l.Field, l.Note)
+			continue
+		}
 		fmt.Fprintf(out, "  [%s] %s — %s\n", l.Kind, l.Field, l.Note)
 	}
 }

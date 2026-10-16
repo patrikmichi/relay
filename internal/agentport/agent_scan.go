@@ -2,30 +2,36 @@ package agentport
 
 import "strings"
 
-// AgentScanResult is the outcome of scanning one Agent: findings + a
-// quality score — the Agent-IR analogue of ScanResult.
+// AgentScanResult is the outcome of scanning one Agent: findings, a
+// coverage account, and a quality score — the Agent-IR analogue of
+// ScanResult.
 type AgentScanResult struct {
 	Findings []ScanFinding
+	Scanned  []string
+	Skipped  []ScanSkip
 	Score    int // 0-100
 }
 
-// AgentScan performs the same deterministic, local, no-network scan as
-// Scan — dangerous shell patterns (dangerousPatterns) and obvious hardcoded
-// secrets (secretPatterns) — over an Agent's body, plus a quality score.
-// Agents carry no Resources field (every shipped agent provider is a
-// single flat "<name>.md"), so unlike Scan there is no resource-file loop.
 func AgentScan(a *Agent) AgentScanResult {
-	var findings []ScanFinding
+	var (
+		findings []ScanFinding
+		scanned  []string
+		skipped  []ScanSkip
+	)
 
 	scanText := func(file, text string) {
+		if strings.TrimSpace(text) == "" {
+			return // nothing to account for — an unset field is not a coverage gap
+		}
+		scanned = append(scanned, file)
 		for _, p := range dangerousPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, false)})
 			}
 		}
 		for _, p := range secretPatterns {
 			if loc := p.re.FindStringIndex(text); loc != nil {
-				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc)})
+				findings = append(findings, ScanFinding{File: file, Pattern: p.name, Severity: p.severity, Excerpt: excerpt(text, loc, true)})
 			}
 		}
 	}
@@ -37,8 +43,31 @@ func AgentScan(a *Agent) AgentScanResult {
 		}
 	}
 	scanText(a.Name+ext, a.Body)
+	scanText("frontmatter:name", a.Name)
+	scanText("frontmatter:description", a.Description)
+	scanText("frontmatter:model", a.Model)
+	scanText("frontmatter:mode", a.Mode)
+	scanText("frontmatter:memory", a.Memory)
+	for _, k := range sortedMetadataKeys(a.Metadata) {
+		scanText("frontmatter:metadata."+k, a.Metadata[k])
+	}
+	for _, v := range a.Tools {
+		scanText("frontmatter:tools", v)
+	}
+	for _, v := range a.DeniedTools {
+		scanText("frontmatter:tools", v)
+	}
+	for _, v := range a.Skills {
+		scanText("frontmatter:skills", v)
+	}
+	for _, uf := range a.UnmappedFields {
+		scanText("frontmatter:"+uf.Key, uf.Raw)
+	}
+	for _, usf := range a.UnmappedSecurityFields {
+		scanText("frontmatter:"+usf.Key, usf.Raw)
+	}
 
-	return AgentScanResult{Findings: findings, Score: agentQualityScore(a, findings)}
+	return AgentScanResult{Findings: findings, Scanned: scanned, Skipped: skipped, Score: agentQualityScore(a, findings)}
 }
 
 // agentQualityScore mirrors qualityScore for the Agent IR: same

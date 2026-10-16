@@ -19,7 +19,7 @@ func encodeGates(t *testing.T, gates map[string]string) string {
 }
 
 func TestVerifyScanVerdict_ArbitraryPartialMapRefused(t *testing.T) {
-	// M1 regression: a compromised/buggy gateway must not be able to pass
+	// A compromised/buggy gateway must not be able to pass
 	// verification by returning an arbitrary single-key map that happens to
 	// say "pass" — none of the AUTHORITATIVE gates are present.
 	verdict := encodeGates(t, map[string]string{"anything": "pass"})

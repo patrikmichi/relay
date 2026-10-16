@@ -1,0 +1,37 @@
+=== .claude.json
+{
+  "mcpServers": {
+    "zuano": {
+      "type": "http",
+      "url": "https://gw.example.com/api/mcp",
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "docs": {
+      "type": "http",
+      "url": "https://gw.example.com/api/fw/docs/mcp",
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "files": {
+      "type": "stdio",
+      "command": "zuano",
+      "args": [
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "env": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}

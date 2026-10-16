@@ -1,71 +1,88 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"strings"
+	"io"
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/auth"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/auth"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// LogoutCmd returns the `relay logout` cobra command.
-//
-// logout has two halves: deleting the local OS keychain entry (no network,
-// always safe) and revoking the token family server-side (auth.Logout's
-// POST /api/cli/logout, gateway-touching). Unlike every OTHER
-// gateway-touching command in this package (which fail closed entirely
-// under --offline via resolveGatewayURLOrFailClosed), only logout's
-// server-side half is gated on offline/fail-closed resolution here — a
-// user should always be able to clear a stale local session (e.g. after a
-// laptop loses network, or the gateway is decommissioned) even with no
-// gateway reachable, so the local half runs unconditionally once we know
-// which email's keychain entry to delete. `relay tokens revoke`
-// (tokens.go) is the other command surface for this exact operation and
-// intentionally mirrors this same two-halves design.
+// LogoutCmd returns the `zuano logout` cobra command.
 func LogoutCmd() *cobra.Command {
 	var gatewayURL string
 
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Revoke the current session and remove the stored token",
-		RunE: func(cmd *cobra.Command, _args []string) error {
-			// Building the client never dials the network — it only reads
-			// GATEWAY_API_KEY / the OS keychain — so this is safe to do
-			// before deciding whether the network half may run.
-			c := resolveClient(gatewayURL)
-			if c.Email() == "" {
-				// GATEWAY_API_KEY bearer session — no local CLI session to revoke.
-				fmt.Fprintln(os.Stderr, "Authenticated via GATEWAY_API_KEY — there is no local CLI session to log out of.")
-				os.Exit(1)
-			}
-
-			if Offline() {
-				if err := keychain.DeleteToken(c.Email()); err != nil {
-					return fmt.Errorf("delete keychain entry: %w", err)
-				}
-				fmt.Printf("Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
-				return nil
-			}
-
-			resolvedURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
+		RunE: func(cmd *cobra.Command, _args []string) (err error) {
+			// The keychain lookup below is scoped to (gateway, email), so
+			// the gateway must be identified before building a client —
+			// resolved locally (no network) so this still works offline.
+			gURL, err := resolveGatewayIdentityLocal(gatewayURL)
 			if err != nil {
 				return err
 			}
-			c.GatewayURL = strings.TrimRight(resolvedURL, "/")
-
-			if err := auth.Logout(c); err != nil {
-				fmt.Fprintln(os.Stderr, "Logout failed:", err)
-				os.Exit(1)
+			if gURL == "" {
+				if Offline() {
+					return errors.New("no gateway configured — cannot determine which session to remove; pass --gateway-url")
+				}
+				return errors.New(offlineGuidance)
 			}
 
-			fmt.Printf("Logged out %s\n", c.Email())
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
+			if c.Email() == "" {
+				return errors.New("authenticated via ZUANO_API_KEY — there is no local CLI session to log out of")
+			}
+
+			if Offline() {
+				if err := auth.ForgetSession(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
+					return fmt.Errorf("delete keychain entry: %w", err)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s (NOT revoked on gateway)\n", c.Email())
+				return nil
+			}
+
+			ctx, cancel, err := requestContext(cmd.Context(), controlRequest)
+			if err != nil {
+				return err
+			}
+			defer cancel()
+			defer func() { err = timeoutCause(ctx, err) }()
+			result, err := auth.Logout(ctx, c)
+			if err != nil {
+				return fmt.Errorf("logout failed: %w", err)
+			}
+			if err := remoteRevokeFailure(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+
+			suffix := ""
+			if c.Profile() == keychain.ProfileAgent {
+				suffix = " (agent profile)"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged out %s%s\n", result.Email, suffix)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL")
 	return cmd
+}
+
+// remoteRevokeFailure turns a failed server-side revoke into an error. The
+// local session is already gone, but the token it held still works on the
+// gateway, which a script or a person must not mistake for a completed logout.
+func remoteRevokeFailure(out io.Writer, r auth.LogoutResult) error {
+	if r.RemoteRevoked {
+		return nil
+	}
+	fmt.Fprintf(out, "Removed the local session for %s\n", r.Email)
+	return &ExitError{Code: 1, Msg: fmt.Sprintf("session NOT revoked on gateway: %s. The token stays valid there until it expires; revoke it from the gateway's session list", r.RemoteWarning)}
 }

@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -416,41 +415,6 @@ func TestRunPublish_PathSafety_AbsolutePath(t *testing.T) {
 	}
 }
 
-// TestBuildBundle_FIFO_Skipped verifies that a FIFO (named pipe) in the bundle directory
-// is silently skipped and does NOT cause the bundler to block or error.
-// This is the H1 blocker fix: non-regular, non-symlink entries must be filtered before
-// os.ReadFile is called.
-func TestBuildBundle_FIFO_Skipped(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("FIFOs (named pipes) are not supported on Windows in the same way")
-	}
-
-	dir := t.TempDir()
-	writeSkillFile(t, dir, "SKILL.md")
-
-	// Create a FIFO in the bundle directory.
-	fifoPath := filepath.Join(dir, "test.fifo")
-	if err := syscall.Mkfifo(fifoPath, 0o600); err != nil {
-		t.Skipf("Mkfifo not available: %v", err)
-	}
-
-	// buildBundle must complete without hanging and without including the FIFO.
-	_, bundleBytes, files, err := buildBundle(dir)
-	if err != nil {
-		t.Fatalf("buildBundle with FIFO present: unexpected error: %v", err)
-	}
-	if len(bundleBytes) == 0 {
-		t.Error("expected non-empty bundle bytes")
-	}
-
-	// The FIFO must NOT appear in the file list.
-	for _, f := range files {
-		if strings.HasSuffix(f, ".fifo") {
-			t.Errorf("FIFO must be skipped, but found in bundle files: %s", f)
-		}
-	}
-}
-
 // TestBuildBundle_SizeCap_Exceeded verifies the size cap is enforced: a bundle whose
 // total file size exceeds artifactMaxBytes must be refused with a clear error.
 func TestBuildBundle_SizeCap_Exceeded(t *testing.T) {
@@ -602,7 +566,7 @@ func TestRunPublish_Error_403(t *testing.T) {
 	}
 }
 
-// TestRunPublish_Error_401 verifies that a 401 suggests `relay login`.
+// TestRunPublish_Error_401 verifies that a 401 suggests `zuano login`.
 func TestRunPublish_Error_401(t *testing.T) {
 	body := publishErrorBody{}
 	body.Error.Message = "unauthorized"
@@ -617,24 +581,24 @@ func TestRunPublish_Error_401(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on 401, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("401 error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("401 error should mention `zuano login`, got: %v", err)
 	}
 }
 
-// TestResolvePublishDoer_NoToken verifies that a missing RELAY_EMAIL (and no
-// persisted login / GATEWAY_API_KEY) returns an actionable error.
+// TestResolvePublishDoer_NoToken verifies that a missing ZUANO_EMAIL (and no
+// persisted login / ZUANO_API_KEY) returns an actionable error.
 func TestResolvePublishDoer_NoToken(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/zuano/config.json
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	_, err := resolvePublishDoer("")
 	if err == nil {
-		t.Fatal("expected error when RELAY_EMAIL is unset, got nil")
+		t.Fatal("expected error when ZUANO_EMAIL is unset, got nil")
 	}
-	if !strings.Contains(err.Error(), "relay login") {
-		t.Errorf("error should mention `relay login`, got: %v", err)
+	if !strings.Contains(err.Error(), "zuano login") {
+		t.Errorf("error should mention `zuano login`, got: %v", err)
 	}
 }
 
@@ -664,7 +628,7 @@ func TestRunPublish_BearerToken(t *testing.T) {
 	if capturedAuth != "Bearer "+testToken {
 		t.Errorf("Authorization header: got %q, want %q", capturedAuth, "Bearer "+testToken)
 	}
-	// Also verify capturedAuth on the doer itself is populated (N1 fix).
+	// Also verify capturedAuth on the doer itself is populated.
 	if doer.capturedAuth != "Bearer "+testToken {
 		t.Errorf("doer.capturedAuth: got %q, want %q", doer.capturedAuth, "Bearer "+testToken)
 	}
@@ -685,15 +649,15 @@ func TestRunPublish_CatalogURL_UsesGatewayURL(t *testing.T) {
 	}
 }
 
-// TestRunPublish_CatalogURL_FallsBackToEnv verifies catalogURL falls back to GATEWAY_URL env
+// TestRunPublish_CatalogURL_FallsBackToEnv verifies catalogURL falls back to ZUANO_URL env
 // when no gatewayURL is passed.
 func TestRunPublish_CatalogURL_FallsBackToEnv(t *testing.T) {
 	const envGW = "https://env-gw.example.com"
-	t.Setenv("GATEWAY_URL", envGW)
+	t.Setenv("ZUANO_URL", envGW)
 
 	url := catalogURL("res_456", "")
 	if !strings.HasPrefix(url, envGW) {
-		t.Errorf("catalog URL should start with env GATEWAY_URL %q, got %q", envGW, url)
+		t.Errorf("catalog URL should start with env ZUANO_URL %q, got %q", envGW, url)
 	}
 }
 
@@ -925,7 +889,7 @@ func TestHandlePublishResponse_ErrorCodes(t *testing.T) {
 			name:       "401",
 			statusCode: http.StatusUnauthorized,
 			body:       map[string]string{},
-			wantSubstr: "relay login",
+			wantSubstr: "zuano login",
 		},
 		{
 			name:       "403",

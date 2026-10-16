@@ -8,7 +8,7 @@ import (
 
 // FieldDiff compares two Skills field-by-field (the common fields plus the
 // typed-optional provider-extension fields) and returns a human-readable
-// line for every field that differs. Used by `relay skill diff` to show
+// line for every field that differs. Used by `zuano skill diff` to show
 // what a migration would change or drop, alongside the LossItem report
 // (which only reports fields the TARGET FORMAT can't represent at all —
 // FieldDiff also catches anything else that changed in a round trip).
@@ -62,6 +62,9 @@ func FieldDiff(src, other *Skill) []string {
 	if srcKeys, otherKeys := resourceKeys(src.Resources), resourceKeys(other.Resources); !reflect.DeepEqual(srcKeys, otherKeys) {
 		add("Resources", srcKeys, otherKeys)
 	}
+	for _, rel := range modeChangedResources(src.Resources, other.Resources) {
+		add("Resources["+rel+"].Mode", src.Resources[rel].Mode, other.Resources[rel].Mode)
+	}
 
 	return diffs
 }
@@ -80,11 +83,25 @@ func derefBool(b *bool) interface{} {
 	return *b
 }
 
-func resourceKeys(m map[string][]byte) []string {
+func resourceKeys(m map[string]ResourceFile) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// modeChangedResources returns, sorted, the relative paths present in both
+// src and other whose ResourceFile.Mode differs — a permission
+// regression that byte-key comparison alone (resourceKeys) can't see.
+func modeChangedResources(src, other map[string]ResourceFile) []string {
+	var changed []string
+	for rel, s := range src {
+		if o, ok := other[rel]; ok && o.Mode != s.Mode {
+			changed = append(changed, rel)
+		}
+	}
+	sort.Strings(changed)
+	return changed
 }

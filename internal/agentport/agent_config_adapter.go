@@ -4,20 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// agentConfigAdapter is the Agent-IR analogue of configAdapter: one generic
-// AgentAdapter implementation driven by a validated ProviderConfig loaded
-// from agents/<id>.yml. Every shipped agent provider (claude, opencode,
-// codex, cursor, gemini-cli) is one agentConfigAdapter instance — the same
-// "config-driven, not hard-coded per platform" shape the Skill side already
-// uses. Reuses the kind-agnostic machinery (expandDirs/expandHome,
-// detectDirs, ownDirCount, splitFrontmatter, mappingLookup) wholesale —
-// only the IR binding (agentFieldValue/decodeAgentIRField vs irFieldValue/
-// decodeIRField) and the on-disk shape (always layout: flat; no resources,
-// no sidecar) differ from configAdapter.
 type agentConfigAdapter struct {
 	cfg  ProviderConfig
 	caps AgentCapSet
@@ -98,7 +89,7 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 
 	fmBytes, body, err := splitFrontmatter(raw)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("invalid agent document: %w", err)
 	}
 
 	var root yaml.Node
@@ -106,8 +97,14 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 		return nil, fmt.Errorf("parse frontmatter in %s: %w", path, err)
 	}
 
+	var unique map[string]any
+	if err := root.Decode(&unique); err != nil {
+		return nil, fmt.Errorf("invalid or duplicate agent fields")
+	}
 	ag := &Agent{}
+	configured := make(map[string]bool, len(a.cfg.Frontmatter))
 	for _, f := range a.cfg.Frontmatter {
+		configured[strings.ToLower(f.Key)] = true
 		node := mappingLookup(&root, f.Key)
 		if node == nil {
 			continue
@@ -133,8 +130,30 @@ func (a *agentConfigAdapter) Load(path string) (*Agent, error) {
 			}
 			continue
 		}
+		if f.IR == "tools" && a.ID() == ProviderID("gemini-cli") {
+			if node.Kind != yaml.SequenceNode {
+				return nil, fmt.Errorf("gemini tools must be an array")
+			}
+			if len(node.Content) == 0 {
+				ag.UnmappedSecurityFields = append(ag.UnmappedSecurityFields, UnmappedSecurityField{Key: "tools", Raw: "empty explicit allowlist"})
+			}
+		}
 		if err := decodeAgentIRField(ag, f.IR, node); err != nil {
 			return nil, fmt.Errorf("%s: field %q: %w", path, f.Key, err)
+		}
+	}
+
+	ag.UnmappedSecurityFields = append(ag.UnmappedSecurityFields, collectUnmappedSecurityFields(&root, configured)...)
+	ag.UnmappedFields = collectUnmappedFields(&root, configured, agentSecurityFrontmatterKeys, a.ID())
+	// These formats can embed session config and execution controls. Until each
+	// extra field has a reviewed mapping, refuse it instead of guessing fidelity.
+	if a.ID() == ProviderCodex || a.ID() == ProviderCursor || a.ID() == ProviderID("gemini-cli") {
+		for _, field := range ag.UnmappedFields {
+			ag.UnmappedSecurityFields = append(ag.UnmappedSecurityFields, UnmappedSecurityField{Key: field.Key, Raw: "unmapped execution setting"})
+		}
+		ag.UnmappedFields = nil
+		for i := range ag.UnmappedSecurityFields {
+			ag.UnmappedSecurityFields[i].Raw = "unmapped execution setting"
 		}
 	}
 
@@ -179,25 +198,42 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 		if f.IR == "model" && !isZero {
 			mapped, l := modelLossForTarget(ag.Model, ag.Provenance.SourceProvider, a.ID())
 			val = mapped
+			isZero = mapped == ""
 			modelLoss = l
 		}
-		// opencode's on-disk "tools" shape is a {tool: bool} map — reshape
-		// the canonical CSV/list value (plus any DeniedTools — see
-		// agent.go's doc comment) via toolsListToMap (agent_caps.go)
-		// instead of writing agentFieldValue's flexStringList encoding, so
-		// the projected file is actually valid opencode format (not just a
-		// reported-but-unimplemented reshape) AND an opencode -> opencode
-		// round trip preserves `tool: false` denials instead of silently
-		// dropping them. toolsLossForTarget (below) reports the shape
-		// reshape as LossDegraded; a non-opencode target with DeniedTools
-		// gets a LossDropped item instead (no boolean-denial shape exists
-		// there to preserve into).
-		if f.IR == "tools" && a.ID() == ProviderOpencode {
-			if len(ag.Tools) == 0 && len(ag.DeniedTools) == 0 {
-				continue
+
+		if f.IR == "tools" {
+			translatedTools := translateToolNames(ag.Tools, ag.Provenance.SourceProvider, a.ID())
+			if a.ID() == ProviderOpencode {
+				translatedDenied := translateToolNames(ag.DeniedTools, ag.Provenance.SourceProvider, a.ID())
+				restrictive := claudeAllowlistIsRestrictive(ag.Tools, ag.Provenance.SourceProvider)
+				if len(translatedTools) == 0 && len(translatedDenied) == 0 && !restrictive {
+					continue
+				}
+				m := toolsListToMap(translatedTools, translatedDenied)
+				if restrictive {
+					// A Claude allowlist implies "everything else denied" —
+					// opencode has no such implicit default, so make it
+					// explicit rather than let the restriction evaporate.
+					if m == nil {
+						m = make(map[string]bool, 1)
+					}
+					if _, exists := m["*"]; !exists {
+						m["*"] = false
+					}
+				}
+				val = m
+				isZero = false
+			} else {
+				if len(translatedTools) == 0 {
+					continue
+				}
+				val = flexStringList(translatedTools)
+				if a.ID() == ProviderID("gemini-cli") {
+					val = translatedTools
+				}
+				isZero = false
 			}
-			val = toolsListToMap(ag.Tools, ag.DeniedTools)
-			isZero = false
 		}
 		if isZero {
 			continue
@@ -209,16 +245,25 @@ func (a *agentConfigAdapter) Project(ag *Agent) (map[string][]byte, []LossItem, 
 		}
 		mapping.Content = append(mapping.Content, keyNode, valNode)
 	}
+	unmappedLoss := projectUnmappedFields(mapping, ag.UnmappedFields, ag.Provenance.SourceProvider, a.ID())
 
 	fmBytes, err := yaml.Marshal(mapping)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal frontmatter: %w", err)
 	}
 	content := joinFrontmatter(fmBytes, ag.Body)
+	if a.ID() == ProviderCursor || a.ID() == ProviderID("gemini-cli") {
+		content = []byte("---\n" + string(fmBytes) + "---\n" + ag.Body)
+	}
 
 	files := map[string][]byte{ag.Name + a.FileExt(): content}
 
 	loss := computeAgentLoss(ag, a.caps)
+	source := ag.Provenance.SourceProvider
+	if (len(ag.Tools) > 0 || len(ag.DeniedTools) > 0) && (!a.caps.Tools || (source != a.ID() && (source == ProviderID("gemini-cli") || a.ID() == ProviderID("gemini-cli")))) {
+		loss = append(loss, LossItem{Field: "Tools", Kind: LossDropped, Security: true, Note: "target cannot preserve this source tool restriction; migration refused"})
+	}
+	loss = append(loss, unmappedLoss...)
 	if modelLoss != nil {
 		loss = append(loss, *modelLoss)
 	}

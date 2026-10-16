@@ -1,0 +1,47 @@
+{
+  "canonical": [
+    {"input": "index.html", "want": "index.html"},
+    {"input": "a/b/c.css", "want": "a/b/c.css"},
+    {"input": "assets/", "want": "assets"},
+    {"input": "caf\u00e9.html", "want": "caf\u00e9.html"},
+    {"input": "cafe\u0301.html", "want": "caf\u00e9.html"},
+    {"input": "docs/api-notes.md", "want": "docs/api-notes.md"},
+    {"input": "apidocs/index.html", "want": "apidocs/index.html"}
+  ],
+  "invalid": [
+    {"input": "", "reason": "empty"},
+    {"input": "/etc/passwd", "reason": "absolute"},
+    {"input": "../x.html", "reason": "traversal"},
+    {"input": "a/../b.html", "reason": "traversal"},
+    {"input": "./a.html", "reason": "traversal"},
+    {"input": "a//b.html", "reason": "empty_component"},
+    {"input": "a\\b.html", "reason": "backslash"},
+    {"input": "C:/x.html", "reason": "drive_prefix"},
+    {"input": "a\u0000b.html", "reason": "control"},
+    {"input": "a\tb.html", "reason": "control"},
+    {"input": "_drop/x.html", "reason": "reserved"},
+    {"input": "_DROP/x.html", "reason": "reserved"},
+    {"input": "api/x.json", "reason": "reserved"},
+    {"input": "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/a1/b1/c1/d1/e1/f1/g1.html", "reason": "too_deep"}
+  ],
+  "too_long_bytes": 241,
+  "collisions": [
+    {"paths": ["A.html", "a.html"], "reason": "case"},
+    {"paths": ["caf\u00e9.html", "cafe\u0301.html"], "reason": "duplicate"},
+    {"paths": ["docs", "docs/readme.md"], "reason": "file_and_directory"},
+    {"paths": ["Docs", "docs/readme.md"], "reason": "file_and_directory"},
+    {"paths": ["a.html", "a.html"], "reason": "duplicate"}
+  ],
+  "no_collision": [
+    ["a.html", "b.html"],
+    ["docs/a.md", "docs/b.md", "doc/a.md"]
+  ],
+  "denied": [
+    ".env", ".env.local", "config/.env.production", "id_rsa", "keys/id_ed25519.pub", "server.pem",
+    "certs/store.p12", ".npmrc", "home/.netrc", ".git/config", "x/.git/HEAD", ".aws/credentials",
+    "credentials.json", ".SSH/known_hosts"
+  ],
+  "allowed": [
+    "index.html", "environment.html", "docs/envelope.md", "assets/id.png", "pem.html", "gitignore.txt", "digital/readme.md"
+  ]
+}

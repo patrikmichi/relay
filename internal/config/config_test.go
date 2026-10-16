@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 // overrideHomeDir temporarily redirects os.UserHomeDir by setting $HOME.
@@ -53,7 +53,7 @@ func TestSave_CreatesDir(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	cfgPath := filepath.Join(home, ".config", "relay", "config.json")
+	cfgPath := filepath.Join(home, ".config", "zuano", "config.json")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		t.Errorf("config file not created at %s", cfgPath)
 	}
@@ -61,7 +61,7 @@ func TestSave_CreatesDir(t *testing.T) {
 
 func TestGatewayURL_EmptyWithoutEnvOrConfig(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_URL", "")
 
 	url, err := config.GatewayURL()
 	if err != nil {
@@ -72,30 +72,10 @@ func TestGatewayURL_EmptyWithoutEnvOrConfig(t *testing.T) {
 	}
 }
 
-func TestGatewayURL_EmptyWhenConfigUnreadable(t *testing.T) {
-	home := withTempHome(t)
-	t.Setenv("GATEWAY_URL", "")
-	dir := filepath.Join(home, ".config", "relay")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	url, err := config.GatewayURL()
-	if err != nil {
-		t.Fatalf("GatewayURL: %v", err)
-	}
-	if url != "" {
-		t.Errorf("expected empty gateway URL for an unreadable config, got %q", url)
-	}
-}
-
 func TestGatewayURL_EnvVarOverride(t *testing.T) {
 	withTempHome(t)
 	const override = "https://override.example.com"
-	t.Setenv("GATEWAY_URL", override)
+	t.Setenv("ZUANO_URL", override)
 
 	url, err := config.GatewayURL()
 	if err != nil {
@@ -108,7 +88,7 @@ func TestGatewayURL_EnvVarOverride(t *testing.T) {
 
 func TestGatewayURL_FromConfig(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "") // ensure env var doesn't interfere
+	t.Setenv("ZUANO_URL", "") // ensure env var doesn't interfere
 
 	const customURL = "https://my-gateway.example.com"
 	cfg := config.Config{GatewayURL: customURL}
@@ -147,29 +127,73 @@ func TestSave_Atomic(t *testing.T) {
 	}
 }
 
-func TestLoad_MigratesLegacyGwDir(t *testing.T) {
+// TestNormalizeGatewayURL_RejectsUnsafeTransport: gateway
+// URL validation must reject remote HTTP, userinfo, query, fragment,
+// missing host, unsupported scheme, and a non-root path, while permitting
+// HTTPS everywhere and plain HTTP only for a literal loopback host.
+func TestNormalizeGatewayURL_RejectsUnsafeTransport(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"remote http", "http://gw.example.com"},
+		{"userinfo", "https://user:pass@gw.example.com"},
+		{"query string", "https://gw.example.com?token=abc"},
+		{"fragment", "https://gw.example.com#frag"},
+		{"missing host", "https:///path"},
+		{"unsupported scheme", "ftp://gw.example.com"},
+		{"no scheme", "gw.example.com"},
+		{"non-root path", "https://gw.example.com/api"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := config.NormalizeGatewayURL(tc.raw); err == nil {
+				t.Errorf("expected NormalizeGatewayURL(%q) to fail, got nil error", tc.raw)
+			}
+		})
+	}
+}
+
+func TestNormalizeGatewayURL_PermitsHTTPSAndLoopbackHTTP(t *testing.T) {
+	cases := []struct{ raw, want string }{
+		{"https://gw.example.com", "https://gw.example.com"},
+		{"https://gw.example.com/", "https://gw.example.com"},
+		{"https://gw.example.com:8443", "https://gw.example.com:8443"},
+		{"http://127.0.0.1:4000", "http://127.0.0.1:4000"},
+		{"http://localhost:4000", "http://localhost:4000"},
+		{"http://[::1]:4000", "http://[::1]:4000"},
+	}
+	for _, tc := range cases {
+		got, err := config.NormalizeGatewayURL(tc.raw)
+		if err != nil {
+			t.Errorf("NormalizeGatewayURL(%q): unexpected error: %v", tc.raw, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("NormalizeGatewayURL(%q): got %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestLoad_IgnoresPreRenameConfigDir(t *testing.T) {
 	home := withTempHome(t)
 
-	legacyDir := filepath.Join(home, ".config", "gw")
-	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
-		t.Fatalf("create legacy dir: %v", err)
+	oldDir := filepath.Join(home, ".config", "gw")
+	if err := os.MkdirAll(oldDir, 0o700); err != nil {
+		t.Fatalf("create old dir: %v", err)
 	}
-	legacyCfg := []byte(`{"gatewayUrl":"https://legacy.example.com"}`)
-	if err := os.WriteFile(filepath.Join(legacyDir, "config.json"), legacyCfg, 0o600); err != nil {
-		t.Fatalf("write legacy config: %v", err)
+	if err := os.WriteFile(filepath.Join(oldDir, "config.json"), []byte(`{"gatewayUrl":"https://old.example.com"}`), 0o600); err != nil {
+		t.Fatalf("write old config: %v", err)
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.GatewayURL != "https://legacy.example.com" {
-		t.Errorf("GatewayURL: got %q, want legacy value", cfg.GatewayURL)
+	if cfg.GatewayURL != "" {
+		t.Errorf("GatewayURL: got %q, want empty: ~/.config/gw is no longer read", cfg.GatewayURL)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "relay", "config.json")); err != nil {
-		t.Errorf("migrated config not found at ~/.config/relay: %v", err)
-	}
-	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
-		t.Errorf("legacy ~/.config/gw dir still present after migration")
+	if _, err := os.Stat(oldDir); err != nil {
+		t.Errorf("~/.config/gw must stay untouched: %v", err)
 	}
 }

@@ -1,0 +1,21 @@
+{
+  "period": { "key": "current", "start": "2026-10-16T12:00:00Z", "end": "2026-11-16T12:00:00Z" },
+  "by": "service",
+  "currency": "EUR",
+  "meters": [
+    {
+      "meter": "tool_calls",
+      "unit": "call",
+      "used": 41000,
+      "included": 50000,
+      "percent": 82,
+      "projected": 62000,
+      "projectedCostMicros": 6000000,
+      "overage": "bill",
+      "breakdown": [
+        { "key": "stripe", "used": 30000 },
+        { "key": "google-workspace", "used": 11000 }
+      ]
+    }
+  ]
+}

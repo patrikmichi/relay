@@ -1,0 +1,22 @@
+{
+  "orgId": "org_abc123",
+  "orgSlug": "acme",
+  "orgName": "Acme",
+  "view": "full",
+  "plan": {
+    "key": "pro",
+    "displayName": "Pro",
+    "source": "stripe",
+    "status": "trialing",
+    "trialEndsAt": "2026-10-30T12:00:00Z",
+    "periodStart": "2026-10-16T12:00:00Z",
+    "periodEnd": "2026-11-16T12:00:00Z",
+    "cancelAtPeriodEnd": false
+  },
+  "verified": true,
+  "suspended": false,
+  "overageEnabled": false,
+  "spendCapMicros": null,
+  "seats": { "used": 3, "purchased": 5, "max": 10 },
+  "billingUrl": "https://gateway.example/settings/billing"
+}

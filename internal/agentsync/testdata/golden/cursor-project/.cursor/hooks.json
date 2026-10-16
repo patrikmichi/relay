@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "/opt/zuano/guard.sh",
+        "timeout": 10,
+        "matcher": "Bash"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "/opt/zuano/context.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "/opt/zuano/notify.sh"
+      }
+    ]
+  }
+}

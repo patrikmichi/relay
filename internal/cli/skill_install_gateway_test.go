@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport"
-	"github.com/patrikmichi/relay/internal/catalog"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/catalog"
 )
 
 func TestTranslateGatewayFetchError_MapsEachSentinel(t *testing.T) {
@@ -24,7 +24,7 @@ func TestTranslateGatewayFetchError_MapsEachSentinel(t *testing.T) {
 		want string
 	}{
 		{"no-access", catalog.ErrNoAccess, "don't have access"},
-		{"not-found", catalog.ErrNotFound, "relay skill search"},
+		{"not-found", catalog.ErrNotFound, "zuano skill search"},
 		{"not-downloadable", catalog.ErrNotDownloadable, "not downloadable"},
 		{"unauthorized", catalog.ErrUnauthorized, "no gateway configured"},
 		{"other", errBoomTest, "boom"},
@@ -90,7 +90,7 @@ func sha256HexOfBundle(b []byte) string {
 // GET /api/catalog/skills/<id>/download with the real X-Skill-* headers the
 // gateway's download endpoint is contracted to set — sha256, version, scan
 // verdict. Requires a bearer Authorization header (any
-// non-empty value — GATEWAY_API_KEY bearer auth, matching client.New).
+// non-empty value — ZUANO_API_KEY bearer auth, matching client.New).
 func newMockCatalogGateway(t *testing.T, wantID string, bundle []byte, version string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +118,7 @@ func newMockCatalogGateway(t *testing.T, wantID string, bundle []byte, version s
 func TestSkillInstall_CatalogID_RoundTripToClaude(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	srv := newMockCatalogGateway(t, "res_abc123", bundle, "1.4.2")
@@ -162,7 +162,7 @@ func TestSkillInstall_CatalogID_RoundTripToClaude(t *testing.T) {
 func TestSkillInstall_CatalogID_FanOutToTwoTargets(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	srv := newMockCatalogGateway(t, "res_fanout", bundle, "2.0.0")
@@ -199,7 +199,7 @@ func TestSkillInstall_CatalogID_FanOutToTwoTargets(t *testing.T) {
 func TestSkillInstall_CatalogID_ChecksumMismatch_NonZeroExitNoWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +227,7 @@ func TestSkillInstall_CatalogID_ChecksumMismatch_NonZeroExitNoWrite(t *testing.T
 func TestSkillInstall_CatalogID_BadScanVerdict_NonZeroExitNoWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +255,7 @@ func TestSkillInstall_CatalogID_BadScanVerdict_NonZeroExitNoWrite(t *testing.T) 
 func TestSkillInstall_CatalogID_NoGatewayConfigured_FailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	// Deliberately no GATEWAY_API_KEY / RELAY_EMAIL / keychain session, and
+	// Deliberately no ZUANO_API_KEY / ZUANO_EMAIL / keychain session, and
 	// no --gateway-url override — client.Resolve must fail with
 	// ErrNotLoggedIn, and runSkillInstall must translate that into the
 	// offline degradation message rather than attempting a network call.
@@ -276,7 +276,7 @@ func TestSkillInstall_CatalogID_NoGatewayConfigured_FailsClosed(t *testing.T) {
 
 // TestSkillInstall_CatalogID_OfflineFlag_FailsClosed exercises the root
 // `--offline` persistent flag's effect on a catalog-id install. --offline
-// is now registered on the cobra root (cmd/relay/main.go) rather than on
+// is now registered on the cobra root (cmd/zuano/main.go) rather than on
 // SkillInstallCmd itself, so a standalone SkillInstallCmd() — as every test
 // in this file constructs, without the root's PersistentPreRunE ever
 // running — can't set it via a command-line flag. Instead this simulates
@@ -285,7 +285,7 @@ func TestSkillInstall_CatalogID_NoGatewayConfigured_FailsClosed(t *testing.T) {
 func TestSkillInstall_CatalogID_OfflineFlag_FailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token") // even with creds available...
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token") // even with creds available...
 
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
@@ -302,11 +302,15 @@ func TestSkillInstall_CatalogID_OfflineFlag_FailsClosed(t *testing.T) {
 func TestSkillInstall_CatalogID_VersionAndChannelForwarded(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalSkillBundle(t, "pr-triage")
 	var gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/download") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		gotQuery = r.URL.RawQuery
 		w.Header().Set("X-Skill-Content-Sha256", sha256HexOfBundle(bundle))
 		w.Header().Set("X-Skill-Scan-Verdict", "approved")

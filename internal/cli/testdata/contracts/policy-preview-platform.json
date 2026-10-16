@@ -1,0 +1,13 @@
+{
+  "service": "stripe",
+  "tool": "delete_customer",
+  "risk": "destructive",
+  "principal": "cli_agent",
+  "decision": {
+    "mode": "off",
+    "source": "platform_block",
+    "ruleId": null,
+    "predicate": null,
+    "changeableBy": "platform"
+  }
+}

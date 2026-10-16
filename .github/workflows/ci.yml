@@ -9,8 +9,9 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.x"
   GOVULNCHECK_VERSION: "v1.8.0"
+  GITLEAKS_VERSION: "v8.30.1"
+  GOLANGCI_LINT_VERSION: "v2.13.1"
   GORELEASER_VERSION: "v2.18.2"
 
 jobs:
@@ -24,9 +25,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "gofmt needs to be run on:"; echo "$out"; exit 1
+          fi
+
+      - name: Internal labels
+        run: |
+          bash scripts/check-internal-labels.test.sh
+          bash scripts/check-internal-labels.sh
 
       - name: Build
         run: go build ./...
@@ -34,11 +47,90 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Vet (Windows build tags)
+        run: GOOS=windows go vet ./...
+
+      - name: Lint
+        run: go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run ./...
+
       - name: Test
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      # Floors: 85% of statements in total, 80% in every package. main.go
+      # and generated files are excluded; scripts/check-coverage.sh says why.
+      - name: Coverage
+        run: |
+          bash scripts/check-coverage.test.sh
+          bash scripts/check-coverage.sh coverage.out
 
       - name: Vulnerability scan
         run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
+
+      # Fixtures and tests must never hold anything shaped like a real
+      # credential, so GitHub's secret scanning has nothing to flag.
+      - name: Secret scan
+        run: go run "github.com/zricethezav/gitleaks/v8@${GITLEAKS_VERSION}" dir . --redact --no-banner --verbose
+
+  # Runs the contract tests against the documents the gateway's own route
+  # tests write on its main branch, so a gateway change that the client does
+  # not understand fails here. Repository secret GATEWAY_REPO_READ_TOKEN is a
+  # fine-grained read-only token for patrikmichi/zuano-hub. The job is skipped
+  # with a notice, not failed, while the secret is missing (fork PRs have none),
+  # the repository cannot be checked out (it is not renamed yet) or it has no
+  # gateway/contract-fixtures directory yet. The vendored fixtures run in
+  # build-test either way.
+  gateway-contract:
+    name: gateway-contract
+    runs-on: ubuntu-latest
+    env:
+      HAS_GATEWAY_TOKEN: ${{ secrets.GATEWAY_REPO_READ_TOKEN != '' }}
+    steps:
+      - name: Skip without the gateway token
+        if: ${{ env.HAS_GATEWAY_TOKEN != 'true' }}
+        run: echo "::notice title=gateway-contract skipped::GATEWAY_REPO_READ_TOKEN is not available (fork pull request or secret not set), so the gateway's fixtures were not checked."
+
+      - name: Checkout
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Checkout the gateway's fixtures
+        id: fixtures
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
+        continue-on-error: true
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: patrikmichi/zuano-hub
+          ref: main
+          token: ${{ secrets.GATEWAY_REPO_READ_TOKEN }}
+          path: gateway-src
+          sparse-checkout: gateway/contract-fixtures
+          persist-credentials: false
+
+      - name: Look for the fixtures
+        id: found
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
+        run: |
+          if [ "${{ steps.fixtures.outcome }}" != "success" ]; then
+            echo "::notice title=gateway-contract skipped::patrikmichi/zuano-hub could not be checked out (not renamed yet, or the token cannot read it)."
+          elif [ ! -d gateway-src/gateway/contract-fixtures ]; then
+            echo "::notice title=gateway-contract skipped::patrikmichi/zuano-hub has no gateway/contract-fixtures directory yet."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: ${{ steps.found.outputs.present == 'true' }}
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Contract tests
+        if: ${{ steps.found.outputs.present == 'true' }}
+        env:
+          ZUANO_CONTRACT_FIXTURES: ${{ github.workspace }}/gateway-src/gateway/contract-fixtures
+        run: go test -count=1 -run Contract ./internal/cli/
 
   hostname-denylist:
     name: no denylisted hostname in source or binaries
@@ -59,7 +151,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
 

@@ -6,38 +6,52 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// withLoggedInSession sets RELAY_EMAIL and writes a matching token into the
-// (mocked, see call_test.go's keyring.MockInit init()) OS keychain, so
-// resolveClient succeeds without ever dialing the network — needed to reach
-// the Offline()/resolveGatewayURLOrFailClosed branch in commands (logout,
-// tokens revoke) that build the client BEFORE checking offline state, since
-// resolveClient calls os.Exit(1) on ErrNotLoggedIn and would otherwise kill
-// the test binary.
-func withLoggedInSession(t *testing.T) (email string) {
+// withLoggedInSession sets ZUANO_EMAIL and writes a matching token into the
+// (mocked, see call_test.go's keyring.MockInit init()) OS keychain, keyed to
+// gatewayURL, so resolveClient succeeds without ever dialing the network —
+// needed to reach the Offline()/resolveGatewayURLOrFailClosed branch in
+// commands (logout, tokens revoke) that build the client BEFORE checking
+// offline state, since resolveClient calls os.Exit(1) on ErrNotLoggedIn and
+// would otherwise kill the test binary.
+func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string) {
 	t.Helper()
 	email = "offline-test@example.com"
-	t.Setenv("RELAY_EMAIL", email)
-	if err := keychain.WriteToken(email, keychain.TokenData{
+	t.Setenv("ZUANO_EMAIL", email)
+	origin, err := config.NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		t.Fatalf("normalize gateway URL: %v", err)
+	}
+	if err := keychain.WriteToken(origin, email, keychain.TokenData{
 		AccessToken:  "test-access-token",
 		RefreshToken: "test-refresh-token",
-		Email:        email,
 	}); err != nil {
 		t.Fatalf("keychain.WriteToken: %v", err)
 	}
-	t.Cleanup(func() { _ = keychain.DeleteToken(email) })
-	return email
+	t.Cleanup(func() { _ = keychain.DeleteToken(origin, email) })
+	return email, origin
 }
 
-// withNoGateway unsets $GATEWAY_URL and points $HOME at a fresh temp dir so
-// no ~/.config/relay/config.json is picked up.
+// withNoGateway unsets $ZUANO_URL and points $HOME at a fresh temp dir so
+// no ~/.config/zuano/config.json is picked up.
 func withNoGateway(t *testing.T) {
 	t.Helper()
-	t.Setenv("GATEWAY_URL", "")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ZUANO_URL", "")
+	isolateAgentEnv(t, t.TempDir())
+}
+
+// isolateAgentEnv points every place agent detection looks at an empty home, so
+// a test never sees the agents installed on the machine or runner it runs on.
+func isolateAgentEnv(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, k := range []string{"XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "OPENCODE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR"} {
+		t.Setenv(k, "")
+	}
 }
 
 func TestResolveGatewayURLOrFailClosed_EmptyDefault_FailsClosed(t *testing.T) {
@@ -84,7 +98,7 @@ func TestResolveGatewayURLOrFailClosed_UsesConfigFile(t *testing.T) {
 func TestSkillInstall_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
-	_, err := fetchFromGateway("res_never_reached", skillInstallOpts{})
+	_, _, err := fetchFromGateway("res_never_reached", skillInstallOpts{})
 	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Fatalf("expected offlineGuidance error, got: %v", err)
 	}
@@ -106,15 +120,6 @@ func TestPublish_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
 	_, _, err := resolvePublishDoerWithURL("")
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
-func TestSync_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
-	withNoGateway(t)
-
-	_, err := resolveSyncDoer("")
 	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Fatalf("expected offlineGuidance error, got: %v", err)
 	}
@@ -150,13 +155,13 @@ func TestCall_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 // ---- root --offline flag must fail closed regardless of a configured gateway ----
 
 // withOffline simulates the root --offline persistent flag being set (what
-// cmd/relay/main.go's PersistentPreRunE does after parsing --offline),
+// cmd/zuano/main.go's PersistentPreRunE does after parsing --offline),
 // restoring the previous value on cleanup. A configured, reachable gateway
 // (env var) is set up alongside it so these tests prove --offline wins even
 // when a gateway URL would otherwise resolve successfully.
 func withOffline(t *testing.T) {
 	t.Helper()
-	t.Setenv("GATEWAY_URL", "https://configured.example.com")
+	t.Setenv("ZUANO_URL", "https://configured.example.com")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
 }
@@ -256,32 +261,6 @@ func TestWhoami_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
 	}
 }
 
-func TestAuthorize_FailsClosedWhenNoGateway(t *testing.T) {
-	withNoGateway(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
-func TestAuthorize_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.T) {
-	withOffline(t)
-
-	cmd := AuthorizeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	err := cmd.RunE(cmd, []string{"google-workspace"})
-	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
-		t.Fatalf("expected offlineGuidance error, got: %v", err)
-	}
-}
-
 func TestHelpTools_FailsClosedWhenNoGateway(t *testing.T) {
 	withNoGateway(t)
 
@@ -340,27 +319,28 @@ func TestTokensList_OfflineFlag_FailsClosedEvenWithConfiguredGateway(t *testing.
 // --offline; only the server-side revoke is fail-closed ----
 
 func TestLogout_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t *testing.T) {
-	email := withLoggedInSession(t)
 	withOffline(t)
+	email, origin := withLoggedInSession(t, "https://configured.example.com")
 
 	cmd := LogoutCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		if err := cmd.RunE(cmd, nil); err != nil {
 			t.Fatalf("LogoutCmd offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}
-	if _, err := keychain.ReadToken(email); err == nil {
+	if _, err := keychain.ReadToken(origin, email); err == nil {
 		t.Errorf("expected the keychain entry for %s to be deleted", email)
 	}
 }
 
 func TestLogout_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
-	email := withLoggedInSession(t)
+	email, origin := withLoggedInSession(t, "https://arbitrary.example.com")
 	withNoGateway(t)
 
 	cmd := LogoutCmd()
@@ -373,34 +353,35 @@ func TestLogout_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
 	// The local keychain entry must survive: this is the "no gateway
 	// configured, not --offline" case, which is a plain resolution failure,
 	// not the caller explicitly asking to skip the server-side revoke.
-	if _, err := keychain.ReadToken(email); err != nil {
+	if _, err := keychain.ReadToken(origin, email); err != nil {
 		t.Errorf("expected the keychain entry for %s to survive a resolution failure, got: %v", email, err)
 	}
 }
 
 func TestTokensRevoke_OfflineFlag_SkipsServerRevokeButStillClearsLocalSession(t *testing.T) {
-	email := withLoggedInSession(t)
 	withOffline(t)
+	email, origin := withLoggedInSession(t, "https://configured.example.com")
 
 	cmd := TokensCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	stdout := captureStdout(t, func() {
+	captureStdout(t, func() {
 		cmd.SetArgs([]string{"revoke"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("tokens revoke offline: %v", err)
 		}
 	})
+	stdout := out.String()
 	if !strings.Contains(stdout, "Offline") || !strings.Contains(stdout, email) {
 		t.Errorf("expected offline-skip message mentioning %s, got: %q", email, stdout)
 	}
-	if _, err := keychain.ReadToken(email); err == nil {
+	if _, err := keychain.ReadToken(origin, email); err == nil {
 		t.Errorf("expected the keychain entry for %s to be deleted", email)
 	}
 }
 
 func TestTokensRevoke_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
-	email := withLoggedInSession(t)
+	email, origin := withLoggedInSession(t, "https://arbitrary.example.com")
 	withNoGateway(t)
 
 	cmd := TokensCmd()
@@ -411,7 +392,7 @@ func TestTokensRevoke_FailsClosedWhenNoGatewayConfigured(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Fatalf("expected offlineGuidance error, got: %v", err)
 	}
-	if _, err := keychain.ReadToken(email); err != nil {
+	if _, err := keychain.ReadToken(origin, email); err != nil {
 		t.Errorf("expected the keychain entry for %s to survive a resolution failure, got: %v", email, err)
 	}
 }

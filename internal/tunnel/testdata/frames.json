@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "valid": [
+    {"name": "hello with an empty payload", "type": 1, "flags": 0, "stream": 0, "payload": "", "frame": "010100000000000000000000"},
+    {"name": "hello_ack", "type": 2, "flags": 0, "stream": 0, "payload": "7b7d", "frame": "0102000000000000000000027b7d"},
+    {"name": "open on stream 7", "type": 3, "flags": 0, "stream": 7, "payload": "09", "frame": "01030000000000070000000109"},
+    {"name": "response header data frame", "type": 4, "flags": 1, "stream": 4294967295, "payload": "aabb", "frame": "01040100ffffffff00000002aabb"},
+    {"name": "end", "type": 5, "flags": 0, "stream": 258, "payload": "00", "frame": "01050000000001020000000100"},
+    {"name": "window", "type": 10, "flags": 0, "stream": 2, "payload": "7b7d", "frame": "010a000000000002000000027b7d"}
+  ],
+  "invalid": [
+    {"name": "shorter than the header", "frame": "0101"},
+    {"name": "version 2", "frame": "020100000000000000000000"},
+    {"name": "unknown type 0", "frame": "010000000000000000000000"},
+    {"name": "unknown type 11", "frame": "010b00000000000000000000"},
+    {"name": "reserved byte set", "frame": "010100010000000000000000"},
+    {"name": "length longer than the data", "frame": "01010000000000000000000500"},
+    {"name": "trailing bytes", "frame": "01010000000000000000000000"},
+    {"name": "length above 262144", "frame": "010400000000000100040001"}
+  ]
+}

@@ -1,0 +1,35 @@
+# Plans a policy change on every pull request and applies it when it is merged.
+# The job signs in with GitHub's OIDC token: no secret is stored. Set the
+# repository variable ZUANO_URL to the gateway's address.
+name: Policy
+on:
+  pull_request:
+    paths: ["zuano/**"]
+  push:
+    branches: [main]
+    paths: ["zuano/**"]
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    env:
+      ZUANO_URL: ${{ vars.ZUANO_URL }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: go install github.com/patrikmichi/zuano/cmd/zuano@latest
+      - name: Plan
+        if: github.event_name == 'pull_request'
+        run: |
+          zuano policy plan --dir zuano --format markdown --out plan.md
+          cat plan.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body-file plan.md
+      - name: Apply
+        if: github.event_name == 'push'
+        run: zuano policy apply --dir zuano --wait 600 --auto-approve

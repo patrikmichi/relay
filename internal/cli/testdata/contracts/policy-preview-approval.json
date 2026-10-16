@@ -1,0 +1,13 @@
+{
+  "service": "stripe",
+  "tool": "create_refund",
+  "risk": "write",
+  "principal": "cli_personal",
+  "decision": {
+    "mode": "approval",
+    "source": "org_tool_override",
+    "ruleId": "ovr_7",
+    "predicate": "amount <= 100",
+    "changeableBy": "org_admin"
+  }
+}

@@ -104,7 +104,7 @@ func TestNewPlatforms_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestNewPlatforms_MigrateFromClaude is the `relay skill
+// TestNewPlatforms_MigrateFromClaude is the `zuano skill
 // migrate x --from claude --to windsurf`-equivalent: a Claude skill
 // migrated to the new, YAML-only Windsurf provider projects a valid
 // SKILL.md with a correct lossiness report — Claude-only fields

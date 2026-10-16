@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>{{.Product}}: {{.Run.Suite}}</title>
+<style>
+body{font:14px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:72rem;padding:0 1rem;color:#1b1b1b}
+table{border-collapse:collapse;width:100%;margin:1rem 0}
+th,td{border-bottom:1px solid #ddd;padding:.35rem .6rem;text-align:left;vertical-align:top}
+th{background:#f5f5f5}
+.fail{color:#a40000}.pass{color:#0a6b2c}.muted{color:#666}
+pre{white-space:pre-wrap;margin:0;font:12px/1.4 ui-monospace,monospace}
+</style>
+</head>
+<body>
+<h1>{{.Product}}: {{.Run.Suite}}</h1>
+<p class="muted">Target {{.Run.Target}}, seed {{.Run.Seed}}, {{.Run.Repeats}} repeat(s), harness {{.Run.HarnessVersion}}, started {{.Run.Started.Format "2006-01-02 15:04:05 MST"}}</p>
+{{with .Run.Gate}}{{if .Passed}}<p class="pass"><strong>Passed</strong></p>{{else}}<p class="fail"><strong>Failed</strong></p><ul>{{range .Failures}}<li>{{.Message}} (exit {{.Exit}})</li>{{end}}</ul>{{end}}{{end}}
+{{range .Run.Warnings}}<p class="fail">Warning: {{.}}</p>{{end}}
+<h2>Models</h2>
+<table>
+<tr><th>Model</th><th>Split</th><th>Cases</th><th>Pass rate (95% CI)</th><th>Mean score</th><th>pass@k</th><th>pass^k</th><th>Errors</th><th>Cost</th></tr>
+{{range .Summaries}}<tr><td>{{.Cell}}</td><td>{{.Split}}</td><td>{{.N}}</td><td>{{pct .PassRate}} ({{pct .PassLow}} to {{pct .PassHigh}})</td><td>{{printf "%.3f" .Mean}}</td><td>{{printf "%.2f" .PassAtK}}</td><td>{{printf "%.2f" .PassPowK}}</td><td>{{.Errors}}</td><td>{{cost .CostNano}}</td></tr>
+{{end}}</table>
+{{if .Comparisons}}<h2>Against {{.Baseline}}</h2>
+<table>
+<tr><th>Model</th><th>Split</th><th>Pairs</th><th>Mean change (95% CI)</th><th>Wins / losses / ties</th><th>Corrected p</th><th>McNemar p</th></tr>
+{{range .Comparisons}}<tr><td>{{.B}}</td><td>{{.Split}}</td><td>{{.Pairs}}</td><td>{{printf "%+.3f" .MeanDelta}} ({{printf "%+.3f" .CILow}} to {{printf "%+.3f" .CIHigh}})</td><td>{{.Wins}} / {{.Losses}} / {{.Ties}}</td><td>{{printf "%.3f" .Adjusted}}{{if .Regression}} <span class="fail">regression</span>{{else if .Inconclusive}} <span class="muted">inconclusive, about {{.NeedPairs}} cases needed</span>{{end}}</td><td>{{printf "%.3f" .McNemarP}}</td></tr>
+{{end}}</table>{{end}}
+<h2>Failures and errors</h2>
+{{if .Failing}}<table>
+<tr><th>Model</th><th>Case</th><th>Repeat</th><th>Outcome</th><th>Why</th><th>Output</th></tr>
+{{range .Failing}}<tr><td>{{.Cell}}</td><td>{{.CaseName}}</td><td>{{.Repeat}}</td><td class="fail">{{.Outcome}}</td><td>{{.Reason}}</td><td><pre>{{.Output}}</pre></td></tr>
+{{end}}</table>{{else}}<p class="pass">Every case passed.</p>{{end}}
+</body>
+</html>

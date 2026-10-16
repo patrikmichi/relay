@@ -70,7 +70,7 @@ func TestManifest_PathLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("manifestPath: %v", err)
 	}
-	want := filepath.Join(home, ".config", "relay", "agentport-manifest.json")
+	want := filepath.Join(home, ".config", "zuano", "agentport-manifest.json")
 	if path != want {
 		t.Fatalf("manifestPath = %s, want %s", path, want)
 	}
@@ -192,7 +192,7 @@ func TestLoadManifest_PreKindFixtureDecodesAsSkill(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	dir := filepath.Join(home, ".config", "relay")
+	dir := filepath.Join(home, ".config", "zuano")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

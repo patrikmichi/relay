@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// HelpToolsCmd returns the `relay help-tools [service]` cobra command.
+// HelpToolsCmd returns the `zuano help-tools [service]` cobra command.
 // Prints all available tools (and their descriptions) for one or all services.
 //
 // Repointed off the aggregate `gateway.catalog` MCP call (POST /api/mcp),
@@ -27,9 +27,9 @@ func HelpToolsCmd() *cobra.Command {
 If no service is specified, prints tools for every accessible service.
 
 Examples:
-  relay help-tools                     # all services
-  relay help-tools clockify            # only clockify tools
-  relay help-tools google-workspace    # only Google Workspace tools`,
+  zuano help-tools                     # all services
+  zuano help-tools clockify            # only clockify tools
+  zuano help-tools google-workspace    # only Google Workspace tools`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
@@ -37,9 +37,12 @@ Examples:
 				return err
 			}
 
-			c := resolveClient(gURL)
+			c, err := resolveClient(gURL)
+			if err != nil {
+				return err
+			}
 
-			info, err := fetchIntegrations(c)
+			info, err := fetchIntegrations(c, cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetch integrations: %w", err)
 			}
@@ -47,8 +50,8 @@ Examples:
 				// Not authenticated / gateway unreachable — degrade gracefully
 				// rather than hard-failing (mirrors fetchIntegrations' 401
 				// contract: nil info, nil error).
-				fmt.Println("No accessible services found.")
-				fmt.Println("You can still use: relay services")
+				fmt.Fprintln(cmd.OutOrStdout(), "No accessible services found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "You can still use: zuano services")
 				return nil
 			}
 
@@ -80,8 +83,8 @@ Examples:
 				// here, in the filtered `targets` slice — so THIS is the
 				// check that must gate the fallback message.
 				if len(targets) == 0 {
-					fmt.Println("No accessible services found.")
-					fmt.Println("You can still use: relay services")
+					fmt.Fprintln(cmd.OutOrStdout(), "No accessible services found.")
+					fmt.Fprintln(cmd.OutOrStdout(), "You can still use: zuano services")
 					return nil
 				}
 			}
@@ -91,13 +94,13 @@ Examples:
 				if !svc.Accessible {
 					accessNote = "  (no access)"
 				}
-				fmt.Printf("\n%s (%d tools)%s\n", svc.ID, len(svc.Tools), accessNote)
-				fmt.Println(strings.Repeat("-", 40))
+				fmt.Fprintf(cmd.OutOrStdout(), "\n%s (%d tools)%s\n", svc.ID, len(svc.Tools), accessNote)
+				fmt.Fprintln(cmd.OutOrStdout(), strings.Repeat("-", 40))
 				for _, tool := range svc.Tools {
 					if tool.Description != "" {
-						fmt.Printf("  %-35s  %s\n", tool.Name, tool.Description)
+						fmt.Fprintf(cmd.OutOrStdout(), "  %-35s  %s\n", tool.Name, tool.Description)
 					} else {
-						fmt.Printf("  %s\n", tool.Name)
+						fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", tool.Name)
 					}
 				}
 			}
@@ -105,6 +108,6 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }

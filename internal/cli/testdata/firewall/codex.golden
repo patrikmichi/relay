@@ -1,0 +1,18 @@
+=== .codex/config.toml
+# >>> zuano-managed:begin mcp >>>
+[mcp_servers.zuano]
+url = "https://gw.example.com/api/mcp"
+http_headers = { X-Zuano-Install = "$INSTALL_ID" }
+
+[mcp_servers.docs]
+url = "https://gw.example.com/api/fw/docs/mcp"
+http_headers = { X-Zuano-Install = "$INSTALL_ID" }
+
+[mcp_servers.files]
+command = "zuano"
+args = ["mcp", "wrap", "--upstream", "files", "--", "npx", "-y", "@acme/files"]
+
+[mcp_servers.files.env]
+ROOT = "/srv"
+ZUANO_AGENT = "1"
+# <<< zuano-managed:end mcp <<<

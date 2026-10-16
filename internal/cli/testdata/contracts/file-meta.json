@@ -1,0 +1,1 @@
+{"file":{"id":"fil_abc123def456","name":"report.txt","content_type":"text/plain; charset=utf-8","size_bytes":11,"sha256":"2c8b3b4d5d0a7a5b0a3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192","state":"ready","created_via":"cli","shared_with_org":false,"expires_at":"2026-10-23T12:00:00.000Z","created_at":"2026-10-16T12:00:00.000Z","scan":{"verdict":"clean"}}}

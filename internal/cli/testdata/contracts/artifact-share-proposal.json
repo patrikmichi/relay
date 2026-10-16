@@ -1,0 +1,1 @@
+{"diff":{"gain":[{"principal_type":"user","principal_label":"bo@example.com","role":"viewer"}],"lose":[{"principal_type":"group","principal_label":"eng","role":"viewer"}],"public":{"before":false,"after":true}},"policy_revision":2}

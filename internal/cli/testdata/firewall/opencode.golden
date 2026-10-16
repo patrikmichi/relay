@@ -1,0 +1,41 @@
+=== .config/opencode/opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "zuano": {
+      "type": "remote",
+      "url": "https://gw.example.com/api/mcp",
+      "enabled": true,
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "docs": {
+      "type": "remote",
+      "url": "https://gw.example.com/api/fw/docs/mcp",
+      "enabled": true,
+      "headers": {
+        "X-Zuano-Install": "$INSTALL_ID"
+      }
+    },
+    "files": {
+      "type": "local",
+      "command": [
+        "zuano",
+        "mcp",
+        "wrap",
+        "--upstream",
+        "files",
+        "--",
+        "npx",
+        "-y",
+        "@acme/files"
+      ],
+      "enabled": true,
+      "environment": {
+        "ROOT": "/srv",
+        "ZUANO_AGENT": "1"
+      }
+    }
+  }
+}

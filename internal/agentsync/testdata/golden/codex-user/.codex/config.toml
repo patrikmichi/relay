@@ -1,0 +1,22 @@
+model = "gpt-5"
+
+[features]
+hooks = true
+
+# >>> zuano-managed:begin mcp >>>
+[mcp_servers.zuano]
+url = "https://gateway.example.com/api/mcp"
+bearer_token_env_var = "ZUANO_API_KEY"
+
+[mcp_servers.docs]
+command = "npx"
+args = ["-y", "@acme/docs-mcp"]
+
+[mcp_servers.docs.env]
+DOCS_REGION = "eu"
+# <<< zuano-managed:end mcp <<<
+
+# >>> zuano-managed:begin env >>>
+[shell_environment_policy.set]
+ZUANO_AGENT = "1"
+# <<< zuano-managed:end env <<<

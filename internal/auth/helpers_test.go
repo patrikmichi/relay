@@ -6,18 +6,18 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 func TestWriteToken_Success(t *testing.T) {
 	withTempHome(t)
 
-	if err := writeToken("user@example.com", "access-1", "refresh-1", 3600); err != nil {
+	if err := writeToken(keychain.ProfileHuman, "https://gw.example.com", "user@example.com", "access-1", "refresh-1", 3600); err != nil {
 		t.Fatalf("writeToken: %v", err)
 	}
 
-	tok, err := keychain.ReadToken("user@example.com")
+	tok, err := keychain.ReadToken("https://gw.example.com", "user@example.com")
 	if err != nil {
 		t.Fatalf("ReadToken: %v", err)
 	}
@@ -40,8 +40,21 @@ func TestWriteToken_PropagatesKeychainError(t *testing.T) {
 
 	keyring.MockInitWithError(errors.New("mock keychain failure"))
 
-	err := writeToken("user@example.com", "access-1", "refresh-1", 3600)
+	err := writeToken(keychain.ProfileHuman, "https://gw.example.com", "user@example.com", "access-1", "refresh-1", 3600)
 	if err == nil {
 		t.Fatal("expected error when the keychain write fails, got nil")
+	}
+}
+
+func TestWriteToken_RemovesUnboundSession(t *testing.T) {
+	withTempHome(t)
+	if err := keyring.Set("zuano-cli", "oauth-refresh-token:user@example.com", `{"access_token":"old"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeToken(keychain.ProfileHuman, "https://gw.example.com", "user@example.com", "access-1", "refresh-1", 3600); err != nil {
+		t.Fatalf("writeToken: %v", err)
+	}
+	if keychain.HasUnboundToken("user@example.com") {
+		t.Fatal("a device-flow login must remove the email-only session it replaces")
 	}
 }

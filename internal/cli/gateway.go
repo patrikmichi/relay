@@ -4,7 +4,7 @@ package cli
 import (
 	"errors"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 // offlineGuidance is the fail-closed degradation message shown whenever a
@@ -15,18 +15,9 @@ import (
 // logout, authorize) surfaces this single message so the guidance is
 // consistent CLI-wide. Local-only verbs (skill install <path>, skill
 // migrate) never reference it.
-const offlineGuidance = "no gateway configured. Run `relay config set-gateway <url>` then `relay login` to install from the catalog. Local `relay skill install <path>` and `relay skill migrate` work offline."
+const offlineGuidance = "no gateway configured. Run `zuano config set-gateway <url>` then `zuano login` to install from the catalog. Local `zuano skill install <path>` and `zuano skill migrate` work offline"
 
-// OfflineGuidance exposes offlineGuidance to cmd/relay/main.go, which needs
-// the exact same fail-closed message for one case this package's own
-// commands can't produce it for: `relay --offline <unregistered-dynamic-command>`.
-// With dynamic service/tool sub-command registration skipped under
-// --offline (main.go's PersistentPreRunE), cobra's own command resolution
-// fails the request with a generic "unknown command" error before any of
-// this package's RunE functions ever run — main.go rewrites that specific
-// error into this same offline guidance so the caller sees one consistent
-// message instead of two different-looking failures for the same root
-// cause. See main.go's rewriteOfflineUnknownCommandErr.
+// OfflineGuidance exposes offlineGuidance to cmd/zuano/main.go, which needs the exact same fail-closed message for one case this package's own commands can't produce it for: `zuano --offline <unregistered-dynamic-command>`.
 func OfflineGuidance() string { return offlineGuidance }
 
 // offlineFlag holds the process-wide state of the root `--offline`
@@ -39,7 +30,7 @@ func OfflineGuidance() string { return offlineGuidance }
 var offlineFlag bool
 
 // SetOffline sets the process-wide --offline state. Called once from
-// cmd/relay/main.go's root PersistentPreRunE.
+// cmd/zuano/main.go's root PersistentPreRunE.
 func SetOffline(v bool) { offlineFlag = v }
 
 // Offline reports whether --offline was passed at the root. Exported so
@@ -61,12 +52,27 @@ func resolveGatewayURLOrFailClosed(override string) (string, error) {
 	if Offline() {
 		return "", errors.New(offlineGuidance)
 	}
-	gURL := override
-	if gURL == "" {
-		gURL, _ = config.GatewayURL()
+	if override != "" {
+		return config.NormalizeGatewayURL(override)
+	}
+	gURL, err := config.GatewayURL()
+	if err != nil {
+		return "", err
 	}
 	if gURL == "" {
 		return "", errors.New(offlineGuidance)
 	}
 	return gURL, nil
+}
+
+// resolveGatewayIdentityLocal resolves and normalizes the gateway identity
+// from an explicit override or local config only — it never consults
+// --offline and never dials the network, because identifying which locally
+// cached session to remove is a filesystem-only operation. Used by
+// logout/tokens revoke's offline-safe local-delete path.
+func resolveGatewayIdentityLocal(override string) (string, error) {
+	if override != "" {
+		return config.NormalizeGatewayURL(override)
+	}
+	return config.GatewayURL()
 }

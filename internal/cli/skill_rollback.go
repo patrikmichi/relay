@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
-// SkillRollbackCmd returns the `relay skill rollback` cobra command —
+// SkillRollbackCmd returns the `zuano skill rollback` cobra command —
 // reverses a manifest-recorded install/migrate.
 func SkillRollbackCmd() *cobra.Command {
 	var (
@@ -23,8 +23,8 @@ wrote (verified against the recorded sha256 hashes — refuses to delete a
 file that has changed since, unless --force) and drop the manifest entry.
 
 Use --last to roll back the most recently recorded entry, or pass a
-manifest entry id (see 'relay skill list --provenance' or inspect
-~/.config/relay/agentport-manifest.json) to roll back a specific one.`,
+manifest entry id (see 'zuano skill list --provenance' or inspect
+~/.config/zuano/agentport-manifest.json) to roll back a specific one.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var id string
@@ -61,9 +61,9 @@ func runSkillRollback(cmd *cobra.Command, opts skillRollbackOpts) error {
 		// Kind-scoped, mirroring AgentRollbackCmd's runAgentRollback: the
 		// manifest ledger is shared between skill and agent entries, so a
 		// kind-agnostic "most recent entry" would silently roll back an
-		// AGENT entry (e.g. after `relay agent migrate` ran more recently
+		// AGENT entry (e.g. after `zuano agent migrate` ran more recently
 		// than any skill operation) when the caller explicitly asked for
-		// `relay skill rollback --last`.
+		// `zuano skill rollback --last`.
 		entry, ok = agentport.LastEntryOfKind(m, agentport.KindSkill)
 		if !ok {
 			return fmt.Errorf("no skill entries in the manifest — nothing to roll back")
@@ -74,7 +74,7 @@ func runSkillRollback(cmd *cobra.Command, opts skillRollbackOpts) error {
 			return fmt.Errorf("no manifest entry with id %q", opts.id)
 		}
 		if entry.Kind != agentport.KindSkill {
-			return fmt.Errorf("manifest entry %q is a %s entry, not a skill — use 'relay agent rollback' instead", opts.id, entry.Kind)
+			return fmt.Errorf("manifest entry %q is a %s entry, not a skill — use 'zuano agent rollback' instead", opts.id, entry.Kind)
 		}
 	}
 

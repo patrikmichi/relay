@@ -4,7 +4,7 @@
 #
 # Skill locations: global ~/.cline/skills/<name>/SKILL.md (primary — on
 # conflict, GLOBAL wins over project, the opposite of every other provider
-# here; relay has no cross-provider precedence concept, so this is a
+# here; zuano has no cross-provider precedence concept, so this is a
 # documented note, not something this config encodes); project
 # .cline/skills/<name>/SKILL.md (primary/recommended) and
 # .clinerules/skills/<name>/SKILL.md (Cline's own alternate project root —

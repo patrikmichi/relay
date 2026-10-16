@@ -1,0 +1,27 @@
+Send an email to someone (rcp_gmail_send)
+gmail · 3 steps · 1 pitfalls · platform · v3 · active
+Difficulty: easy (Two calls and one check)
+Use for: Send an email to a person by name or address
+Tools: gmail.send_email
+Related: gmail.create_draft
+
+Steps
+  1. gmail.search_contacts
+     Find the recipient's address from the name.
+     [risk read; idempotent]
+  2. gmail.send_email
+     Send the message to that address.
+     [risk outward; needs your approval; auto key]
+  3. gmail.create_draft (fallback for step 1: no contact matches)
+     Save a draft and ask who it is for.
+     [risk write; covered by your grant]
+
+Pitfalls
+  gmail.send_email
+    - The account lacks the send scope. [http_403, ACCESS_TOKEN_SCOPE_INSUFFICIENT]
+      Instead: Connect the account again with the send scope.
+
+Evidence: 97% succeeded over 1000+ runs, at least 94% with 95% confidence in the last 30 days
+Last eval: score 0.93, passed, 2026-10-15
+
+signature: verified (platform, key plat-2026-10)

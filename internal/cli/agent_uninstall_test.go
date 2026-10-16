@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 func TestAgentUninstall_RemovesFileAndManifestEntries(t *testing.T) {
@@ -252,17 +252,17 @@ func TestAgentUninstall_ManifestUpdateErrorPropagates(t *testing.T) {
 		t.Fatalf("RecordEntry: %v", err)
 	}
 
-	relayConfigDir := filepath.Join(home, ".config", "relay")
-	if err := os.Chmod(relayConfigDir, 0o555); err != nil {
+	zuanoConfigDir := filepath.Join(home, ".config", "zuano")
+	if err := os.Chmod(zuanoConfigDir, 0o555); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(relayConfigDir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(zuanoConfigDir, 0o755) })
 
 	cmd := AgentUninstallCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetArgs([]string{"reviewer", "--from", "claude", "--yes"})
 	if err := cmd.Execute(); err == nil {
-		t.Fatalf("expected a manifest-update error when ~/.config/relay is unwritable")
+		t.Fatalf("expected a manifest-update error when ~/.config/zuano is unwritable")
 	}
 }

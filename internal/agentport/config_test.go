@@ -8,7 +8,7 @@ import (
 
 // TestEmbeddedConfigsValid asserts every embedded providers/*.yml parses
 // and validates cleanly — a malformed shipped config must fail CI, not a
-// user's first `relay providers` invocation.
+// user's first `zuano providers` invocation.
 func TestEmbeddedConfigsValid(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -43,7 +43,7 @@ func TestLoadedProviderConfigs_UserOverrideWholeReplace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestLoadedProviderConfigs_InvalidOverrideFallsBackToEmbedded(t *testing.T) 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -116,7 +116,7 @@ frontmatter:
 }
 
 // TestLoadedProviderConfigs_ProjectOverrideGatedByFlag confirms
-// AllowProjectProviderOverrides defaults false and gates .relay/providers.
+// AllowProjectProviderOverrides defaults false and gates .zuano/providers.
 func TestLoadedProviderConfigs_ProjectOverrideGatedByFlag(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	origWd, err := os.Getwd()
@@ -133,7 +133,7 @@ func TestLoadedProviderConfigs_ProjectOverrideGatedByFlag(t *testing.T) {
 		t.Fatalf("AllowProjectProviderOverrides must default to false")
 	}
 
-	overrideDir := filepath.Join(root, ".relay", "providers")
+	overrideDir := filepath.Join(root, ".zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestLoadedProviderConfigs_ExtendsShallowOverlay(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	overrideDir := filepath.Join(home, ".config", "relay", "providers")
+	overrideDir := filepath.Join(home, ".config", "zuano", "providers")
 	if err := os.MkdirAll(overrideDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

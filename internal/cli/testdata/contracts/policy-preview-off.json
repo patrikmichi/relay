@@ -1,0 +1,13 @@
+{
+  "service": "stripe",
+  "tool": "create_refund",
+  "risk": "destructive",
+  "principal": "cli_personal",
+  "decision": {
+    "mode": "off",
+    "source": "default",
+    "ruleId": null,
+    "predicate": null,
+    "changeableBy": "org_admin"
+  }
+}

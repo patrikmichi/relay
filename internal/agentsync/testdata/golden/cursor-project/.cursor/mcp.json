@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "zuano": {
+      "url": "https://gateway.example.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:ZUANO_API_KEY}"
+      }
+    },
+    "docs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@acme/docs-mcp"
+      ],
+      "env": {
+        "DOCS_REGION": "eu"
+      }
+    }
+  }
+}

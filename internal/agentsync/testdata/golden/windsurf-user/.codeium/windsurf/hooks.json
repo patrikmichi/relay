@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "post_cascade_response": [
+      {
+        "command": "/opt/zuano/notify.sh",
+        "show_output": false
+      }
+    ],
+    "pre_run_command": [
+      {
+        "command": "/opt/zuano/guard.sh",
+        "show_output": false
+      }
+    ]
+  }
+}
