@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 func mustRun(t *testing.T, args ...string) string {

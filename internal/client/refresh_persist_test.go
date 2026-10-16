@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 type scriptedStore struct {

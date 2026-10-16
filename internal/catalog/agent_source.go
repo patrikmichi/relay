@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 // resourceDownloadPathPrefix is the generalized (skill+agent) download

@@ -3,7 +3,7 @@ package cli
 import (
 	"encoding/json"
 
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 const policyOffReason = "policy_off"

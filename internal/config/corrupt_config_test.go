@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 func TestGatewayURLFailsOnCorruptConfig(t *testing.T) {

@@ -17,9 +17,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/cli"
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/cli"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 // version, commit, and date are injected at build time via -ldflags (see

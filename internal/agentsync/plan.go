@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
 // Env locates the user's home and the project being synced. Tests point

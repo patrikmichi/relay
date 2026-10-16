@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // LogoutResult reports the two independently-outcomed halves of a logout:

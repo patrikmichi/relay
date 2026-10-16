@@ -15,9 +15,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/brand"
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 const jobIDPrefix = "job_"

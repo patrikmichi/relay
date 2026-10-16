@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 func TestProfilesStoreSeparateSessionsForOneAccount(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 func TestSkillList_EnumeratesInstalledSkills(t *testing.T) {

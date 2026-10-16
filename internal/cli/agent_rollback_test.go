@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 func TestAgentRollback_Last(t *testing.T) {

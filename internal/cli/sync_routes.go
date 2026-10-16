@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
-	"github.com/patrikmichi/relay/internal/agentsync"
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 // relaySource is the "from" of a route that writes settings (mcp, env, hooks,

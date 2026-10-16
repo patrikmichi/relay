@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport"
 )
 
 // AgentRollbackCmd returns the `relay agent rollback` cobra command —

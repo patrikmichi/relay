@@ -14,7 +14,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 func deviceGateway(t *testing.T, codeStatus int, codeBody string, token http.HandlerFunc) *httptest.Server {

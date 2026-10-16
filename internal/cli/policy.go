@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/keychain"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // principalKinds are the credential kinds the gateway's risk policy knows.

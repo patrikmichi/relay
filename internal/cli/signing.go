@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/catalog"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/signing"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/catalog"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/signing"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // signingPolicy builds the verification policy for a gateway from the keys

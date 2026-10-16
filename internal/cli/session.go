@@ -4,7 +4,7 @@ package cli
 import (
 	"errors"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // resolveClient builds an authenticated *client.Client for gateway calls

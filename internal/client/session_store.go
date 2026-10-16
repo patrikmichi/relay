@@ -3,8 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/patrikmichi/relay/internal/client/sessionlock"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/client/sessionlock"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // SessionStore abstracts persisted OAuth session storage — the OS keychain

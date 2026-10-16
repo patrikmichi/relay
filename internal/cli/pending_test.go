@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/agentsync"
 )
 
 // brokenMarkers are the reasons a sync cannot touch a file at all; they

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/auth"
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/auth"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // TokensCmd returns the `relay tokens` cobra command with list and revoke subcommands.

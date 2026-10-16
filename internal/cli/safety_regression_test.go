@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport"
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 // Writing a new bundle version doesn't reconcile the previous file

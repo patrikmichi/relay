@@ -23,7 +23,7 @@ func TestBuildVersionString_Defaults(t *testing.T) {
 
 func TestModuleVersion(t *testing.T) {
 	withMain := func(v string) *debug.BuildInfo {
-		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/patrikmichi/relay", Version: v}}
+		return &debug.BuildInfo{Main: debug.Module{Path: "github.com/patrikmichi/zuano", Version: v}}
 	}
 	cases := []struct {
 		name     string

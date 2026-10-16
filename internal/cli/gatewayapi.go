@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // gatewayJSON sends one control request and decodes a 200 response into out

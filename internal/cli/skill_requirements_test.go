@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/agentsync"
 )
 
 // requirementsGateway serves a catalog skill (res_req) that needs the

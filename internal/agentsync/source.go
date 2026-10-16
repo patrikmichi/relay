@@ -15,7 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
 // SourceDir is where relay reads what to sync: ~/.config/relay/sync for the

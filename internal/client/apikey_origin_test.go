@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 func apiKeyEnv(t *testing.T, savedGateway, boundOrigin string) {

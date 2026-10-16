@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/dpop"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // deviceBinding is the device key a login offers the gateway. An organisation

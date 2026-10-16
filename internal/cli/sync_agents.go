@@ -14,9 +14,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/patrikmichi/relay/internal/agentsync"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 const (

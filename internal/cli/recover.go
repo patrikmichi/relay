@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
 // RecoverCmd returns `relay recover [id]` — inspects and completes or

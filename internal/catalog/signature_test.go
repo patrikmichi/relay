@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/signing"
+	"github.com/patrikmichi/zuano/internal/signing"
 )
 
 // The verdict is the one in the gateway's signing reference; its header form

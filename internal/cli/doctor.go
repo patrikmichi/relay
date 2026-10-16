@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/agentport"
-	"github.com/patrikmichi/relay/internal/agentport/txn"
-	"github.com/patrikmichi/relay/internal/brand"
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/dpop"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-module github.com/patrikmichi/relay
+module github.com/patrikmichi/zuano
 
 // Compiler support policy: track the latest two upstream Go major
 // releases (https://go.dev/doc/devel/release#policy). Bump the `go` line

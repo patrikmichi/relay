@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/zuano/internal/agentport/txn"
 )
 
 func TestLedgerSaveKeepsAConcurrentSyncsEntries(t *testing.T) {

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // The step-up wait is a variable so tests can shorten it.

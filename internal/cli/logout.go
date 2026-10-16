@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/auth"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/auth"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // LogoutCmd returns the `relay logout` cobra command.

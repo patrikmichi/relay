@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 // A key reference is "<backend>:<id>". The backends are the file store here

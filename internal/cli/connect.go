@@ -17,8 +17,8 @@ import (
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 var errTokenRevoked = errors.New("token expired or revoked — run `relay login` to re-authenticate")

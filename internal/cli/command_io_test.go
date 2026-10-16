@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 func TestCommandDoerKeepsResponseReadableAndHonorsCancellation(t *testing.T) {

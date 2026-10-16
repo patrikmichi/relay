@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 func TestCatalogDiscoveryHonorsCancellation(t *testing.T) {

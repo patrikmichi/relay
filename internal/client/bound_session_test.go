@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/dpop"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 type seen struct {

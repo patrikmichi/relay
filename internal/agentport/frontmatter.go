@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/patrikmichi/relay/internal/nofollow"
+	"github.com/patrikmichi/zuano/internal/nofollow"
 )
 
 // splitFrontmatter splits a SKILL.md's raw content into the YAML frontmatter

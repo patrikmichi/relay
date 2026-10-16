@@ -14,8 +14,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 type memoryStore struct {

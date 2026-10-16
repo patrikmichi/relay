@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/agentsync"
 )
 
 func runWithInput(t *testing.T, cmd *cobra.Command, input string, args ...string) (string, error) {

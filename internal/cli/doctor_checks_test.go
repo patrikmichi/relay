@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 func doctorCheckNamed(t *testing.T, output, name string) doctorCheck {

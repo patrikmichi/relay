@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // writeToken is a shared helper to write a token to the OS keychain — bound

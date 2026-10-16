@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/agentport"
-	"github.com/patrikmichi/relay/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/agentport"
+	"github.com/patrikmichi/zuano/internal/agentsync"
 )
 
 type skillSyncOpts struct {

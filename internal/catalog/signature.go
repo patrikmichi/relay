@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/signing"
+	"github.com/patrikmichi/zuano/internal/signing"
 )
 
 // Option adjusts how a download is verified.

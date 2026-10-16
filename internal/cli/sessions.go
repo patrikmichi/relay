@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/brand"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // sessionDoc mirrors one entry of GET /api/me/sessions.

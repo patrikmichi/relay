@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/agentsync"
+	"github.com/patrikmichi/zuano/internal/agentsync"
 )
 
 func TestMcpInstallDirectServerThenRemove(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/signing"
+	"github.com/patrikmichi/zuano/internal/signing"
 )
 
 // These bodies have the shapes the gateway routes build, so a drift between a

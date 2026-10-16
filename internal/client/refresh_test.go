@@ -10,9 +10,9 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // init installs a mock keyring so these tests never touch the real OS keychain.

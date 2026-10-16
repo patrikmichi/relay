@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/keychain"
 	"github.com/zalando/go-keyring"
 )
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 var usageDay = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)

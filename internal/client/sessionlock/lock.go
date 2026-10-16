@@ -20,8 +20,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/nofollow"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/nofollow"
 )
 
 // pollInterval is how often Acquire retries a non-blocking lock attempt

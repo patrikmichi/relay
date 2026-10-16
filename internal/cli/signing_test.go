@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/signing"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/signing"
 )
 
 const pluginVerdictJSON = `{"ai_scan":"pass","sast":"pass","schema":"pass","secrets":"pass","skillspector":"pass","static_scan":"na"}`

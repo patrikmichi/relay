@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/zuano/internal/client"
 )
 
 func withTimeoutFlag(t *testing.T, d time.Duration) {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/client"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 	"github.com/spf13/cobra"
 )
 

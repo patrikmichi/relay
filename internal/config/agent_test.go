@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/zuano/internal/config"
 )
 
 func TestAgentMode(t *testing.T) {

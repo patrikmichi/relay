@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/patrikmichi/relay/internal/brand"
-	"github.com/patrikmichi/relay/internal/config"
-	"github.com/patrikmichi/relay/internal/dpop"
-	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/brand"
+	"github.com/patrikmichi/zuano/internal/config"
+	"github.com/patrikmichi/zuano/internal/dpop"
+	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
 // ErrNotLoggedIn is returned by Resolve when neither GATEWAY_API_KEY nor a

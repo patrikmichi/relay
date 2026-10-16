@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/patrikmichi/relay/internal/keychain"
-	"github.com/patrikmichi/relay/internal/textsafe"
+	"github.com/patrikmichi/zuano/internal/keychain"
+	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
 // gatewayMessage reads the human message out of a gateway error body, which is
