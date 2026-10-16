@@ -33,7 +33,7 @@ scoop bucket add patrikmichi https://github.com/patrikmichi/scoop-bucket
 scoop install patrikmichi/relay
 ```
 
-**Go install:**
+**Go install** (requires Go 1.26 or newer):
 
 ```bash
 go install github.com/patrikmichi/relay/cmd/relay@latest
