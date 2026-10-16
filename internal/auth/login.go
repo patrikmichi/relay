@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -23,8 +24,11 @@ import (
 )
 
 const (
-	loginTimeout = 120 * time.Second
-	cliClientID  = "relay-cli"
+	// loginTimeout is how long the person has to sign in; exchangeTimeout
+	// then bounds the token request on its own.
+	loginTimeout    = 120 * time.Second
+	exchangeTimeout = 30 * time.Second
+	cliClientID     = "relay-cli"
 )
 
 // openBrowser launches the system browser to the given URL. A package-level
@@ -74,7 +78,10 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
+	// Waiting for the person in the browser and exchanging the code have
+	// their own limits: a slow sign-in must not leave the exchange no time.
+	parent := ctx
+	ctx, cancel := context.WithTimeout(parent, loginTimeout)
 	defer cancel()
 
 	verifier, challenge, err := generatePKCE()
@@ -130,11 +137,19 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 	case err := <-errCh:
 		return nil, err
 	case <-ctx.Done():
+		if errors.Is(parent.Err(), context.Canceled) {
+			return nil, fmt.Errorf("login cancelled")
+		}
 		return nil, fmt.Errorf("login timed out after %s", loginTimeout)
 	}
 
-	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI)
+	exchangeCtx, cancelExchange := context.WithTimeout(parent, exchangeTimeout)
+	defer cancelExchange()
+	resp, err := exchangeCodeContext(exchangeCtx, origin, authCode, verifier, redirectURI)
 	if err != nil {
+		if errors.Is(parent.Err(), context.Canceled) {
+			return nil, fmt.Errorf("login cancelled")
+		}
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 

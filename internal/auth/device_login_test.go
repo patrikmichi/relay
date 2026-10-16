@@ -155,7 +155,7 @@ func TestPollDeviceToken_UnreachableEndpoint(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 
-	_, err := pollDeviceToken(context.Background(), url, "dev-1", 1)
+	_, err := pollDeviceToken(context.Background(), url, "dev-1", 0)
 	if err == nil || !strings.Contains(err.Error(), "poll device token") {
 		t.Fatalf("got %v, want a poll error", err)
 	}
@@ -166,8 +166,8 @@ func TestPollDeviceToken_AlreadyCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := pollDeviceToken(ctx, "http://127.0.0.1:1", "dev-1", 1)
-	if err == nil || !strings.Contains(err.Error(), "timed out") {
-		t.Fatalf("got %v, want a timeout", err)
+	if err == nil || !strings.Contains(err.Error(), "cancelled") || strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("got %v, want a cancellation, not a timeout", err)
 	}
 }
 

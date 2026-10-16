@@ -204,6 +204,53 @@ func TestPollDeviceToken_UnexpectedStatus(t *testing.T) {
 	}
 }
 
+func TestPollDeviceToken_RetriesTransientFailuresThenSucceeds(t *testing.T) {
+	withTempHome(t)
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch hits.Add(1) {
+		case 1:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case 2:
+			w.WriteHeader(http.StatusTooManyRequests)
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "a", "refresh_token": "r", "email": "user@example.com", "expires_in": 3600})
+		}
+	}))
+	defer srv.Close()
+
+	result, err := pollDeviceToken(context.Background(), srv.URL, "device-code-1", 0)
+	if err != nil || result.Email != "user@example.com" || hits.Load() != 3 {
+		t.Fatalf("result = %+v, err = %v, hits = %d", result, err, hits.Load())
+	}
+}
+
+func TestPollDeviceToken_GivesUpAfterRepeatedNetworkErrors(t *testing.T) {
+	withTempHome(t)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close() // nothing listens any more
+
+	_, err := pollDeviceToken(context.Background(), url, "device-code-1", 0)
+	if err == nil || !strings.Contains(err.Error(), "poll device token") {
+		t.Fatalf("err = %v, want the network error after the retries", err)
+	}
+}
+
+func TestPollDeviceToken_RefusalIsNotRetried(t *testing.T) {
+	withTempHome(t)
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"access_denied"}`))
+	}))
+	defer srv.Close()
+	if _, err := pollDeviceToken(context.Background(), srv.URL, "device-code-1", 0); err == nil || hits.Load() != 1 {
+		t.Fatalf("err = %v, hits = %d, want one request and an error", err, hits.Load())
+	}
+}
+
 func TestPollDeviceToken_ContextCancelledWhilePending(t *testing.T) {
 	withTempHome(t)
 

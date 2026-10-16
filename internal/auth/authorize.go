@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,19 @@ const maxAuthResponseBytes = 1 << 20 // 1 MiB
 const defaultDeviceFlowTimeout = 15 * time.Minute
 
 var slowDownIncrementSecs = 5
+
+// maxDevicePollFailures is how many polls in a row may fail with a network
+// error, 429 or 5xx before the login gives up.
+const maxDevicePollFailures = 5
+
+// deviceStopped says why the poll ended: the code's lifetime ran out, or the
+// person interrupted the login (Ctrl-C).
+func deviceStopped(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("device login timed out")
+	}
+	return fmt.Errorf("device login cancelled")
+}
 
 // DeviceCodeResponse is the JSON returned by /api/cli/device/code.
 type DeviceCodeResponse struct {
@@ -182,10 +196,24 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int, profile keychain.Profile) (*LoginResult, error) {
 	tokenEndpoint := fmt.Sprintf("%s/api/cli/device/token", strings.TrimRight(gatewayURL, "/"))
 
+	failures := 0
+	// retry waits before the next poll after a failure that may pass, backing
+	// off, and gives up after maxDevicePollFailures in a row.
+	retry := func(cause error) error {
+		failures++
+		if failures > maxDevicePollFailures {
+			return cause
+		}
+		if !waitOrDone(ctx, intervalSecs<<min(failures-1, 3)) {
+			return deviceStopped(ctx)
+		}
+		return nil
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("device login timed out")
+			return nil, deviceStopped(ctx)
 		default:
 		}
 
@@ -202,14 +230,25 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 		resp, err := client.NoRedirectHTTPClient().Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, fmt.Errorf("device login timed out")
+				return nil, deviceStopped(ctx)
 			}
-			return nil, fmt.Errorf("poll device token: %w", err)
+			if stop := retry(fmt.Errorf("poll device token: %w", err)); stop != nil {
+				return nil, stop
+			}
+			continue
 		}
 
 		var dtr deviceTokenResponse
 		decodeErr := decodeJSONCapped(resp.Body, &dtr)
 		_ = resp.Body.Close()
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError {
+			if stop := retry(fmt.Errorf("device token endpoint unavailable (HTTP %d)", resp.StatusCode)); stop != nil {
+				return nil, stop
+			}
+			continue
+		}
+		failures = 0
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
@@ -239,14 +278,14 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 			resp.StatusCode == http.StatusRequestTimeout,
 			resp.StatusCode == http.StatusPreconditionRequired:
 			if !waitOrDone(ctx, intervalSecs) {
-				return nil, fmt.Errorf("device login timed out")
+				return nil, deviceStopped(ctx)
 			}
 			continue
 
 		case dtr.Error == "slow_down":
 			intervalSecs += slowDownIncrementSecs
 			if !waitOrDone(ctx, intervalSecs) {
-				return nil, fmt.Errorf("device login timed out")
+				return nil, deviceStopped(ctx)
 			}
 			continue
 
