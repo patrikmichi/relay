@@ -419,7 +419,7 @@ a gateway.
 | `zuano connect <slug>` | gateway | Link your account: API-key prompt, or the OAuth consent flow in your browser |
 | `zuano authorize <service> --tool <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `zuano help-tools [service]` | gateway | List tools for one or all services |
-| `zuano call <service> <tool> [--arg k=v] [--arg-json k=<json>] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
+| `zuano call <service> <tool> [--arg k=v] [--arg-json k=<json>] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result; an approval page the gateway asks you to visit is opened (`--no-browser` prints it) and the call retried once approved |
 | `zuano explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
 | `zuano approvals list\|show\|approve\|deny\|wait` | gateway | List held calls, open the page where one is approved or denied with a passkey (`--no-browser` prints a link and QR code), or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
 | `zuano billing status\|usage\|open` | gateway | Show the plan, seats and spend cap, metered usage against allowances (`--meter`, `--period`, `--by`), or open the billing page; a request the plan refuses exits 30 to 33 with the upgrade link ([docs/reference/billing.md](docs/reference/billing.md)) |
@@ -440,6 +440,7 @@ a gateway.
 | `zuano sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |
 | `zuano mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
 | `zuano mcp remove <name> [--to <agents>]` | local | Remove an MCP server zuano registered |
+| `zuano mcp link claude-ai\|chatgpt [--directory]` | gateway | Print the prefilled link (Claude) or the endpoint and steps (ChatGPT) to add the gateway as a connector (org admins) |
 
 ### Catalog: publish, search, inspect
 

@@ -356,7 +356,7 @@ and 'zuano mcp remove' write to the agents' own MCP config (~/.claude.json,
 ~/.codex/config.toml, .cursor/mcp.json, ...) and never touch entries you
 created; 'zuano sync' keeps them current.`,
 	}
-	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd(), McpInstallCmd(), McpRemoveCmd())
+	mcp.AddCommand(mcpPublishCmd(), McpListCmd(), McpInspectCmd(), McpInstallCmd(), McpRemoveCmd(), mcpLinkCmd())
 	return mcp
 }
 
