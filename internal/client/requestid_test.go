@@ -20,7 +20,7 @@ func TestNewULID_EncodesTimeAndEntropy(t *testing.T) {
 		t.Fatalf("ulid = %q", a)
 	}
 	b, _ := newULID(at.Add(time.Second), bytes.NewReader(make([]byte, 10)))
-	if !(a < b) {
+	if a >= b {
 		t.Errorf("ids do not sort by time: %s %s", a, b)
 	}
 	c, _ := newULID(at, bytes.NewReader([]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255}))

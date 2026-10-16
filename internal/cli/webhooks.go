@@ -298,7 +298,7 @@ gateway validates them. Use - to read the definition from standard input.`,
 			if file == "" {
 				return errors.New("--from-file is required")
 			}
-			var r io.Reader = cmd.InOrStdin()
+			r := cmd.InOrStdin()
 			if file != "-" {
 				fh, err := os.Open(file)
 				if err != nil {

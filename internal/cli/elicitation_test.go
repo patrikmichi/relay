@@ -31,8 +31,8 @@ func newElicitationGateway(t *testing.T, decision string, pageHost string) *elic
 	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.mu.Lock()
 		defer g.mu.Unlock()
-		switch {
-		case r.URL.Path == "/api/stripe/mcp":
+		switch r.URL.Path {
+		case "/api/stripe/mcp":
 			raw, _ := io.ReadAll(r.Body)
 			var rpc struct {
 				Method string         `json:"method"`
@@ -63,7 +63,7 @@ func newElicitationGateway(t *testing.T, decision string, pageHost string) *elic
 			default:
 				w.WriteHeader(http.StatusAccepted)
 			}
-		case r.URL.Path == "/api/approvals/apr_1":
+		case "/api/approvals/apr_1":
 			g.polls++
 			status := "pending"
 			if g.polls >= 2 {

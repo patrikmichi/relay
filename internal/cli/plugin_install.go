@@ -297,7 +297,7 @@ func (s *pluginSession) installFor(cmd *cobra.Command, a *pluginAgent, name, ver
 	}
 	res.Version = vp.entry.Version
 	prior, hadPrior := s.ledger.Get(name, a.id)
-	if len(vp.commands) > 0 && !(hadPrior && prior.CommandsSHA256 == vp.commandsDigest()) {
+	if len(vp.commands) > 0 && (!hadPrior || prior.CommandsSHA256 != vp.commandsDigest()) {
 		if err := s.approveCommands(cmd, name, vp, opts); err != nil {
 			res.Error = err.Error()
 			return res, err

@@ -317,7 +317,7 @@ func TestPluginInstall_ATamperedOrForeignSignedPackageExits4AndInstallsNothing(t
 
 func TestPluginInstall_ClaudeRegistersTheFeedAndRunsTheAgentsOwnInstaller(t *testing.T) {
 	newPluginGW(t)
-	ran := fakeAgentBinaries(t)
+	fakeAgentBinaries(t)
 	if out, err := runCommand(t, PluginCmd(), "install", "toolkit", "--to", "claude", "--allow-hooks"); err == nil || !strings.Contains(out, "claude was not found") {
 		t.Fatalf("missing binary: %v\n%s", err, out)
 	}
@@ -325,7 +325,7 @@ func TestPluginInstall_ClaudeRegistersTheFeedAndRunsTheAgentsOwnInstaller(t *tes
 		t.Fatal("settings were edited although claude is not installed")
 	}
 
-	ran = fakeAgentBinaries(t, "claude")
+	ran := fakeAgentBinaries(t, "claude")
 	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(settings), 0o700); err != nil {
 		t.Fatal(err)
