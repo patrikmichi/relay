@@ -62,6 +62,7 @@ with your own, unmarked session (relay approvals approve).`,
 					return fmt.Errorf("login failed: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s%s\n", result.Email, suffix)
+				pinLoginKeys(ctx, resolvedURL, cmd.OutOrStdout())
 				return nil
 			}
 
@@ -71,6 +72,7 @@ with your own, unmarked session (relay approvals approve).`,
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Logged in as %s%s\n", result.Email, suffix)
+			pinLoginKeys(ctx, resolvedURL, cmd.OutOrStdout())
 			return nil
 		},
 	}

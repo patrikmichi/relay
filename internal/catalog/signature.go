@@ -33,6 +33,13 @@ func newFetchOptions(opts []Option) fetchOptions {
 	return o
 }
 
+// VerifyDownload checks the signature headers of any gateway download (a
+// plugin bundle, for one) the same way FetchSkill checks a skill. label names
+// it in warnings; requestedVersion, when set, must be the signed version.
+func VerifyDownload(policy signing.Policy, warn io.Writer, h http.Header, body []byte, label, requestedVersion string) error {
+	return fetchOptions{policy: policy, warn: warn, check: true}.verify(h, body, label, requestedVersion)
+}
+
 // verify checks the signature headers of a download whose body has already
 // matched its content hash. A signed download must also carry the id and
 // version it is signed for, and an exact requested version must be the one

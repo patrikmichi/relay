@@ -15,7 +15,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/agentport/txn"
+	"github.com/patrikmichi/relay/internal/catalog"
 	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/signing"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 // maxResponseBytes is the per-response read cap (10 MiB).
@@ -71,6 +74,7 @@ func syncCmdWithDoer(doer syncDoer) *cobra.Command {
 		gatewayURL  string
 		marketplace bool
 		matrix      bool
+		requireSig  bool
 	)
 
 	cmd := &cobra.Command{
@@ -151,13 +155,23 @@ Examples:
 				return nil
 			}
 			d := doer
+			var verify *syncVerify
 			if d == nil {
 				d, err = resolveSyncDoer(gatewayURL)
 				if err != nil {
 					return err
 				}
+				gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
+				if err != nil {
+					return err
+				}
+				policy, err := signingPolicy(gURL, requireSig)
+				if err != nil {
+					return err
+				}
+				verify = &syncVerify{policy: policy, warn: cmd.ErrOrStderr()}
 			}
-			return runSync(commandDoer{d, cmd.Context()}, customDir, o.dryRun, out)
+			return runSyncVerified(commandDoer{d, cmd.Context()}, customDir, o.dryRun, verify, out)
 		},
 	}
 
@@ -175,6 +189,7 @@ Examples:
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
 	f.BoolVar(&marketplace, "marketplace", false, "Also pull the gateway's Claude Code plugin marketplace")
 	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $GATEWAY_URL, then the config file)")
+	f.BoolVar(&requireSig, "require-signature", false, "With --marketplace: refuse plugin bundles the gateway did not sign")
 	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/relay/marketplace/<name>/)")
 	return cmd
 }
@@ -200,8 +215,33 @@ func resolveSyncDoer(overrideURL string) (syncDoer, error) {
 
 // ---- Core sync logic ----
 
-// runSync implements the sync workflow.
+// syncVerify checks the gateway's signatures on plugin bundles.
+type syncVerify struct {
+	policy signing.Policy
+	warn   io.Writer
+}
+
+// check verifies one plugin bundle against its manifest id and version.
+func (v *syncVerify) check(h http.Header, raw []byte, id, version string) error {
+	if v == nil {
+		return nil
+	}
+	if err := catalog.VerifyDownload(v.policy, v.warn, h, raw, "plugin "+id, version); err != nil {
+		return err
+	}
+	if h.Get(signing.HeaderSignature) != "" && h.Get("X-Skill-Catalog-Id") != id {
+		return fmt.Errorf("plugin %s is signed for %q, not for this plugin", id, textsafe.Clean(h.Get("X-Skill-Catalog-Id")))
+	}
+	return nil
+}
+
+// runSync implements the sync workflow without signature checks.
 func runSync(d syncDoer, customDir string, dryRun bool, writers ...io.Writer) error {
+	return runSyncVerified(d, customDir, dryRun, nil, writers...)
+}
+
+// runSyncVerified is runSync checking plugin bundles against verify.
+func runSyncVerified(d syncDoer, customDir string, dryRun bool, verify *syncVerify, writers ...io.Writer) error {
 	out := outputWriter(writers)
 
 	manifest, rawManifest, err := fetchManifest(d)
@@ -258,10 +298,13 @@ func runSync(d syncDoer, customDir string, dryRun bool, writers ...io.Writer) er
 			return fmt.Errorf("plugin id %q would escape the plugins directory", id)
 		}
 
-		rawPlugin, err := fetchPlugin(d, id, rev)
+		rawPlugin, header, err := fetchPlugin(d, id, rev)
 		if err != nil {
 			// Append retry guidance.
 			return fmt.Errorf("fetch plugin %s: %w — re-run `relay sync` to retry", id, err)
+		}
+		if err := verify.check(header, rawPlugin, id, rev); err != nil {
+			return fmt.Errorf("plugin %s: %w", id, err)
 		}
 
 		if err := writePluginBundle(localDir, id, pluginDir, rawPlugin); err != nil {
@@ -270,10 +313,13 @@ func runSync(d syncDoer, customDir string, dryRun bool, writers ...io.Writer) er
 	}
 
 	// Step 5: fetch and write managed-settings.
-	rawSettings, err := fetchManagedSettings(d, localDir)
+	rawSettings, err := fetchManagedSettings(d)
 	if err != nil {
 		return fmt.Errorf("fetch managed-settings: %w", err)
 	}
+	// The gateway does not sign this fragment, and the guidance below tells
+	// the reader to merge it into managed settings, so it is shown in full.
+	fmt.Fprintf(out, "Managed-settings fragment from the gateway (unsigned; read it before you merge it anywhere):\n%s\n\n", textsafe.Block(strings.TrimSpace(string(rawSettings))))
 	if err := writeFile(filepath.Join(localDir, "managed-settings.fragment.json"), rawSettings); err != nil {
 		return fmt.Errorf("write managed-settings.fragment.json: %w", err)
 	}
@@ -364,29 +410,29 @@ func fetchManifest(d syncDoer) (marketplaceManifest, []byte, error) {
 
 // fetchPlugin calls GET /api/marketplace/plugin/<id>/<rev> and returns the raw bytes.
 // id and rev are URL-path-escaped to prevent request hijacking.
-func fetchPlugin(d syncDoer, id, rev string) ([]byte, error) {
+func fetchPlugin(d syncDoer, id, rev string) ([]byte, http.Header, error) {
 	// Escape both id and rev so slashes / dots in rev cannot redirect the request.
 	path := "/api/marketplace/plugin/" + url.PathEscape(id) + "/" + url.PathEscape(rev)
 	resp, err := d.Get(path)
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", path, err)
+		return nil, nil, fmt.Errorf("GET %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("not authenticated — run `relay login` first")
+		return nil, nil, fmt.Errorf("not authenticated — run `relay login` first")
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-		return nil, fmt.Errorf("GET %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, nil, fmt.Errorf("GET %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	// Cap response body.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("read plugin response: %w", err)
+		return nil, nil, fmt.Errorf("read plugin response: %w", err)
 	}
-	return raw, nil
+	return raw, resp.Header, nil
 }
 
 // syncTxnTimeout bounds how long a plugin bundle write waits for another
@@ -460,10 +506,11 @@ func writePluginBundle(localDir, pluginID, pluginDir string, raw []byte) error {
 	return tx.Commit(func() error { return saveOwnedFiles(localDir, pluginID, newOwned) })
 }
 
-// fetchManagedSettings calls GET /api/marketplace/managed-settings?localDir=<abs> and returns raw bytes.
-func fetchManagedSettings(d syncDoer, localDir string) ([]byte, error) {
-	q := url.QueryEscape(localDir)
-	path := "/api/marketplace/managed-settings?localDir=" + q
+// fetchManagedSettings calls GET /api/marketplace/managed-settings and returns
+// raw bytes. The local directory is not sent: where the marketplace lives on
+// this machine is none of the gateway's business.
+func fetchManagedSettings(d syncDoer) ([]byte, error) {
+	path := "/api/marketplace/managed-settings"
 	resp, err := d.Get(path)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", path, err)

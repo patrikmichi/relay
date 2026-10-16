@@ -22,6 +22,7 @@ func AgentInstallCmd() *cobra.Command {
 		version    string
 		channel    string
 		gatewayURL string
+		requireSig bool
 	)
 
 	cmd := &cobra.Command{
@@ -41,6 +42,7 @@ All targets use migration fidelity checks, overwrite protection, history and rol
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
+				requireSig: requireSig,
 			})
 		},
 	}
@@ -53,6 +55,7 @@ All targets use migration fidelity checks, overwrite protection, history and rol
 	cmd.Flags().StringVar(&version, "version", "", "Exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "stable or beta (default: gateway's default channel)")
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().BoolVar(&requireSig, "require-signature", false, "Refuse a download the gateway did not sign")
 
 	return cmd
 }
@@ -66,6 +69,7 @@ type agentInstallOpts struct {
 	version    string
 	channel    string
 	gatewayURL string
+	requireSig bool
 }
 
 func runAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts) error {
@@ -125,7 +129,11 @@ func fetchAgentFromGateway(catalogID string, opts agentInstallOpts) (*agentport.
 		return nil, err
 	}
 
-	agent, err := catalog.FetchAgent(c, catalogID, opts.version, opts.channel)
+	verify, err := signingOption(gURL, opts.requireSig)
+	if err != nil {
+		return nil, err
+	}
+	agent, err := catalog.FetchAgent(c, catalogID, opts.version, opts.channel, verify)
 	if err != nil {
 		return nil, translateGatewayFetchError(catalogID, err)
 	}

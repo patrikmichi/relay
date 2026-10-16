@@ -33,6 +33,7 @@ func SkillInstallCmd() *cobra.Command {
 		version    string
 		channel    string
 		gatewayURL string
+		requireSig bool
 		reqs       requirementOpts
 	)
 
@@ -87,6 +88,7 @@ Examples:
 				version:    version,
 				channel:    channel,
 				gatewayURL: gatewayURL,
+				requireSig: requireSig,
 				reqs:       reqs,
 			})
 		},
@@ -103,6 +105,7 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "Catalog install only: exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "Catalog install only: stable or beta (default: gateway's default channel)")
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().BoolVar(&requireSig, "require-signature", false, "Catalog install only: refuse a download the gateway did not sign")
 
 	return cmd
 }
@@ -116,6 +119,7 @@ type skillInstallOpts struct {
 	version    string
 	channel    string
 	gatewayURL string
+	requireSig bool
 	reqs       requirementOpts
 }
 
@@ -208,7 +212,11 @@ func fetchFromGateway(catalogID string, opts skillInstallOpts) (*agentport.Skill
 		return nil, nil, err
 	}
 
-	skill, err := catalog.FetchSkill(c, catalogID, opts.version, opts.channel)
+	verify, err := signingOption(gURL, opts.requireSig)
+	if err != nil {
+		return nil, nil, err
+	}
+	skill, err := catalog.FetchSkill(c, catalogID, opts.version, opts.channel, verify)
 	if err != nil {
 		return nil, nil, translateGatewayFetchError(catalogID, err)
 	}

@@ -22,6 +22,7 @@ func ConfigCmd() *cobra.Command {
 		configSetGatewayCmd(),
 		configGetGatewayCmd(),
 		configShowCmd(),
+		configTrustKeyCmd(),
 	)
 	return cmd
 }
