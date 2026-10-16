@@ -15,6 +15,7 @@ func AgentRollbackCmd() *cobra.Command {
 	var (
 		lastFlag bool
 		force    bool
+		jsonFlag bool
 	)
 	cmd := &cobra.Command{
 		Use:   "rollback [manifest-entry-id]",
@@ -33,9 +34,10 @@ pass a manifest entry id (see 'relay agent list --provenance' or inspect
 			if len(args) > 0 {
 				id = args[0]
 			}
-			return runAgentRollback(cmd, agentRollbackOpts{id: id, last: lastFlag, force: force})
+			return runAgentRollback(cmd, agentRollbackOpts{id: id, last: lastFlag, force: force, jsonOut: jsonFlag})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout")
 	cmd.Flags().BoolVar(&lastFlag, "last", false, "Roll back the most recently recorded agent manifest entry")
 	cmd.Flags().BoolVar(&force, "force", false, "Delete the file even if its content has changed since it was written")
 	return cmd
@@ -45,9 +47,16 @@ type agentRollbackOpts struct {
 	id    string
 	last  bool
 	force bool
+
+	jsonOut bool
 }
 
 func runAgentRollback(cmd *cobra.Command, opts agentRollbackOpts) error {
+	doc, finish := beginAction(cmd, opts.jsonOut, "agent rollback")
+	return finish(doAgentRollback(cmd, opts, doc))
+}
+
+func doAgentRollback(cmd *cobra.Command, opts agentRollbackOpts, doc actionDoc) error {
 	if opts.last == (opts.id != "") {
 		return fmt.Errorf("specify exactly one of --last or <manifest-entry-id>")
 	}
@@ -78,6 +87,7 @@ func runAgentRollback(cmd *cobra.Command, opts agentRollbackOpts) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "rolled back: %s -> %s (%s scope, id %s)\n", entry.SourceProvider, entry.Provider, entry.Scope, entry.ID)
+	doc.put("rolledBack", map[string]string{"id": entry.ID, "from": string(entry.SourceProvider), "to": string(entry.Provider), "scope": string(entry.Scope)})
+	fmt.Fprintf(cmd.OutOrStdout(), "rolled back:%s -> %s (%s scope, id %s)\n", entry.SourceProvider, entry.Provider, entry.Scope, entry.ID)
 	return nil
 }

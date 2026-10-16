@@ -13,6 +13,7 @@ func AgentScanCmd() *cobra.Command {
 	var (
 		fromFlag  string
 		scopeFlag string
+		jsonFlag  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "scan <name>",
@@ -27,9 +28,10 @@ any finding has "high" severity.
 Supported providers: %s.`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentScan(cmd, args[0], fromFlag, scopeFlag)
+			return runAgentScan(cmd, args[0], fromFlag, scopeFlag, jsonFlag)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout")
 	cmd.Flags().StringVar(&fromFlag, "from", "", "Provider to load from (required)")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to search: user or project")
 	return cmd
@@ -57,12 +59,18 @@ func loadAgentFromProvider(from, scopeStr, name string) (*agentport.Agent, error
 	return a.Load(agentPath)
 }
 
-func runAgentScan(cmd *cobra.Command, name, from, scopeStr string) error {
+func runAgentScan(cmd *cobra.Command, name, from, scopeStr string, jsonOut bool) error {
+	doc, finish := beginAction(cmd, jsonOut, "agent scan")
+	return finish(doAgentScan(cmd, name, from, scopeStr, doc))
+}
+
+func doAgentScan(cmd *cobra.Command, name, from, scopeStr string, doc actionDoc) error {
 	a, err := loadAgentFromProvider(from, scopeStr, name)
 	if err != nil {
 		return err
 	}
 	result := agentport.AgentScan(a)
+	doc.put("result", result)
 	out := cmd.OutOrStdout()
 
 	if len(result.Findings) == 0 {

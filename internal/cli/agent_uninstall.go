@@ -18,6 +18,7 @@ func AgentUninstallCmd() *cobra.Command {
 		fromFlag  string
 		scopeFlag string
 		yesFlag   bool
+		jsonFlag  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "uninstall <name>",
@@ -30,9 +31,10 @@ interactive terminal unless --yes is set.
 Supported providers: %s.`, agentProviderIDsCSV()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentUninstall(cmd, args[0], agentUninstallOpts{from: fromFlag, scope: scopeFlag, yes: yesFlag})
+			return runAgentUninstall(cmd, args[0], agentUninstallOpts{from: fromFlag, scope: scopeFlag, yes: yesFlag, jsonOut: jsonFlag})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonFlag, "json", false, "Print one JSON document on stdout; the prompt goes to stderr")
 	cmd.Flags().StringVar(&fromFlag, "from", "", "Provider to remove from (required)")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope: user or project")
 	cmd.Flags().BoolVar(&yesFlag, "yes", false, "Skip the confirmation prompt")
@@ -43,9 +45,16 @@ type agentUninstallOpts struct {
 	from  string
 	scope string
 	yes   bool
+
+	jsonOut bool
 }
 
 func runAgentUninstall(cmd *cobra.Command, name string, opts agentUninstallOpts) error {
+	doc, finish := beginAction(cmd, opts.jsonOut, "agent uninstall")
+	return finish(doAgentUninstall(cmd, name, opts, doc))
+}
+
+func doAgentUninstall(cmd *cobra.Command, name string, opts agentUninstallOpts, doc actionDoc) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -70,6 +79,7 @@ func runAgentUninstall(cmd *cobra.Command, name string, opts agentUninstallOpts)
 	if !opts.yes && isInteractiveTerminalFn(os.Stdin) {
 		if !confirmPrompt(out, fmt.Sprintf("Remove %s (%s, %s scope) at %s?", name, a.ID(), scope, agentPath)) {
 			fmt.Fprintln(out, "skipped")
+			doc.put("removed", false)
 			return nil
 		}
 	}
@@ -83,6 +93,9 @@ func runAgentUninstall(cmd *cobra.Command, name string, opts agentUninstallOpts)
 		return fmt.Errorf("update manifest: %w", err)
 	}
 
+	doc.put("removed", true)
+	doc.put("path", agentPath)
+	doc.put("manifestEntriesDropped", removed)
 	fmt.Fprintf(out, "removed: %s\n", agentPath)
 	if removed > 0 {
 		fmt.Fprintf(out, "manifest: dropped %d entr%s\n", removed, plural(removed))

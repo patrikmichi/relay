@@ -23,6 +23,7 @@ func AgentInstallCmd() *cobra.Command {
 		channel    string
 		gatewayURL string
 		requireSig bool
+		jsonOut    bool
 	)
 
 	cmd := &cobra.Command{
@@ -43,9 +44,11 @@ All targets use migration fidelity checks, overwrite protection, history and rol
 				channel:    channel,
 				gatewayURL: gatewayURL,
 				requireSig: requireSig,
+				jsonOut:    jsonOut,
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document (plan, fidelity, writes, warnings) on stdout; prompts and progress go to stderr")
 
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target agent provider(s); repeatable. Default: all detected agent providers")
 	cmd.Flags().StringVar(&scopeFlag, "scope", "user", "Scope to write to: user or project")
@@ -70,9 +73,15 @@ type agentInstallOpts struct {
 	channel    string
 	gatewayURL string
 	requireSig bool
+	jsonOut    bool
 }
 
 func runAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts) error {
+	finish, rep := beginJSON(cmd, opts.jsonOut, &artifactReport{Command: "agent install", DryRun: opts.dryRun})
+	return finish(doAgentInstall(cmd, catalogID, opts, rep))
+}
+
+func doAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts, rep *artifactReport) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -106,7 +115,7 @@ func runAgentInstall(cmd *cobra.Command, catalogID string, opts agentInstallOpts
 		return err
 	}
 
-	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, label, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
+	return applyAgentMigration(cmd.OutOrStdout(), rep, src, label, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 // fetchAgentFromGateway resolves an authenticated gateway client and fetches

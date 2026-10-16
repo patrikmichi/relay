@@ -35,6 +35,7 @@ func SkillInstallCmd() *cobra.Command {
 		gatewayURL string
 		requireSig bool
 		reqs       requirementOpts
+		jsonOut    bool
 	)
 
 	cmd := &cobra.Command{
@@ -90,9 +91,11 @@ Examples:
 				gatewayURL: gatewayURL,
 				requireSig: requireSig,
 				reqs:       reqs,
+				jsonOut:    jsonOut,
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document (plan, fidelity, writes, warnings) on stdout; prompts and progress go to stderr")
 	cmd.Flags().BoolVarP(&reqs.yes, "yes", "y", false, "Connect missing connectors without asking")
 	cmd.Flags().BoolVar(&reqs.noConnect, "no-connect", false, "Report missing connectors without offering to connect them")
 	cmd.Flags().BoolVar(&reqs.ignore, "ignore-requirements", false, "Install even if required connectors are not connected (warns)")
@@ -121,9 +124,15 @@ type skillInstallOpts struct {
 	gatewayURL string
 	requireSig bool
 	reqs       requirementOpts
+	jsonOut    bool
 }
 
 func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) error {
+	finish, rep := beginJSON(cmd, opts.jsonOut, &artifactReport{Command: "skill install", DryRun: opts.dryRun})
+	return finish(doSkillInstall(cmd, arg, opts, rep))
+}
+
+func doSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts, rep *artifactReport) error {
 	if !opts.dryRun {
 		if err := refuseInAgentMode("relay skill install"); err != nil {
 			return err
@@ -146,6 +155,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 		// otherwise silently shadow a catalog id/slug with the same name —
 		// note it so the user isn't surprised the catalog was never checked.
 		fmt.Fprintf(cmd.ErrOrStderr(), "note: installing local path %q (not checking the catalog)\n", arg)
+		rep.warn(fmt.Sprintf("installing local path %q (the catalog was not checked)", arg))
 		src, err = agentport.LoadGenericSkill(arg)
 		if err != nil {
 			return fmt.Errorf("load %s: %w", arg, err)
@@ -171,7 +181,7 @@ func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) erro
 		return err
 	}
 
-	return applyMigrationToTargets(cmd.OutOrStdout(), src, fromLabel, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
+	return applyMigration(cmd.OutOrStdout(), rep, src, fromLabel, targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 // classifyInstallSource decides whether arg is a local filesystem path or a

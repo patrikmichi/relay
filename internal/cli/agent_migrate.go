@@ -32,6 +32,7 @@ func AgentMigrateCmd() *cobra.Command {
 		dryRun     bool
 		strict     bool
 		acceptLoss bool
+		jsonOut    bool
 	)
 
 	cmd := &cobra.Command{
@@ -59,9 +60,11 @@ Examples:
 				dryRun:     dryRun,
 				strict:     strict,
 				acceptLoss: acceptLoss,
+				jsonOut:    jsonOut,
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document (plan, fidelity, writes, warnings) on stdout; prompts and progress go to stderr")
 
 	cmd.Flags().StringVar(&fromFlag, "from", "", fmt.Sprintf("Source provider: %s (required)", agentProviderIDsOxford()))
 	cmd.Flags().StringSliceVar(&toFlags, "to", nil, "Target provider(s); repeatable. Default: all detected agent providers except --from")
@@ -74,6 +77,7 @@ Examples:
 }
 
 type agentMigrateOpts struct {
+	jsonOut    bool
 	from       string
 	to         []string
 	scope      string
@@ -83,6 +87,11 @@ type agentMigrateOpts struct {
 }
 
 func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) error {
+	finish, rep := beginJSON(cmd, opts.jsonOut, &artifactReport{Command: "agent migrate", DryRun: opts.dryRun})
+	return finish(doAgentMigrate(cmd, name, opts, rep))
+}
+
+func doAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts, rep *artifactReport) error {
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err
@@ -110,40 +119,53 @@ func runAgentMigrate(cmd *cobra.Command, name string, opts agentMigrateOpts) err
 		return err
 	}
 
-	return applyAgentMigrationToTargets(cmd.OutOrStdout(), src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
+	return applyAgentMigration(cmd.OutOrStdout(), rep, src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
 func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
+	return applyAgentMigration(out, nil, src, fromLabel, targets, scope, dryRun, strict, acceptLoss)
+}
+
+// applyAgentMigration is applyMigration for agent definitions.
+func applyAgentMigration(out io.Writer, rep *artifactReport, src *agentport.Agent, fromLabel string, targets []agentport.AgentAdapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
 	var toWrite []*agentport.AgentPlan
+	entries := map[*agentport.AgentPlan]*planReport{}
 
 	for _, target := range targets {
 		plan, err := agentport.MigrateAgent(src, target, scope)
 		if err != nil {
 			return fmt.Errorf("migrate to %s: %w", target.ID(), err)
 		}
+		entry := rep.addPlan(fromLabel, string(target.ID()), scope, plan.TargetPaths, plan.Loss, plan.HasDropped())
+		entries[plan] = entry
 
 		fmt.Fprintf(out, "\n== %s -> %s (%s scope) ==\n", fromLabel, target.ID(), scope)
 		fmt.Fprintf(out, "target: %s\n", plan.TargetPaths)
 		printLossReport(out, plan.Loss)
 
 		if agentport.HasSecurityLoss(plan.Loss) {
+			entry.Status = "refused"
 			return fmt.Errorf("refusing %s -> %s: a permission/restriction field would be lost or degraded and cannot be represented on the target (see [security] items above) — this is not overridable by --strict, --dry-run, or an interactive prompt; migrate to a provider that fully supports it or wait for provider-fidelity mapping", fromLabel, target.ID())
 		}
 
 		if strict && plan.HasDropped() {
+			entry.Status = "refused"
 			return fmt.Errorf("aborting (--strict): %s -> %s would drop one or more fields", fromLabel, target.ID())
 		}
 
 		if dryRun {
+			entry.Status = "dry-run"
 			fmt.Fprintln(out, "[dry-run] no files written")
 			continue
 		}
 
 		if plan.HasDropped() && !acceptLoss {
 			if !isInteractiveTerminalFn(os.Stdin) {
+				entry.Status = "refused"
 				return fmt.Errorf("refusing %s -> %s: fidelity loss above requires --accept-loss (or an interactive terminal) to proceed noninteractively — the absence of a terminal is never treated as consent", fromLabel, target.ID())
 			}
 			if !confirmPrompt(out, fmt.Sprintf("Proceed with %s -> %s despite the fidelity loss above?", fromLabel, target.ID())) {
+				entry.Status = "skipped"
 				fmt.Fprintln(out, "skipped")
 				continue
 			}
@@ -154,13 +176,16 @@ func applyAgentMigrationToTargets(out io.Writer, src *agentport.Agent, fromLabel
 
 	for _, plan := range toWrite {
 		if err := agentport.PreflightWriteAgent(plan); err != nil {
+			entries[plan].Status, entries[plan].Reason = "refused", err.Error()
 			return fmt.Errorf("preflight %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
 	}
 	for _, plan := range toWrite {
 		if err := agentport.WriteAgent(plan); err != nil {
+			entries[plan].Status, entries[plan].Reason = "refused", err.Error()
 			return fmt.Errorf("write %s -> %s: %w", fromLabel, plan.Target.ID(), err)
 		}
+		entries[plan].Status, entries[plan].Written = "written", plan.TargetPaths
 		fmt.Fprintf(out, "written: %s\n", plan.TargetPaths)
 	}
 	return nil
