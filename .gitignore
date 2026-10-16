@@ -1,7 +1,8 @@
 /relay
 /relay.exe
 /dist/
-
-
 /completions/
 /coverage.out
+/coverage.html
+*.test
+.DS_Store

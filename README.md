@@ -388,62 +388,103 @@ scripts/CI that must never make a network call.
 
 ## Command reference
 
+Commands are grouped by what they are for. "Kind" says whether a command needs
+a gateway.
+
+### Account and configuration
+
 | Command | Kind | Description |
 |---|---|---|
 | `relay login [--device] [--agent]` | gateway | Authenticate via Google OAuth (browser or device-code flow); `--agent` signs in the agent profile, a session the gateway holds to approvals |
-| `relay logout` | gateway | Revoke the current profile's session and remove the stored token |
+| `relay logout` | gateway | Revoke the current profile's session and remove the stored token; exits non-zero if the gateway did not revoke it |
 | `relay whoami [--full]` | gateway | Show the current authenticated identity and which profile (human or agent) answered |
-| `relay approvals list\|show\|approve\|deny\|wait` | gateway | List the held calls of agents, decide them with your own session, or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
-| `relay explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
-| `relay authorize <service> --tool <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay tokens list` | gateway | Show active session info |
 | `relay tokens revoke` | gateway | Revoke the current session token |
 | `relay config set-gateway <url>` | local | Persist a gateway URL to `~/.config/relay/config.json` |
 | `relay config get-gateway` | local | Print the effective gateway URL |
 | `relay config show` | local | Print all resolved config as JSON |
+| `relay config trust-key` | gateway | Pin the gateway's signing keys, used to verify signed downloads |
+
+### Gateway services and calls
+
+| Command | Kind | Description |
+|---|---|---|
 | `relay services [--no-status]` | gateway | List services available on the configured gateway, with whether your account is connected |
 | `relay connectors [search <query>] [--category] [--status]` | gateway | Browse the gateway's connector catalog |
 | `relay connect <slug>` | gateway | Link your account: API-key prompt, or the OAuth consent flow in your browser |
+| `relay authorize <service> --tool <tool>` | gateway | Request gateway tool access and verify grants and linked credentials |
 | `relay help-tools [service]` | gateway | List tools for one or all services |
 | `relay call <service> <tool> [--arg k=v] [--arg-json k=<json>] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
+| `relay explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
+| `relay approvals list\|show\|approve\|deny\|wait` | gateway | List the held calls of agents, decide them with your own session, or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
+
+### Syncing coding agents
+
+| Command | Kind | Description |
+|---|---|---|
 | `relay sync [--to <agents\|all>] [--scope] [--kind] [--dry-run] [--force]` | local | Write MCP servers, hooks, rules, commands, skills and subagents into the config of every supported coding agent (see [Syncing across coding agents](#syncing-across-coding-agents)) |
+| `relay sync routes list\|add\|remove` | local | Save what a plain `relay sync` copies where (see [Saved routes](#saved-routes)) |
 | `relay sync --matrix` | local | Print which agent supports which artifact kind at which scope |
 | `relay sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |
+| `relay mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
+| `relay mcp remove <name> [--to <agents>]` | local | Remove an MCP server relay registered |
+
+### Catalog: publish, search, inspect
+
+| Command | Kind | Description |
+|---|---|---|
 | `relay publish <path> [--type] [--watch]` | gateway | Publish a skill/agent/MCP server/prompt/plugin to the catalog |
 | `relay publish status <versionId> [--watch]` | gateway | Poll a publish's review status |
 | `relay skill publish <path>` | gateway | Alias for `relay publish` scoped to skills |
 | `relay agent publish <path>` | gateway | Publish an agent definition |
 | `relay mcp publish [--descriptor]` | gateway | Publish an MCP server descriptor |
 | `relay mcp list [--json]` | gateway | List catalog `mcp_server` resources (read-only) |
-| `relay mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
-| `relay mcp remove <name> [--to <agents>]` | local | Remove an MCP server relay registered |
+| `relay mcp inspect <catalog-id> [--json]` | gateway | Show the permitted metadata of one catalog MCP server (read-only) |
+| `relay skill search [query]` | gateway | Search the catalog for installable skills |
+| `relay skill info <catalog-id\|slug>` | gateway | Show a catalog skill, the connectors it requires and whether you have connected them |
+
+### Skills
+
+| Command | Kind | Description |
+|---|---|---|
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
 | `relay skill install <catalog-id> [--yes\|--no-connect] [--ignore-requirements]` | gateway | Install a skill by catalog id/slug into one or more providers, after checking the connectors it needs |
-| `relay skill info <catalog-id\|slug>` | gateway | Show a catalog skill, the connectors it requires and whether you have connected them |
-| `relay skill evals sets list\|show\|create\|import\|export\|delete` | gateway | Manage a skill's eval sets |
-| `relay skill evals case add\|remove` | gateway | Add or remove a trigger or task case |
-| `relay skill eval <skill> [--set] [--version\|--draft] [--repeats] [--wait] [--fail-on-regression]` | gateway | Score a version or draft against an eval set (exit 20 failed run, 21 regression) |
-| `relay skill compare <skill> --versions a,b` | gateway | Score several versions or drafts side by side with significance tests |
-| `relay skill optimize <skill> --kind description\|instructions [--wait]` | gateway | Rewrite the description or instructions into a scored draft |
-| `relay skill drafts list\|show\|promote\|discard` | gateway | Review optimization drafts and publish one through the publish pipeline |
-| `relay skill quality <skill>` / `--all` | gateway | Quality score and history by version |
-| `relay agent install <path\|catalog-id> [--to <p>...]` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle into one or more agent providers; supports history and rollback |
-| `relay skill search [query]` | gateway | Search the catalog for installable skills |
 | `relay skill migrate <name> --from <p> [--to <p>...]` | local | Project an installed skill from one provider to another |
 | `relay skill list` | local | List installed skills across providers |
 | `relay skill diff <name>` | local | Diff a skill's projection across providers |
 | `relay skill scan <name>` / `relay skill score <name>` | local | Inspect a skill's manifest/fidelity |
 | `relay skill uninstall <name>` | local | Remove an installed skill |
 | `relay skill rollback [manifest-entry-id]` | local | Revert to a prior manifest entry |
+| `relay skill evals sets list\|show\|create\|import\|export\|delete` | gateway | Manage a skill's eval sets |
+| `relay skill evals case add\|remove` | gateway | Add or remove a trigger or task case |
+| `relay skill eval <skill> [--set] [--version\|--draft] [--repeats] [--wait] [--fail-on-regression]` | gateway | Score a version or draft against an eval set (exit 20 failed run or nothing verified, 21 regression) |
+| `relay skill compare <skill> --versions a,b` | gateway | Score several versions or drafts side by side with significance tests |
+| `relay skill optimize <skill> --kind description\|instructions [--wait]` | gateway | Rewrite the description or instructions into a scored draft |
+| `relay skill drafts list\|show\|promote\|discard` | gateway | Review optimization drafts and publish one through the publish pipeline |
+| `relay skill quality <skill>` / `--all` | gateway | Quality score and history by version |
+
+### Agents
+
+| Command | Kind | Description |
+|---|---|---|
+| `relay agent install <path\|catalog-id> [--to <p>...]` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle into one or more agent providers; supports history and rollback |
 | `relay agent migrate <name> --from <p> [--to <p>...]` | local | Project an installed agent from one provider to another (claude, opencode, codex, cursor, gemini-cli) |
 | `relay agent list` | local | List installed agents across agent providers |
 | `relay agent diff <name>` | local | Diff an agent's projection across providers |
 | `relay agent scan <name>` | local | Inspect an agent for dangerous shell patterns/hardcoded secrets |
 | `relay agent uninstall <name>` | local | Remove an installed agent |
 | `relay agent rollback [manifest-entry-id]` | local | Revert to a prior agent manifest entry |
+
+### Diagnostics and recovery
+
+| Command | Kind | Description |
+|---|---|---|
 | `relay providers` | local | List supported providers and their detection status |
-| `relay doctor [--json]` | local | Check provider directories, installed skills and agents, synced MCP servers/hooks/rules/commands, recovery state and gateway health |
+| `relay doctor [--json]` | local | Check provider directories, installed skills and agents, synced MCP servers/hooks/rules/commands and saved routes, recovery state and gateway health |
+| `relay history` | local | List recorded write transactions and their state |
+| `relay recover [id]` | local | Finish or undo an interrupted write: a journal still writing is rolled back, one recording its ledger update is rolled forward |
 | `--offline` (root flag) | — | Force every gateway command in this invocation to fail closed |
+| `--timeout` (root flag) | — | Limit for each gateway request (see `RELAY_TIMEOUT`) |
 | `--version` | — | Print the CLI version, commit, and build date |
 
 Run `relay <command> --help` for full flag documentation on any command.
