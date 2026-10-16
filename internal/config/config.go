@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/patrikmichi/zuano/internal/brand"
@@ -67,7 +69,13 @@ func UpdateSync(fn func(*SyncSettings) error) error {
 	err := modify(func(cfg *Config) {
 		s := SyncSettings{}
 		if cfg.Sync != nil {
-			s = *cfg.Sync
+			// Copy the containers: fn may edit them in place and then fail,
+			// and the unchanged settings are still written back.
+			s.Routes = slices.Clone(cfg.Sync.Routes)
+			s.Defaults = maps.Clone(cfg.Sync.Defaults)
+			for k, v := range s.Defaults {
+				s.Defaults[k] = slices.Clone(v)
+			}
 		}
 		if ferr = fn(&s); ferr != nil {
 			return
