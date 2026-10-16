@@ -67,6 +67,8 @@ func pendingFromResult(r *mcpToolResult) *pendingApproval {
 type callOpts struct {
 	wait    bool
 	waitFor time.Duration
+	// jsonArgs are --arg-json key=<json> pairs, sent with their JSON types.
+	jsonArgs []string
 }
 
 // addWaitFlag registers --wait. A bare --wait waits the default time; a

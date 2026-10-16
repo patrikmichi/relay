@@ -405,7 +405,7 @@ scripts/CI that must never make a network call.
 | `relay connectors [search <query>] [--category] [--status]` | gateway | Browse the gateway's connector catalog |
 | `relay connect <slug>` | gateway | Link your account: API-key prompt, or the OAuth consent flow in your browser |
 | `relay help-tools [service]` | gateway | List tools for one or all services |
-| `relay call <service> <tool> [--arg k=v] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
+| `relay call <service> <tool> [--arg k=v] [--arg-json k=<json>] [--wait[=SECONDS]]` | gateway | Call a tool on a gateway service; a call held for approval exits 12, or with `--wait` waits and prints the result |
 | `relay sync [--to <agents\|all>] [--scope] [--kind] [--dry-run] [--force]` | local | Write MCP servers, hooks, rules, commands, skills and subagents into the config of every supported coding agent (see [Syncing across coding agents](#syncing-across-coding-agents)) |
 | `relay sync --matrix` | local | Print which agent supports which artifact kind at which scope |
 | `relay sync --marketplace [--dir]` | gateway | Also pull your gateway's Claude Code plugin marketplace |

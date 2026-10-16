@@ -756,7 +756,7 @@ func TestBuildServiceCommands_RegistersCallableToolCommands(t *testing.T) {
 		t.Fatalf("registered services = %v, want only clockify", names)
 	}
 
-	out, err := runCommand(t, root, "clockify", "list_workspaces", "--arg", "limit=5")
+	out, err := runCommand(t, root, "clockify", "list_workspaces", "--arg-json", "limit=5")
 	if err != nil {
 		t.Fatalf("tool command: %v", err)
 	}

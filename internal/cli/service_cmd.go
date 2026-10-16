@@ -185,6 +185,35 @@ func callTool(c *client.Client, service, tool string, rawArgs []string, jsonOut 
 	return callToolWithContext(context.Background(), c, service, tool, rawArgs, jsonOut, os.Stdout)
 }
 
+// buildToolArguments turns --arg key=value into string arguments and
+// --arg-json key=<json> into typed ones. A value is never guessed at: 007
+// stays "007" unless the person says it is a number.
+func buildToolArguments(strs, jsons []string) (map[string]interface{}, error) {
+	arguments := make(map[string]interface{}, len(strs)+len(jsons))
+	for _, raw := range strs {
+		k, v, ok := strings.Cut(raw, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("invalid --arg format %q: expected key=value", raw)
+		}
+		arguments[k] = v
+	}
+	for _, raw := range jsons {
+		k, v, ok := strings.Cut(raw, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("invalid --arg-json format %q: expected key=<json>", raw)
+		}
+		if _, dup := arguments[k]; dup {
+			return nil, fmt.Errorf("argument %q is given twice", k)
+		}
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(v), &parsed); err != nil {
+			return nil, fmt.Errorf("--arg-json %s: not valid JSON (%v); quote a string as '\"text\"' or use --arg", k, err)
+		}
+		arguments[k] = parsed
+	}
+	return arguments, nil
+}
+
 // callToolWithContext runs the call. A call the gateway holds for approval is
 // reported and, with a wait option, collected once it is decided.
 func callToolWithContext(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut bool, out io.Writer, opts ...callOpts) error {
@@ -192,7 +221,7 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 	if len(opts) > 0 {
 		o = opts[0]
 	}
-	pending, err := sendToolCall(parent, c, service, tool, rawArgs, jsonOut, o.wait, out)
+	pending, err := sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, o.wait, out)
 	if err != nil || pending == nil {
 		return err
 	}
@@ -203,26 +232,16 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 // when the gateway held the call instead of running it. With jsonOut it
 // prints the raw JSON-RPC envelope, except for a held call that waiting will
 // replace with the final result.
-func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs []string, jsonOut, waiting bool, out io.Writer) (pending *pendingApproval, err error) {
+func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs, jsonArgs []string, jsonOut, waiting bool, out io.Writer) (pending *pendingApproval, err error) {
 	ctx, cancel, err := requestContext(parent, toolCallRequest)
 	if err != nil {
 		return nil, err
 	}
 	defer cancel()
 	defer func() { err = timeoutCause(ctx, err) }()
-	arguments := make(map[string]interface{})
-	for _, raw := range rawArgs {
-		k, v, ok := strings.Cut(raw, "=")
-		if !ok {
-			return nil, fmt.Errorf("invalid --arg format %q: expected key=value", raw)
-		}
-		// Try to parse the value as JSON (handles numbers, booleans, objects).
-		var parsed interface{}
-		if err := json.Unmarshal([]byte(v), &parsed); err == nil {
-			arguments[k] = parsed
-		} else {
-			arguments[k] = v
-		}
+	arguments, err := buildToolArguments(rawArgs, jsonArgs)
+	if err != nil {
+		return nil, err
 	}
 
 	body, err := json.Marshal(map[string]interface{}{
@@ -305,7 +324,7 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 
 // buildToolCmd creates a leaf cobra command for a single tool.
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
-	var rawArgs []string
+	var rawArgs, jsonArgs []string
 	var jsonOut bool
 	var wait string
 	cmd := &cobra.Command{
@@ -317,6 +336,7 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			if err != nil {
 				return err
 			}
+			opts.jsonArgs = jsonArgs
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -328,7 +348,8 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			return callToolWithContext(cmd.Context(), c, serviceName, toolName, rawArgs, jsonOut, cmd.OutOrStdout(), opts)
 		},
 	}
-	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable, JSON values supported)")
+	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value; the value is always a string (repeatable)")
+	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
 	return cmd

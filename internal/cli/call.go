@@ -15,7 +15,7 @@ import (
 // one. See callTool's doc comment for the full execution-repoint rationale.
 func CallCmd() *cobra.Command {
 	var gatewayURL string
-	var rawArgs []string
+	var rawArgs, jsonArgs []string
 	var jsonOut bool
 	var wait string
 
@@ -24,7 +24,9 @@ func CallCmd() *cobra.Command {
 		Short: "Call a tool on a gateway service",
 		Long: `Call a tool on a gateway service via the MCP JSON-RPC endpoint (POST /api/<service>/mcp, method "tools/call").
 
-Arguments are passed as key=value pairs via --arg flags.
+Arguments are passed as key=value pairs via --arg flags; the value is always a
+string, so an id such as 007 stays "007". Use --arg-json key=<json> for a
+number, boolean, object or array.
 
 A call the gateway holds for approval (an agent session's writes) prints the
 approval id, risk and expiry and exits 12. With --wait[=SECONDS] the command
@@ -33,13 +35,14 @@ waits for the decision and prints the result instead; exit status as for
 
 Example:
   relay call clockify list_time_entries
-  relay call google-workspace search_emails --arg query="is:unread" --arg maxResults=10`,
+  relay call google-workspace search_emails --arg query="is:unread" --arg-json maxResults=10`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts, err := callOptsFor(cmd, wait)
 			if err != nil {
 				return err
 			}
+			opts.jsonArgs = jsonArgs
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -54,7 +57,8 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
-	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value (repeatable)")
+	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value; the value is always a string (repeatable)")
+	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
 	return cmd
