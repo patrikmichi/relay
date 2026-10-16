@@ -90,6 +90,19 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return fmt.Errorf("rollback %s: %w", entry.ID, err)
 	}
 
+	// The prior bytes are read before Begin: Begin prunes finished journals
+	// past their retention, and the one being rolled back may be among them.
+	restores := map[string]restore{}
+	for rel := range entry.TargetPaths {
+		if prior, ok := priorFileState(priorJournal, rel); ok && prior.Existed {
+			oldBytes, rerr := readJournalBackup(priorJournal, prior)
+			if rerr != nil {
+				return fmt.Errorf("read prior content for %s: %w", rel, rerr)
+			}
+			restores[rel] = restore{data: oldBytes, mode: prior.OldMode}
+		}
+	}
+
 	lockKey := rollbackLockKey(entry)
 	ctx, cancel := context.WithTimeout(context.Background(), txnLockAcquireTimeout)
 	defer cancel()
@@ -99,12 +112,8 @@ func Rollback(entry ManifestEntry, force bool) error {
 	}
 
 	for rel := range entry.TargetPaths {
-		if prior, ok := priorFileState(priorJournal, rel); ok && prior.Existed {
-			oldBytes, rerr := readJournalBackup(priorJournal, prior)
-			if rerr != nil {
-				return tx.Discard(fmt.Errorf("read prior content for %s: %w", rel, rerr))
-			}
-			if serr := tx.Stage(dir, rel, oldBytes, prior.OldMode); serr != nil {
+		if r, ok := restores[rel]; ok {
+			if serr := tx.Stage(dir, rel, r.data, r.mode); serr != nil {
 				return tx.Discard(serr)
 			}
 			continue
@@ -133,6 +142,12 @@ func Rollback(entry ManifestEntry, force bool) error {
 		}
 		return RemoveEntry(entry.ID)
 	})
+}
+
+// restore is the prior content a rollback writes back to one file.
+type restore struct {
+	data []byte
+	mode os.FileMode
 }
 
 // rollbackLockKey mirrors the exact identity skillLockKey/agentLockKey use

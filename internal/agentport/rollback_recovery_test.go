@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
@@ -96,6 +97,60 @@ func TestRollback_RestoresPriorBytesAndModeFromLinkedTransaction(t *testing.T) {
 	}
 	if len(m.Entries) != 0 {
 		t.Fatalf("entry should be dropped after rollback, got %#v", m.Entries)
+	}
+}
+
+// A rollback's own Begin prunes finished journals past retention; the journal
+// holding the backups being restored must survive that.
+func TestRollback_RestoresWhenBeginWouldPruneTheLinkedJournal(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	orig := txn.DefaultRetention
+	t.Cleanup(func() { txn.DefaultRetention = orig })
+
+	dir, err := TargetDir(NewClaudeAdapter(), ScopeUser, "demo-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillPath := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(skillPath, []byte("original content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := txn.Begin(context.Background(), "test replace", []string{"test:demo-skill:replace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Stage(dir, "SKILL.md", []byte("new content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Apply(func(string, string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	journalID := tx.ID()
+	if err := tx.Commit(func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	newHash := sha256.Sum256([]byte("new content\n"))
+	entry := ManifestEntry{
+		ID: "manual-replace-2", Name: "demo-skill", Kind: KindSkill, Provider: ProviderClaude, Scope: ScopeUser,
+		TargetPaths:   map[string]string{"SKILL.md": hex.EncodeToString(newHash[:])},
+		TransactionID: journalID,
+	}
+	if err := RecordEntry(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	txn.DefaultRetention = txn.Retention{MaxAge: time.Nanosecond, Keep: 0}
+	if err := Rollback(entry, false); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	if got, _ := os.ReadFile(skillPath); string(got) != "original content\n" {
+		t.Fatalf("restored content = %q", got)
 	}
 }
 
