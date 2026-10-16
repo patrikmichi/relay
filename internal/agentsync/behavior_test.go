@@ -159,17 +159,24 @@ func TestFailedApplyRestoresEarlierFiles(t *testing.T) {
 
 func TestSymlinkedConfigIsEditedInPlace(t *testing.T) {
 	env := newEnv(t)
-	real := filepath.Join(t.TempDir(), "dotfiles", "claude.json")
+	real := filepath.Join(env.Home, "dotfiles", "claude.json")
 	writeFile(t, real, "{}\n")
 	link := filepath.Join(env.Home, ".claude.json")
 	if err := os.Symlink(real, link); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
-	syncAll(t, env, userBundle(fixtureBundle()), userOpts(Claude))
+	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(Claude))
 	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("symlink was replaced: %v", err)
 	}
 	contains(t, readFile(t, real), "mcpServers")
+	var reported bool
+	for _, it := range plan.Items {
+		reported = reported || strings.Contains(it.Detail, "followed symlink "+link)
+	}
+	if !reported {
+		t.Fatalf("followed symlink was not reported: %+v", plan.Items)
+	}
 }
 
 func TestUnparseableConfigIsSkippedNotOverwritten(t *testing.T) {

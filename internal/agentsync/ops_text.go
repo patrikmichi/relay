@@ -26,7 +26,10 @@ func mdBegin(id string) string { return "<!-- " + Marker + ":begin " + id + " --
 func mdEnd(id string) string   { return "<!-- " + Marker + ":end " + id + " -->" }
 
 func (o *mdBlockOp) Run(c *Ctx) ([]Item, error) {
-	data, exists, real, err := c.read(o.path)
+	data, exists, real, err := c.read(o.scope, o.path)
+	if items, ok := o.refused(err); ok {
+		return items, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +102,10 @@ func tomlEnd(id string) string   { return "# <<< " + Marker + ":end " + id + " <
 var tomlHeader = regexp.MustCompile(`(?m)^\[+([^\]\n]+)\]+\s*$`)
 
 func (o *tomlBlockOp) Run(c *Ctx) ([]Item, error) {
-	data, exists, real, err := c.read(o.path)
+	data, exists, real, err := c.read(o.scope, o.path)
+	if items, ok := o.refused(err); ok {
+		return items, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +256,12 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 	keep := map[string]bool{}
 	for _, f := range o.files {
 		path := filepath.Join(o.dir, f.name+o.ext)
-		data, exists, real, err := c.read(path)
+		data, exists, real, err := c.read(o.scope, path)
+		if refused, ok := o.refused(err); ok {
+			items = append(items, refused...)
+			keep[filepath.Base(path)] = true
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +283,11 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 		}
 	}
 
-	entries, err := os.ReadDir(resolvePath(o.dir))
+	dir, err := c.guard(o.scope, o.dir)
+	if err != nil {
+		return items, nil
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return items, nil
 	}
@@ -281,7 +296,7 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 			continue
 		}
 		path := filepath.Join(o.dir, e.Name())
-		data, exists, real, err := c.read(path)
+		data, exists, real, err := c.read(o.scope, path)
 		if err != nil || !exists || !isManaged(data) {
 			continue
 		}

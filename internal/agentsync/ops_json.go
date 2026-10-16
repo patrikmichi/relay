@@ -74,7 +74,10 @@ type jsonKeysOp struct {
 }
 
 func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
-	data, exists, real, err := c.read(o.path)
+	data, exists, real, err := c.read(o.scope, o.path)
+	if items, ok := o.refused(err); ok {
+		return items, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +207,10 @@ type jsonItemsOp struct {
 }
 
 func (o *jsonItemsOp) Run(c *Ctx) ([]Item, error) {
-	data, exists, real, err := c.read(o.path)
+	data, exists, real, err := c.read(o.scope, o.path)
+	if items, ok := o.refused(err); ok {
+		return items, nil
+	}
 	if err != nil {
 		return nil, err
 	}

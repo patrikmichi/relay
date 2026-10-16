@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/patrikmichi/relay/internal/agentport/txn"
@@ -37,9 +38,12 @@ func (e Env) root(scope Scope) string {
 	return e.Home
 }
 
-// Edit is one file change in a plan.
+// Edit is one file change in a plan. Root and Rel locate Path for the
+// symlink check that runs again right before the write.
 type Edit struct {
 	Path    string
+	Root    string
+	Rel     string
 	Before  []byte
 	After   []byte
 	Existed bool
@@ -54,12 +58,71 @@ type Ctx struct {
 	Ledger *Ledger
 	Force  bool
 
-	edits map[string]*Edit
-	order []string
+	edits  map[string]*Edit
+	order  []string
+	places map[string][2]string
+	links  map[string]string
 }
 
-func (c *Ctx) read(path string) (data []byte, exists bool, real string, err error) {
-	real = resolvePath(path)
+// unsafePathError marks a config path relay will not touch.
+type unsafePathError struct{ path, reason string }
+
+func (e *unsafePathError) Error() string { return e.path + ": " + e.reason }
+
+func escapes(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// guard maps path to the file relay may edit. A project is untrusted input, so
+// a symlink anywhere below it is refused. A user config may be a dotfile-manager
+// symlink, followed only while it stays inside the home directory.
+func (c *Ctx) guard(scope Scope, path string) (string, error) {
+	path = filepath.Clean(path)
+	root := filepath.Clean(c.Env.root(scope))
+	rel, err := filepath.Rel(root, path)
+	if scope == ScopeUser && (err != nil || escapes(rel)) {
+		// A config directory the user relocated (XDG_CONFIG_HOME and friends).
+		root, rel, err = filepath.Dir(path), filepath.Base(path), nil
+	}
+	if err != nil || escapes(rel) {
+		return "", &unsafePathError{path, "outside " + root}
+	}
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootReal = root
+	}
+	target := path
+	if scope == ScopeProject {
+		if err := txn.VerifyNoSymlinks(rootReal, rel); err != nil {
+			return "", &unsafePathError{path, "a symlink below the project would redirect the write; relay does not follow project symlinks"}
+		}
+	} else {
+		resolved := resolvePath(path)
+		rr, err := filepath.Rel(rootReal, resolved)
+		if err != nil || escapes(rr) {
+			return "", &unsafePathError{path, "symlink resolves outside " + root}
+		}
+		if rr != rel {
+			target = filepath.Join(root, rr)
+			if c.links == nil {
+				c.links = map[string]string{}
+			}
+			c.links[target] = path
+		}
+		rel = rr
+	}
+	if c.places == nil {
+		c.places = map[string][2]string{}
+	}
+	c.places[target] = [2]string{rootReal, rel}
+	return target, nil
+}
+
+func (c *Ctx) read(scope Scope, path string) (data []byte, exists bool, real string, err error) {
+	real, err = c.guard(scope, path)
+	if err != nil {
+		return nil, false, filepath.Clean(path), err
+	}
 	if e, ok := c.edits[real]; ok {
 		if e.Remove {
 			return nil, false, real, nil
@@ -76,7 +139,11 @@ func (c *Ctx) read(path string) (data []byte, exists bool, real string, err erro
 func (c *Ctx) stage(real string, mode fs.FileMode, after []byte, remove bool) error {
 	e, ok := c.edits[real]
 	if !ok {
-		e = &Edit{Path: real, Mode: mode}
+		pl, ok := c.places[real]
+		if !ok {
+			return fmt.Errorf("%s was not checked before writing", real)
+		}
+		e = &Edit{Path: real, Root: pl[0], Rel: pl[1], Mode: mode}
 		info, err := os.Stat(real)
 		switch {
 		case err == nil && info.Mode().IsRegular():
@@ -144,6 +211,16 @@ func (m meta) item(name, path, status, detail string) Item {
 	return Item{Agent: m.agent, Kind: m.kind, Scope: m.scope, Name: name, Path: path, Status: status, Detail: detail}
 }
 
+// refused turns a refused path into a skipped item so the rest of the plan
+// still runs.
+func (m meta) refused(err error) ([]Item, bool) {
+	var u *unsafePathError
+	if !errors.As(err, &u) {
+		return nil, false
+	}
+	return []Item{m.item("*", u.path, StatusSkipped, u.reason)}, true
+}
+
 // Plan is a computed set of file edits plus the per-entry report.
 type Plan struct {
 	Edits  []Edit
@@ -155,6 +232,11 @@ type Plan struct {
 func (p *Plan) Changed() bool { return len(p.Edits) > 0 || p.ledger.dirty }
 
 func (c *Ctx) finish(items []Item) *Plan {
+	for i, it := range items {
+		if from, ok := c.links[it.Path]; ok {
+			items[i].Detail = strings.TrimSpace(it.Detail + " (followed symlink " + from + ")")
+		}
+	}
 	p := &Plan{Items: items, ledger: c.Ledger}
 	for _, path := range c.order {
 		e := c.edits[path]
@@ -189,11 +271,10 @@ func (p *Plan) Apply(ctx context.Context) error {
 		return err
 	}
 	for _, e := range p.Edits {
-		root, rel := filepath.Dir(e.Path), filepath.Base(e.Path)
 		if e.Remove {
-			err = tx.StageRemoval(root, rel)
+			err = tx.StageRemoval(e.Root, e.Rel)
 		} else {
-			err = tx.Stage(root, rel, e.After, e.Mode)
+			err = tx.Stage(e.Root, e.Rel, e.After, e.Mode)
 		}
 		if err != nil {
 			return tx.Discard(err)
