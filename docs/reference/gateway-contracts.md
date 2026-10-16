@@ -453,4 +453,4 @@ the exit statuses; the `{"pack": ...}`, `{"installs": ...}` wrappers, the
 `validate` route, the `version` field of a delivered skill (the CLI installs
 by version) and the signature headers are this client's decisions. The plan
 asks for exit 20 on `plan_stale`; 20 is taken by a failed eval, so a stale
-plan exits 1 with the message to run `zuano pack plan` again.
+plan exits 15 with the message to run `zuano pack plan` again.

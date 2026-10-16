@@ -48,10 +48,11 @@ confirmation (exit 14 when there is no terminal to ask on).
 
 install, update, uninstall and rollback exit status
   0   done
-  1   failed, or the plan changed since it was shown (run it again)
+  1   failed
   4   the plan's signature did not verify
   10  refused: an agent session cannot do this
   14  a passkey confirmation is needed and nobody can give it
+  15  the plan changed since it was shown: nothing was applied, plan again
   30-33  the plan does not allow it, see 'zuano billing'`,
 	}
 	cmd.AddCommand(packListCmd(), packShowCmd(), packPlanCmd(), packInstallCmd(), packUpdateCmd(), packUninstallCmd(), packRollbackCmd(), packStatusCmd(), packInitCmd(), packValidateCmd(), packPublishCmd())
@@ -449,7 +450,7 @@ func applyPackPlan(cmd *cobra.Command, c *client.Client, plan *packs.Plan, raw [
 		return err
 	}
 	if r.Status == http.StatusConflict && r.code() == "plan_stale" {
-		return &ExitError{Code: 1, Msg: fmt.Sprintf("the organisation changed since this plan was made; nothing was applied. Run `%s` again", brand.Cmd("pack plan "+plan.Pack.Slug))}
+		return &ExitError{Code: exitPlanStale, Msg: fmt.Sprintf("the organisation changed since this plan was made; nothing was applied. Run `%s` again", brand.Cmd("pack plan "+plan.Pack.Slug))}
 	}
 	if !r.ok() {
 		return r.failure()

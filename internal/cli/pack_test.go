@@ -363,7 +363,7 @@ func TestPackInstall_StalePlanStepUpAndFailedJob(t *testing.T) {
 	routes["POST /api/packs/plans/ppl_1/apply"] = jsonReply(409, `{"error":"plan_stale"}`)
 	packGateway(t, routes)
 	_, err := runCommand(t, PackCmd(), "install", "finance", "--yes", "--keep-conflicts")
-	if err == nil || !strings.Contains(err.Error(), "changed since this plan was made") || exitCodeOf(err) != 1 {
+	if err == nil || !strings.Contains(err.Error(), "changed since this plan was made") || exitCodeOf(err) != 15 {
 		t.Errorf("stale: exit %d, %v", exitCodeOf(err), err)
 	}
 

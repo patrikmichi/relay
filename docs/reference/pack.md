@@ -76,7 +76,8 @@ whether a newer revision is waiting.
 | Status | Meaning |
 |---|---|
 | 0 | done |
-| 1 | failed, or the plan changed since it was shown |
+| 1 | failed |
+| 15 | the plan changed since it was shown; nothing was applied, run `zuano pack plan` again |
 | 4 | a signature did not verify |
 | 10 | refused for an agent session |
 | 13 | rate limited |

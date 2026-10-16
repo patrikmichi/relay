@@ -28,6 +28,9 @@ const (
 	exitDenied  = 10
 	exitExpired = 11
 	exitPending = 12
+	// exitPlanStale ends a change that was refused because the organisation
+	// changed since the plan the person confirmed was made.
+	exitPlanStale = 15
 
 	defaultWaitSeconds = 300
 	maxAwaitSeconds    = 30
