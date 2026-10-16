@@ -18,7 +18,7 @@ var auditFormats = []string{"ndjson", "csv"}
 
 // auditFilter is the set of filters the audit routes share.
 type auditFilter struct {
-	from, to                          string
+	from, to                         string
 	q, actor, service, tool, outcome string
 }
 
