@@ -80,7 +80,7 @@ func configShowCmd() *cobra.Command {
 
 			// Resolve the effective gateway URL for display (may come from env var).
 			effectiveURL, _ := config.GatewayURL()
-			// Resolve the effective identity for display (RELAY_EMAIL, when
+			// Resolve the effective identity for display (ZUANO_EMAIL, when
 			// set, overrides the persisted login email — see
 			// config.ResolveEmail). Never errors on "not logged in" here —
 			// `relay config show` should always succeed; EffectiveEmail is

@@ -37,8 +37,8 @@ func TestSyncCmd_RejectsArgsAndFailsClosed(t *testing.T) {
 	if _, err := runCommand(t, SyncCmd(), "--marketplace"); err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Errorf("expected offline guidance, got %v", err)
 	}
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	if _, err := runCommand(t, SyncCmd(), "--marketplace", "--gateway-url", "https://gateway.example.com"); err == nil {
 		t.Error("expected a not-logged-in error")
 	}

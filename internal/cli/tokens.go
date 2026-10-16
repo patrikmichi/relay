@@ -86,9 +86,9 @@ func tokensListCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Expires:   %s\n", info.ExpiresAt)
 			}
 			// The token value is never printed. Only a login session lives in
-			// the keychain; a GATEWAY_API_KEY is read from the environment.
+			// the keychain; a ZUANO_API_KEY is read from the environment.
 			if c.Email() == "" {
-				fmt.Fprintln(cmd.OutOrStdout(), "Token:     GATEWAY_API_KEY (not stored by relay)")
+				fmt.Fprintln(cmd.OutOrStdout(), "Token:     ZUANO_API_KEY (not stored by relay)")
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "Token:     stored in system keychain (%d bytes)\n", len(c.AccessToken))
 			}
@@ -96,7 +96,7 @@ func tokensListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }
 
@@ -123,13 +123,13 @@ func tokensRevokeCmd() *cobra.Command {
 			}
 
 			// Building the client never dials the network — it only reads
-			// GATEWAY_API_KEY / the OS keychain.
+			// ZUANO_API_KEY / the OS keychain.
 			c, err := resolveClient(gURL)
 			if err != nil {
 				return err
 			}
 			if c.Email() == "" {
-				return errors.New("authenticated via GATEWAY_API_KEY — there is no local CLI session to revoke")
+				return errors.New("authenticated via ZUANO_API_KEY — there is no local CLI session to revoke")
 			}
 
 			if Offline() {
@@ -159,6 +159,6 @@ func tokensRevokeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }

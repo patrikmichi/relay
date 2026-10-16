@@ -36,7 +36,7 @@ func newMockMcpCatalogGateway(t *testing.T, body string, status int) *httptest.S
 func TestMcpList_HappyPath_PrintsTable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	body := `{"resources":[
 		{"resource":{"id":"res_mcp1","slug":"notion-mcp","name":"Notion","type":"mcp_server"},
@@ -65,7 +65,7 @@ func TestMcpList_HappyPath_PrintsTable(t *testing.T) {
 func TestMcpList_EmptyResults_PrintsNoneFoundMessage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := newMockMcpCatalogGateway(t, `{"resources":[]}`, http.StatusOK)
 
@@ -84,7 +84,7 @@ func TestMcpList_EmptyResults_PrintsNoneFoundMessage(t *testing.T) {
 func TestMcpList_JSONFlag_PrintsRawJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	body := `{"resources":[{"resource":{"id":"res_mcp1","slug":"notion-mcp","name":"Notion","type":"mcp_server"},"currentVersion":{"semver":"1.0.0","manifestJson":{"source":"url"}}}]}`
 	srv := newMockMcpCatalogGateway(t, body, http.StatusOK)
@@ -123,7 +123,7 @@ func TestMcpList_NoGatewayConfigured_FailsClosed(t *testing.T) {
 func TestMcpList_OfflineFlag_FailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
@@ -141,7 +141,7 @@ func TestMcpList_OfflineFlag_FailsClosed(t *testing.T) {
 func TestMcpList_NonOKStatus_ReturnsError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -165,7 +165,7 @@ func TestMcpList_NonOKStatus_ReturnsError(t *testing.T) {
 func TestMcpList_UnauthorizedMapsToOfflineGuidance(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

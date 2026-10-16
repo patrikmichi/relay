@@ -303,7 +303,7 @@ func addConnectorsFlags(cmd *cobra.Command, f *connectorsFlags) {
 	fl.BoolVar(&f.categories, "categories", false, "List categories with counts instead of connectors")
 	fl.BoolVar(&f.status, "status", false, "Also show whether your account is connected (one probe per connector)")
 	fl.BoolVar(&f.jsonOut, "json", false, "Print raw JSON")
-	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 }
 
 // ConnectorsCmd returns `relay connectors`: browse the gateway's service

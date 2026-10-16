@@ -86,8 +86,8 @@ func resolveWithSession(t *testing.T, gatewayURL string, opts ...client.ClientOp
 	t.Helper()
 	keyring.MockInit()
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	seedSession(t, gatewayURL, "user@example.com", keychain.TokenData{
 		AccessToken: "stale-access", RefreshToken: "stale-refresh",
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
@@ -207,7 +207,7 @@ func TestResolve_GatewayOrigin(t *testing.T) {
 		t.Errorf("origin=%q email=%q", c.GatewayOrigin(), c.Email())
 	}
 
-	t.Setenv("GATEWAY_API_KEY", strings.Join([]string{"static", "key"}, "-"))
+	t.Setenv("ZUANO_API_KEY", strings.Join([]string{"static", "key"}, "-"))
 	keyed, err := client.Resolve(g.srv.URL, client.WithSessionLocker(failingLocker{}))
 	if err != nil {
 		t.Fatal(err)
@@ -220,8 +220,8 @@ func TestResolve_GatewayOrigin(t *testing.T) {
 func TestResolve_CorruptBoundSessionPointsAtLogin(t *testing.T) {
 	keyring.MockInit()
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "user@example.com")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "user@example.com")
 	const origin = "https://gw.example.com"
 	if err := keyring.Set("relay-cli", "oauth-refresh-token:"+origin+":user@example.com", "{not json"); err != nil {
 		t.Fatal(err)

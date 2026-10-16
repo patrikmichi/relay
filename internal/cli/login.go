@@ -25,9 +25,9 @@ By default, opens a browser window and starts a local callback server.
 Use --device for headless environments (SSH, containers) where a browser
 is not available.
 
---agent (or RELAY_AGENT=1) signs in the agent profile: the gateway marks the
+--agent (or ZUANO_AGENT=1) signs in the agent profile: the gateway marks the
 session as an autonomous agent's, so its writes wait for approval. It is
-stored apart from your own session; set RELAY_AGENT=1 for the process that an
+stored apart from your own session; set ZUANO_AGENT=1 for the process that an
 agent drives and relay uses it instead of your own. Approvals are decided
 with your own, unmarked session (relay approvals approve).`,
 		RunE: func(cmd *cobra.Command, _args []string) error {
@@ -77,9 +77,9 @@ with your own, unmarked session (relay approvals approve).`,
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&deviceFlow, "device", false, "Use device-code flow for headless environments")
-	cmd.Flags().BoolVar(&agent, "agent", false, "Sign in the agent profile (also selected by RELAY_AGENT=1): a session marked as an agent's, held to approvals")
+	cmd.Flags().BoolVar(&agent, "agent", false, "Sign in the agent profile (also selected by ZUANO_AGENT=1): a session marked as an agent's, held to approvals")
 
 	return cmd
 }

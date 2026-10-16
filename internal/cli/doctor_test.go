@@ -17,9 +17,9 @@ func setupDoctor(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_URL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_URL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	t.Chdir(t.TempDir())
 	previous := Offline()
 	SetOffline(false)
@@ -89,8 +89,8 @@ func TestDoctorGatewayProbeAndRedaction(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer srv.Close()
-			t.Setenv("GATEWAY_URL", srv.URL)
-			t.Setenv("GATEWAY_API_KEY", "synthetic-secret-token")
+			t.Setenv("ZUANO_URL", srv.URL)
+			t.Setenv("ZUANO_API_KEY", "synthetic-secret-token")
 			output, err := runDoctorJSON(t)
 			if (err == nil) != tc.ok || strings.Contains(output, "synthetic-secret") {
 				t.Fatalf("%v: %s", err, output)
@@ -101,8 +101,8 @@ func TestDoctorGatewayProbeAndRedaction(t *testing.T) {
 
 func TestDoctorOfflineAndCancellation(t *testing.T) {
 	setupDoctor(t)
-	t.Setenv("GATEWAY_URL", "http://127.0.0.1:1")
-	t.Setenv("GATEWAY_API_KEY", "secret")
+	t.Setenv("ZUANO_URL", "http://127.0.0.1:1")
+	t.Setenv("ZUANO_API_KEY", "secret")
 	SetOffline(true)
 	output, err := runDoctorJSON(t)
 	if err != nil || !strings.Contains(output, "offline mode") {

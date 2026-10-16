@@ -156,7 +156,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 	}
 	add("gateway", true, "gateway reachable and session authenticated")
 	doctorPasskeys(ctx, c, add)
-	if os.Getenv("GATEWAY_API_KEY") != "" {
+	if os.Getenv("ZUANO_API_KEY") != "" {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
 		return checks
 	}

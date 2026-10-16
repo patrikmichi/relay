@@ -50,10 +50,10 @@ func readFile(t *testing.T, path string) string {
 func fixtureBundle() Bundle {
 	return Bundle{
 		MCP: []MCPServer{
-			{Name: "relay", URL: "https://gateway.example.com/api/mcp", BearerEnv: "GATEWAY_API_KEY"},
+			{Name: "relay", URL: "https://gateway.example.com/api/mcp", BearerEnv: "ZUANO_API_KEY"},
 			{Name: "docs", Command: "npx", Args: []string{"-y", "@acme/docs-mcp"}, Env: map[string]string{"DOCS_REGION": "eu"}},
 		},
-		Env: []EnvVar{{Name: "RELAY_AGENT", Value: "1"}},
+		Env: []EnvVar{{Name: "ZUANO_AGENT", Value: "1"}},
 		Hooks: []Hook{
 			{Event: EventPreToolUse, Matcher: "Bash", Command: "/opt/relay/guard.sh", Timeout: 10},
 			{Event: EventSessionStart, Command: "/opt/relay/context.sh"},

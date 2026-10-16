@@ -52,7 +52,7 @@ func ConnectCmd() *cobra.Command {
 
 API-key connectors prompt for each credential field without echoing it
 (or take --field KEY=@file, --field KEY=- from stdin, --field KEY=VALUE, or
-RELAY_CONNECT_<KEY> from the environment) and
+ZUANO_CONNECT_<KEY> from the environment) and
 store it on the gateway. OAuth connectors open the gateway's consent flow in
 your browser and wait until the connection shows up.
 
@@ -69,7 +69,7 @@ Examples:
   pass-cli get key | relay connect intervals-icu --field INTERVALS_API_KEY=-
 
 --field KEY=VALUE puts the value in this process's arguments, which other users
-can read with ps; prefer KEY=@file, KEY=- (stdin) or RELAY_CONNECT_<KEY>.`,
+can read with ps; prefer KEY=@file, KEY=- (stdin) or ZUANO_CONNECT_<KEY>.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConnect(cmd, args[0], f)
@@ -82,7 +82,7 @@ can read with ps; prefer KEY=@file, KEY=- (stdin) or RELAY_CONNECT_<KEY>.`,
 	fl.BoolVar(&f.noBrowser, "no-browser", false, "Print the URL instead of opening a browser")
 	fl.BoolVar(&f.reconnect, "reconnect", false, "Connect again even if the account already looks linked")
 	fl.DurationVar(&f.wait, "wait", 5*time.Minute, "How long to wait for a browser flow to finish")
-	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }
 
@@ -307,7 +307,7 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 			return fmt.Errorf("--field %s: %w", textsafe.Clean(k), err)
 		}
 		if literal && secretKeys[k] {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: --field %s=VALUE puts the secret in this process's arguments, visible to other users in `ps`; use --field %s=@file, --field %s=- (stdin) or RELAY_CONNECT_%s\n", textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k))
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: --field %s=VALUE puts the secret in this process's arguments, visible to other users in `ps`; use --field %s=@file, --field %s=- (stdin) or ZUANO_CONNECT_%s\n", textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k), textsafe.Clean(k))
 		}
 		given[k] = resolved
 	}
@@ -316,7 +316,7 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 	for _, field := range entry.Fields {
 		v, ok := given[field.Key]
 		if !ok {
-			v, ok = os.LookupEnv("RELAY_CONNECT_" + field.Key)
+			v, ok = os.LookupEnv("ZUANO_CONNECT_" + field.Key)
 		}
 		if !ok && field.Optional && !canPrompt(cmd.InOrStdin()) {
 			continue
@@ -398,7 +398,7 @@ func resolveFieldValue(v string, stdin io.Reader, stdinUsed *bool) (value string
 func promptField(cmd *cobra.Command, in *bufio.Reader, field connectionField) (string, error) {
 	if !canPrompt(cmd.InOrStdin()) {
 		key := textsafe.Clean(field.Key)
-		return "", fmt.Errorf("%s needs a value but there is no terminal; pass --field %s=@file or --field %s=- (stdin), or set RELAY_CONNECT_%s", key, key, key, key)
+		return "", fmt.Errorf("%s needs a value but there is no terminal; pass --field %s=@file or --field %s=- (stdin), or set ZUANO_CONNECT_%s", key, key, key, key)
 	}
 	label := textsafe.Clean(field.Label)
 	if label == "" {

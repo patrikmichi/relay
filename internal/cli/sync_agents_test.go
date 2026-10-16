@@ -44,9 +44,9 @@ func syncHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_URL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_URL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	for _, d := range []string{".claude", ".codex", ".gemini"} {
 		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
 			t.Fatal(err)
@@ -96,12 +96,12 @@ func TestSyncDetectsAgentsWritesAndIsIdempotent(t *testing.T) {
 func TestSyncReferencesTheAPIKeyOnlyWhenAsked(t *testing.T) {
 	home := syncHome(t)
 	saveGateway(t, "https://gateway.example.com")
-	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
+	t.Setenv("ZUANO_API_KEY", "gw-secret-value")
 	if _, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp"); err != nil {
 		t.Fatal(err)
 	}
 	got := readTestFile(t, filepath.Join(home, ".claude.json"))
-	if strings.Contains(got, "GATEWAY_API_KEY") || strings.Contains(got, "gw-secret-value") || strings.Contains(got, "Authorization") {
+	if strings.Contains(got, "ZUANO_API_KEY") || strings.Contains(got, "gw-secret-value") || strings.Contains(got, "Authorization") {
 		t.Errorf("auto must use OAuth even when a key is set:\n%s", got)
 	}
 
@@ -110,7 +110,7 @@ func TestSyncReferencesTheAPIKeyOnlyWhenAsked(t *testing.T) {
 			t.Fatal(err)
 		}
 		got = readTestFile(t, filepath.Join(home, ".claude.json"))
-		if !strings.Contains(got, "Bearer ${GATEWAY_API_KEY}") || strings.Contains(got, "gw-secret-value") {
+		if !strings.Contains(got, "Bearer ${ZUANO_API_KEY}") || strings.Contains(got, "gw-secret-value") {
 			t.Errorf("--mcp-auth %s must reference the variable, never embed the key:\n%s", mode, got)
 		}
 	}

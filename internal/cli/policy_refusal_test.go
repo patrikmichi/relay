@@ -57,7 +57,7 @@ func TestCall_HeldCallInAPersonalSessionExplainsItFollowsAgentApprovals(t *testi
 
 func TestCall_HeldCallInAnAgentSessionDoesNotClaimItIsPersonal(t *testing.T) {
 	refusingGateway(t, 200, nil, `{"jsonrpc":"2.0","id":1,"result":{"content":[],"structuredContent":{"status":"pending_approval","approval_id":"apr_9","service":"stripe","tool":"create_refund","risk":"write","expires_at":"2026-10-16T12:15:00.000Z"}}}`)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	out, _ := runCommand(t, CallCmd(), "stripe", "create_refund")
 	if strings.Contains(out, "Personal CLI sessions") {
 		t.Errorf("an agent session was told it is personal:\n%s", out)

@@ -54,5 +54,5 @@ func agentSessionDenied(profile keychain.Profile, status int, body []byte) error
 		reason = "agent sessions cannot change this"
 	}
 	return fmt.Errorf("the gateway refused this for an agent session: %s\n"+
-		"Run it with your personal profile (unset RELAY_AGENT) or use the MCP tools, which ask a person to approve", reason)
+		"Run it with your personal profile (unset ZUANO_AGENT) or use the MCP tools, which ask a person to approve", reason)
 }

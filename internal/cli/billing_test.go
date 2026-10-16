@@ -125,7 +125,7 @@ func TestBilling_AnAgentSessionMayRunStatusAndUsage(t *testing.T) {
 		"GET /api/billing/status":               reply(200, contractFixture(t, "billing-status.json")),
 		"GET /api/billing/usage?period=current": reply(200, contractFixture(t, "billing-usage.json")),
 	})
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	for _, verb := range []string{"status", "usage"} {
 		if _, err := runCommand(t, BillingCmd(), verb); err != nil {
 			t.Errorf("%s as an agent: %v", verb, err)

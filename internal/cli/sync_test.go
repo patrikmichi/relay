@@ -337,16 +337,16 @@ func TestRunSync_OrgNamespacing(t *testing.T) {
 	}
 }
 
-// TestResolveSyncDoer_NoToken verifies that missing RELAY_EMAIL (and no
-// persisted login / GATEWAY_API_KEY) returns an actionable error.
+// TestResolveSyncDoer_NoToken verifies that missing ZUANO_EMAIL (and no
+// persisted login / ZUANO_API_KEY) returns an actionable error.
 func TestResolveSyncDoer_NoToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	_, err := resolveSyncDoer("")
 	if err == nil {
-		t.Fatal("expected error when RELAY_EMAIL is unset, got nil")
+		t.Fatal("expected error when ZUANO_EMAIL is unset, got nil")
 	}
 	if !strings.Contains(err.Error(), "relay login") {
 		t.Errorf("error should mention `relay login`, got: %v", err)

@@ -112,7 +112,7 @@ func TestLogin_KeychainWriteFailureAborts(t *testing.T) {
 	if _, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected a keychain failure to abort login")
 	}
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	if email, _ := config.ResolveEmail(); email != "" {
 		t.Errorf("email persisted despite failed login: %q", email)
 	}
@@ -121,7 +121,7 @@ func TestLogin_KeychainWriteFailureAborts(t *testing.T) {
 func TestLogin_ConfigPersistFailureOnlyWarns(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	cfgDir := filepath.Join(home, ".config", "relay")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatal(err)

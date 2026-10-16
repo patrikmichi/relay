@@ -54,8 +54,8 @@ func TestPrepareDynamicCommandsSkipsDiscoveryWhenOffline(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_URL", srv.URL)
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_URL", srv.URL)
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	root := newRootCmd()
 	if err := prepareDynamicCommands(root, []string{"--offline", "clockify", "list_time_entries"}); err != nil {
@@ -82,8 +82,8 @@ func TestPrepareDynamicCommandsSkipsDiscoveryForBareHelp(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_URL", srv.URL)
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_URL", srv.URL)
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	for _, args := range [][]string{{"--help"}, nil, {"-h"}} {
 		root := newRootCmd()
@@ -125,8 +125,8 @@ func TestFullRootDiscoveredServiceIsExecutable(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_URL", srv.URL)
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_URL", srv.URL)
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	root := newRootCmd()
 	if err := prepareDynamicCommands(root, []string{"fakesvc", "ping"}); err != nil {
@@ -158,8 +158,8 @@ func TestStaticCommandNameCannotBeReplacedByDiscoveredService(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_URL", srv.URL)
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_URL", srv.URL)
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	root := newRootCmd()
 	err := prepareDynamicCommands(root, []string{"nonstatic-candidate-triggers-discovery"})

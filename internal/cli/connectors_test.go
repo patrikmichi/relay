@@ -270,7 +270,7 @@ func TestConnectReadsKeyFromEnvAndRequiresAValueWithoutATerminal(t *testing.T) {
 	if _, err := runCommand(t, ConnectCmd(), "clockify"); err == nil || !strings.Contains(err.Error(), "no terminal") {
 		t.Fatalf("err = %v", err)
 	}
-	t.Setenv("RELAY_CONNECT_CLOCKIFY_API_KEY", syntheticKey("env"))
+	t.Setenv("ZUANO_CONNECT_CLOCKIFY_API_KEY", syntheticKey("env"))
 	if _, err := runCommand(t, ConnectCmd(), "clockify"); err != nil {
 		t.Fatal(err)
 	}

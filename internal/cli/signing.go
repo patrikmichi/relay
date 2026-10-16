@@ -145,7 +145,7 @@ Compare the fingerprints with the ones your gateway's operator publishes.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
-	cmd.Flags().BoolVar(&yes, "yes", false, "Pin without asking (refused when RELAY_AGENT is set)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Pin without asking (refused when ZUANO_AGENT is set)")
 	return cmd
 }

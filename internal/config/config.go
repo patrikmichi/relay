@@ -18,8 +18,8 @@ type Config struct {
 	GatewayURL string `json:"gatewayUrl,omitempty"`
 	// Email is the identity of the last successful `relay login` (or
 	// `relay login --device`), persisted so subsequent commands don't
-	// require the RELAY_EMAIL environment variable to find the right
-	// keychain entry. RELAY_EMAIL, when set, still takes precedence — see
+	// require the ZUANO_EMAIL environment variable to find the right
+	// keychain entry. ZUANO_EMAIL, when set, still takes precedence — see
 	// ResolveEmail — so multi-account users can override without
 	// re-running `relay login`.
 	Email string `json:"email,omitempty"`
@@ -108,10 +108,10 @@ func PinSigningKeys(origin string, keys []SigningKey) error {
 	}, true)
 }
 
-// AgentMode reports whether RELAY_AGENT selects the agent profile, the
+// AgentMode reports whether ZUANO_AGENT selects the agent profile, the
 // session marked as an autonomous agent's, for this process.
 func AgentMode() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("RELAY_AGENT"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ZUANO_AGENT"))) {
 	case "1", "true", "yes", "on":
 		return true
 	}
@@ -231,14 +231,14 @@ func writeConfig(path string, cfg Config) error {
 }
 
 // GatewayURL returns the normalized, policy-checked gateway URL from the
-// GATEWAY_URL env var, else the config file. No gateway URL is compiled into
+// ZUANO_URL env var, else the config file. No gateway URL is compiled into
 // the binary: with neither set it returns "" and callers must fail closed (see
 // internal/cli/gateway.go's resolveGatewayURLOrFailClosed).
 //
 // A corrupt or unreadable config file is an error rather than "no gateway",
 // so relay never silently dials a different host than the configured one.
 func GatewayURL() (string, error) {
-	if v := os.Getenv("GATEWAY_URL"); v != "" {
+	if v := os.Getenv("ZUANO_URL"); v != "" {
 		return NormalizeGatewayURL(v)
 	}
 	cfg, err := Load()
@@ -315,11 +315,11 @@ func IsLoopbackOrigin(origin string) bool {
 	return err == nil && isLoopbackHost(u.Hostname())
 }
 
-// APIKeyOrigin is the one gateway GATEWAY_API_KEY may be sent to:
-// RELAY_API_KEY_ORIGIN when set, else the gateway saved in the config file.
+// APIKeyOrigin is the one gateway ZUANO_API_KEY may be sent to:
+// ZUANO_API_KEY_ORIGIN when set, else the gateway saved in the config file.
 // It is "" when neither exists.
 func APIKeyOrigin() (string, error) {
-	raw := os.Getenv("RELAY_API_KEY_ORIGIN")
+	raw := os.Getenv("ZUANO_API_KEY_ORIGIN")
 	if raw == "" {
 		cfg, err := Load()
 		if err != nil {
@@ -347,7 +347,7 @@ func isLoopbackHost(host string) bool {
 // SetEmail persists the given email as the current logged-in identity,
 // preserving any other existing config fields. Called by `relay login` /
 // `relay login --device` on success so later commands don't require
-// RELAY_EMAIL to be set.
+// ZUANO_EMAIL to be set.
 func SetEmail(email string) error {
 	return modify(func(cfg *Config) { cfg.Email = email }, true)
 }
@@ -363,11 +363,11 @@ func SetAgentEmail(email string) error {
 	return modify(func(cfg *Config) { cfg.AgentEmail = email }, true)
 }
 
-// ResolveAgentEmail resolves the identity of the agent profile: RELAY_EMAIL,
+// ResolveAgentEmail resolves the identity of the agent profile: ZUANO_EMAIL,
 // then the last `relay login --agent`, then the human identity, since an
 // agent normally acts for the person who is signed in.
 func ResolveAgentEmail() (string, error) {
-	if v := os.Getenv("RELAY_EMAIL"); v != "" {
+	if v := os.Getenv("ZUANO_EMAIL"); v != "" {
 		return v, nil
 	}
 	cfg, err := Load()
@@ -380,14 +380,14 @@ func ResolveAgentEmail() (string, error) {
 	if cfg.Email != "" {
 		return cfg.Email, nil
 	}
-	return "", errors.New("no agent session — run `relay login --agent`, or set RELAY_EMAIL")
+	return "", errors.New("no agent session — run `relay login --agent`, or set ZUANO_EMAIL")
 }
 
 // ResolveEmail resolves the current CLI identity used to look up the
 // keychain OAuth session.
 //
 // Resolution order:
-//  1. RELAY_EMAIL env var — explicit override (e.g. switching accounts
+//  1. ZUANO_EMAIL env var — explicit override (e.g. switching accounts
 //     without re-running `relay login`, or scripting against a specific
 //     identity). Always wins when set.
 //  2. The email persisted by the most recent successful `relay login` /
@@ -395,7 +395,7 @@ func ResolveAgentEmail() (string, error) {
 //
 // Returns an error (mentioning `relay login`) when neither is available.
 func ResolveEmail() (string, error) {
-	if v := os.Getenv("RELAY_EMAIL"); v != "" {
+	if v := os.Getenv("ZUANO_EMAIL"); v != "" {
 		return v, nil
 	}
 	cfg, err := Load()
@@ -403,7 +403,7 @@ func ResolveEmail() (string, error) {
 		return "", err
 	}
 	if cfg.Email == "" {
-		return "", errors.New("not logged in — run `relay login` first, or set RELAY_EMAIL")
+		return "", errors.New("not logged in — run `relay login` first, or set ZUANO_EMAIL")
 	}
 	return cfg.Email, nil
 }

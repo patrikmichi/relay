@@ -26,7 +26,7 @@ func runWithInput(t *testing.T, cmd *cobra.Command, input string, args ...string
 
 func TestAgentModeRefusesAgentConfigWrites(t *testing.T) {
 	home := syncHome(t)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	cases := map[string]*cobra.Command{
 		"sync":        SyncCmd(),
@@ -40,11 +40,11 @@ func TestAgentModeRefusesAgentConfigWrites(t *testing.T) {
 	}
 	for name, cmd := range cases {
 		_, err := runCommand(t, cmd, args[name]...)
-		if err == nil || !strings.Contains(err.Error(), "RELAY_AGENT") {
+		if err == nil || !strings.Contains(err.Error(), "ZUANO_AGENT") {
 			t.Errorf("%s = %v, want an agent-mode refusal", name, err)
 		}
 	}
-	if _, err := runCommand(t, SkillInstallCmd(), t.TempDir(), "--to", "claude", "--yes"); err == nil || !strings.Contains(err.Error(), "RELAY_AGENT") {
+	if _, err := runCommand(t, SkillInstallCmd(), t.TempDir(), "--to", "claude", "--yes"); err == nil || !strings.Contains(err.Error(), "ZUANO_AGENT") {
 		t.Errorf("skill install = %v, want an agent-mode refusal", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err == nil {
@@ -163,7 +163,7 @@ func TestRemoteServerAndRulesNeedNoConfirmation(t *testing.T) {
 func TestGatewayEnvIsNeverWrittenIntoAgentConfigs(t *testing.T) {
 	home := syncHome(t)
 	saveGateway(t, "https://saved.example.com")
-	t.Setenv("GATEWAY_URL", "https://env.example.net")
+	t.Setenv("ZUANO_URL", "https://env.example.net")
 
 	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp")
 	if err != nil {
@@ -173,14 +173,14 @@ func TestGatewayEnvIsNeverWrittenIntoAgentConfigs(t *testing.T) {
 	if !strings.Contains(written, "https://saved.example.com/api/mcp") || strings.Contains(written, "env.example.net") {
 		t.Errorf("agent config should use the saved gateway only:\n%s", written)
 	}
-	if !strings.Contains(out, "ignoring $GATEWAY_URL") {
+	if !strings.Contains(out, "ignoring $ZUANO_URL") {
 		t.Errorf("no warning about the ignored variable:\n%s", out)
 	}
 }
 
 func TestGatewayNeverComesFromEnvWhenNoneIsSaved(t *testing.T) {
 	home := syncHome(t)
-	t.Setenv("GATEWAY_URL", "https://env.example.net")
+	t.Setenv("ZUANO_URL", "https://env.example.net")
 
 	if out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp"); err != nil {
 		t.Fatalf("sync: %v\n%s", err, out)

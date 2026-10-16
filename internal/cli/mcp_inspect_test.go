@@ -12,7 +12,7 @@ import (
 
 func TestMcpInspectCredentialSafeProjection(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-token")
+	t.Setenv("ZUANO_API_KEY", "test-token")
 	descriptor := map[string]any{"source": "url", "transport": "http", "endpoint": "https://example.com/mcp?token=synthetic-secret", "authRef": "private-reference", "authType": "api_key", "authScope": "user", "declaredTools": []string{"one"}, "credentials": "synthetic-secret"}
 	content, _ := json.Marshal(descriptor)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func TestMcpInspectRejectsInvalidOrDeniedResources(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			t.Setenv("GATEWAY_API_KEY", "test-token")
+			t.Setenv("ZUANO_API_KEY", "test-token")
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status); fmt.Fprint(w, tc.body) }))
 			defer srv.Close()
 			cmd := McpInspectCmd()

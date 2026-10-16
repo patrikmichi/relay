@@ -56,7 +56,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().StringArrayVar(&rawArgs, "arg", nil, "Tool argument as key=value; the value is always a string (repeatable)")
 	cmd.Flags().StringArrayVar(&jsonArgs, "arg-json", nil, "Tool argument as key=<json>, for numbers, booleans, objects and arrays (repeatable)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")

@@ -103,7 +103,7 @@ Sources
                 migrate' and 'relay agent migrate'
 
 Agent profile
-  The sync also sets RELAY_AGENT=1 where an agent has an environment setting
+  The sync also sets ZUANO_AGENT=1 where an agent has an environment setting
   (Claude Code settings.json "env", Codex shell_environment_policy.set; the
   user scope, kind env) and in the environment of stdio MCP servers that run
   relay. A relay the agent starts then uses the agent profile, whose writes
@@ -208,15 +208,15 @@ Examples:
 	f.StringSliceVar(&o.scopes, "scope", nil, "user, project or all (default: user; project uses the current directory)")
 	f.StringSliceVar(&o.kinds, "kind", nil, "Limit to mcp, env, hooks, rules, commands, skills, subagents (default: all)")
 	f.StringVar(&o.from, "from", "", "Provider whose skills and subagents are copied to the other agents (default: claude)")
-	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (the agent signs in with OAuth, which the gateway marks as an agent's), or api-key (references $GATEWAY_API_KEY, which is not marked and bypasses approvals)")
+	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (the agent signs in with OAuth, which the gateway marks as an agent's), or api-key (references $ZUANO_API_KEY, which is not marked and bypasses approvals)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")
 	f.BoolVar(&o.force, "force", false, "Replace same-named entries relay does not manage")
-	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when RELAY_AGENT is set)")
+	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
 	f.BoolVar(&marketplace, "marketplace", false, "Also pull the gateway's Claude Code plugin marketplace")
-	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $GATEWAY_URL, then the config file)")
+	f.StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for the marketplace pull (default: $ZUANO_URL, then the config file)")
 	f.BoolVar(&requireSig, "require-signature", false, "With --marketplace: refuse plugin bundles the gateway did not sign")
 	f.StringVar(&customDir, "dir", "", "Marketplace directory (implies --marketplace; default: ~/.config/relay/marketplace/<name>/)")
 	cmd.AddCommand(SyncRoutesCmd())
@@ -240,7 +240,7 @@ func planSync(cmd *cobra.Command, o agentSyncOpts) (*agentSyncRun, error) {
 }
 
 // resolveSyncDoer reads the gateway URL and resolves an authenticated
-// client for it. Auth resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted
+// client for it. Auth resolution (ZUANO_API_KEY / ZUANO_EMAIL / persisted
 // login email → keychain, with transparent OAuth refresh) is centralized in
 // client.Resolve.
 func resolveSyncDoer(overrideURL string) (gatewayDoer, error) {

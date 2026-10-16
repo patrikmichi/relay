@@ -189,7 +189,7 @@ func auditExportCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	filter.bind(cmd, true)
 	cmd.Flags().StringVar(&format, "format", "ndjson", "Export format: "+strings.Join(auditFormats, " or "))
 	cmd.Flags().StringVar(&output, "output", "", "Write to this new file (mode 0600) instead of stdout")

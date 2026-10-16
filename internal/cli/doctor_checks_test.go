@@ -91,7 +91,7 @@ func TestDoctor_SessionChecks(t *testing.T) {
 
 	t.Run("not logged in", func(t *testing.T) {
 		setupDoctor(t)
-		t.Setenv("GATEWAY_URL", whoami().URL)
+		t.Setenv("ZUANO_URL", whoami().URL)
 		output, err := runDoctorJSON(t)
 		if c := doctorCheckNamed(t, output, "gateway"); err == nil || c.OK || !strings.Contains(c.Detail, "run relay login") {
 			t.Fatalf("%v %+v", err, c)
@@ -102,8 +102,8 @@ func TestDoctor_SessionChecks(t *testing.T) {
 		setupDoctor(t)
 		srv := whoami()
 		srv.Close()
-		t.Setenv("GATEWAY_URL", srv.URL)
-		t.Setenv("GATEWAY_API_KEY", syntheticKey("doctor"))
+		t.Setenv("ZUANO_URL", srv.URL)
+		t.Setenv("ZUANO_API_KEY", syntheticKey("doctor"))
 		output, _ := runDoctorJSON(t)
 		if c := doctorCheckNamed(t, output, "gateway"); c.OK || c.Detail != "gateway request failed" {
 			t.Fatalf("%+v", c)
@@ -114,10 +114,10 @@ func TestDoctor_SessionChecks(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			setupDoctor(t)
 			srv := whoami()
-			t.Setenv("GATEWAY_URL", srv.URL)
+			t.Setenv("ZUANO_URL", srv.URL)
 			origin, _ := config.NormalizeGatewayURL(srv.URL)
 			email := "doctor@example.com"
-			t.Setenv("RELAY_EMAIL", email)
+			t.Setenv("ZUANO_EMAIL", email)
 			if err := keychain.WriteToken(origin, email, keychain.TokenData{AccessToken: syntheticKey("access"), ExpiresAt: time.Now().Add(expiry).Unix()}); err != nil {
 				t.Fatal(err)
 			}

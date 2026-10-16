@@ -6,7 +6,7 @@ hooks = true
 # >>> relay-managed:begin mcp >>>
 [mcp_servers.relay]
 url = "https://gateway.example.com/api/mcp"
-bearer_token_env_var = "GATEWAY_API_KEY"
+bearer_token_env_var = "ZUANO_API_KEY"
 
 [mcp_servers.docs]
 command = "npx"
@@ -18,5 +18,5 @@ DOCS_REGION = "eu"
 
 # >>> relay-managed:begin env >>>
 [shell_environment_policy.set]
-RELAY_AGENT = "1"
+ZUANO_AGENT = "1"
 # <<< relay-managed:end env <<<

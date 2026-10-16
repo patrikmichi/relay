@@ -11,7 +11,7 @@ import (
 const (
 	defaultControlTimeout = 30 * time.Second
 	defaultLongTimeout    = 150 * time.Second
-	timeoutEnvVar         = "RELAY_TIMEOUT"
+	timeoutEnvVar         = "ZUANO_TIMEOUT"
 )
 
 type requestKind int
@@ -45,7 +45,7 @@ type timeoutOverride struct {
 var timeoutFlag *timeoutOverride
 
 // SetTimeoutFlag records an explicit root --timeout value; it overrides
-// RELAY_TIMEOUT and both defaults.
+// ZUANO_TIMEOUT and both defaults.
 func SetTimeoutFlag(d time.Duration) error {
 	if d < 0 {
 		return fmt.Errorf("--timeout must not be negative")

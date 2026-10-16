@@ -11,16 +11,16 @@ func TestAgentMode(t *testing.T) {
 		"": false, "0": false, "false": false, "no": false, "agent": false,
 		"1": true, "true": true, "TRUE": true, " yes ": true, "on": true,
 	} {
-		t.Setenv("RELAY_AGENT", value)
+		t.Setenv("ZUANO_AGENT", value)
 		if got := config.AgentMode(); got != want {
-			t.Errorf("RELAY_AGENT=%q: AgentMode = %v, want %v", value, got, want)
+			t.Errorf("ZUANO_AGENT=%q: AgentMode = %v, want %v", value, got, want)
 		}
 	}
 }
 
 func TestResolveAgentEmailOrder(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_EMAIL", "")
 
 	if _, err := config.ResolveAgentEmail(); err == nil {
 		t.Fatal("expected an error with no identity at all")
@@ -43,8 +43,8 @@ func TestResolveAgentEmailOrder(t *testing.T) {
 		t.Errorf("an agent login changed the human identity to %q", got)
 	}
 
-	t.Setenv("RELAY_EMAIL", "override@example.com")
+	t.Setenv("ZUANO_EMAIL", "override@example.com")
 	if got, _ := config.ResolveAgentEmail(); got != "override@example.com" {
-		t.Errorf("RELAY_EMAIL wins, got %q", got)
+		t.Errorf("ZUANO_EMAIL wins, got %q", got)
 	}
 }

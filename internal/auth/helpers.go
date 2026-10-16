@@ -12,7 +12,7 @@ import (
 
 // writeToken is a shared helper to write a token to the OS keychain — bound
 // to profile, gatewayOrigin and email — and persist the logged-in email
-// (persistLogin) so subsequent commands don't require RELAY_EMAIL to be set.
+// (persistLogin) so subsequent commands don't require ZUANO_EMAIL to be set.
 // Callers should propagate a non-nil return as a user-visible abort — the
 // keychain write is the one that matters; a config-persist failure is logged
 // but non-fatal (mirrors Login's same best-effort treatment in login.go).
@@ -36,7 +36,7 @@ func writeBoundToken(profile keychain.Profile, gatewayOrigin, email, accessToken
 }
 
 // persistLogin records who logged in so later commands find the session
-// without RELAY_EMAIL: the human identity for a human login, a separate
+// without ZUANO_EMAIL: the human identity for a human login, a separate
 // agent identity for an agent login, which must not change what the unmarked
 // commands use. Failure only warns: the session is already stored.
 func persistLogin(profile keychain.Profile, email string, diagnostic io.Writer) {

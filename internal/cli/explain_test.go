@@ -55,8 +55,8 @@ func newRiskServer(t *testing.T) *riskServer {
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "key")
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_API_KEY", "key")
+	t.Setenv("ZUANO_URL", "")
 	SetOffline(false)
 	t.Cleanup(func() { SetOffline(false) })
 }

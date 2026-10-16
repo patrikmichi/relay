@@ -18,11 +18,11 @@ func TestSync_SetsTheAgentProfileWhereAgentsHaveAnEnvironment(t *testing.T) {
 		t.Fatalf("sync: %v\n%s", err, out)
 	}
 	settings := readTestFile(t, filepath.Join(home, ".claude", "settings.json"))
-	if !strings.Contains(settings, `"env"`) || !strings.Contains(settings, `"RELAY_AGENT": "1"`) {
+	if !strings.Contains(settings, `"env"`) || !strings.Contains(settings, `"ZUANO_AGENT": "1"`) {
 		t.Errorf("Claude settings:\n%s", settings)
 	}
 	codex := readTestFile(t, filepath.Join(home, ".codex", "config.toml"))
-	if !strings.Contains(codex, "[shell_environment_policy.set]") || !strings.Contains(codex, `RELAY_AGENT = "1"`) {
+	if !strings.Contains(codex, "[shell_environment_policy.set]") || !strings.Contains(codex, `ZUANO_AGENT = "1"`) {
 		t.Errorf("Codex config:\n%s", codex)
 	}
 	if !strings.Contains(out, "no agent session exists; run `relay login --agent`") {
@@ -85,14 +85,14 @@ func TestSync_MarksStdioRelayServersWithoutChangingTheSavedSource(t *testing.T) 
 			files = part
 		}
 	}
-	if !strings.Contains(bridge, `"RELAY_AGENT": "1"`) {
+	if !strings.Contains(bridge, `"ZUANO_AGENT": "1"`) {
 		t.Errorf("relay stdio server is not marked:\n%s", claude)
 	}
-	if strings.Contains(files, "RELAY_AGENT") {
+	if strings.Contains(files, "ZUANO_AGENT") {
 		t.Errorf("an unrelated server was marked:\n%s", claude)
 	}
 	source := readTestFile(t, agentsync.MCPSourcePath(agentsync.Env{Home: home}, agentsync.ScopeUser))
-	if strings.Contains(source, "RELAY_AGENT") {
+	if strings.Contains(source, "ZUANO_AGENT") {
 		t.Errorf("the saved source must stay as the user wrote it:\n%s", source)
 	}
 }
@@ -125,13 +125,13 @@ func TestMarkRelayServers(t *testing.T) {
 func TestSync_WarnsWhenTheGatewayEntryUsesAnAPIKey(t *testing.T) {
 	syncHome(t)
 	saveGateway(t, "https://gateway.example.com")
-	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
+	t.Setenv("ZUANO_API_KEY", "gw-secret-value")
 
 	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", "api-key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "$GATEWAY_API_KEY, which is not marked as an agent's: calls through it bypass approvals") {
+	if !strings.Contains(out, "$ZUANO_API_KEY, which is not marked as an agent's: calls through it bypass approvals") {
 		t.Errorf("missing the API key warning:\n%s", out)
 	}
 	if strings.Contains(out, "gw-secret-value") {
@@ -158,7 +158,7 @@ func TestSync_AgentsWithoutOAuthGetNoCredentialAndAHowTo(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(home, "proj", ".vscode", "mcp.json"), "{}")
 	saveGateway(t, "https://gateway.example.com")
-	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
+	t.Setenv("ZUANO_API_KEY", "gw-secret-value")
 
 	out, err := runCommand(t, SyncCmd(), "--to", "cline,copilot", "--kind", "mcp", "--scope", "user,project")
 	if err != nil {
@@ -171,7 +171,7 @@ func TestSync_AgentsWithoutOAuthGetNoCredentialAndAHowTo(t *testing.T) {
 		t.Errorf("no Cline authorization hint:\n%s", out)
 	}
 	cline := readTestFile(t, filepath.Join(home, ".cline", "data", "settings", "cline_mcp_settings.json"))
-	if strings.Contains(cline, "Authorization") || strings.Contains(cline, "GATEWAY_API_KEY") {
+	if strings.Contains(cline, "Authorization") || strings.Contains(cline, "ZUANO_API_KEY") {
 		t.Errorf("Cline entry carries a credential:\n%s", cline)
 	}
 }

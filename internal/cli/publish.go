@@ -223,7 +223,7 @@ Flags:
 	cmd.Flags().StringVar(&flagChannel, "channel", "stable", "Publish channel: stable or beta")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Validate and print the payload without sending it")
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll publish status until terminal; exit non-zero on changes_requested")
-	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().StringVar(&flagManifest, "manifest", "", "Explicit path (relative to <path>) to the manifest/descriptor file — bypasses SKILL.md/agent.md convention discovery")
 	cmd.Flags().StringSliceVar(&flagInclude, "include", nil, "Force-include a bundle-relative path the default secret-screening policy would otherwise exclude (repeatable)")
 
@@ -371,7 +371,7 @@ func resolvePublishDoer(overrideURL string) (gatewayDoer, error) {
 
 // resolvePublishDoerWithURL resolves an authenticated client and returns both
 // it and the resolved gateway URL (for catalog link generation). Auth
-// resolution (GATEWAY_API_KEY / RELAY_EMAIL / persisted login email →
+// resolution (ZUANO_API_KEY / ZUANO_EMAIL / persisted login email →
 // keychain, with transparent OAuth refresh) is centralized in client.Resolve.
 func resolvePublishDoerWithURL(overrideURL string) (gatewayDoer, string, error) {
 	gURL, err := resolveGatewayURLOrFailClosed(overrideURL)
@@ -414,7 +414,7 @@ type publishOpts struct {
 	mcpAuthScope      string
 	mcpTools          []string
 	// gatewayURL is the resolved gateway base URL, used for catalog link generation.
-	// Set by the command from the resolved doer; empty falls back to GATEWAY_URL env / default.
+	// Set by the command from the resolved doer; empty falls back to ZUANO_URL env / default.
 	gatewayURL string
 }
 
@@ -1135,7 +1135,7 @@ changes_requested — useful for gating CI on a publish.`,
 	}
 
 	cmd.Flags().BoolVar(&flagWatch, "watch", false, "Poll status until terminal; exit non-zero on changes_requested")
-	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&flagGatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 
 	return cmd
 }

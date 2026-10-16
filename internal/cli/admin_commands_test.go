@@ -177,7 +177,7 @@ func TestPolicyExplain_AnAgentSessionAsksAsAnAgentAndBadPrincipalsAreRefused(t *
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 		"GET /api/admin/risk-policy/preview?params=%7B%7D&principal=cli_agent&service=stripe&tool=create_refund": reply(200, contractFixture(t, "policy-preview-off.json")),
 	})
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	if _, err := runCommand(t, PolicyCmd(), "explain", "stripe", "create_refund"); err != nil {
 		t.Fatal(err)
 	}

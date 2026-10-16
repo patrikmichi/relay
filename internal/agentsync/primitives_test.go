@@ -60,7 +60,7 @@ func TestDiffRedactsSecretLookingValues(t *testing.T) {
 	if got := redactLine(line); strings.Contains(got, "sk-live") {
 		t.Fatalf("not redacted: %s", got)
 	}
-	ref := `"Authorization": "Bearer ${GATEWAY_API_KEY}"`
+	ref := `"Authorization": "Bearer ${ZUANO_API_KEY}"`
 	if got := redactLine(ref); got != ref {
 		t.Fatalf("env reference was redacted: %s", got)
 	}
@@ -87,7 +87,7 @@ func TestDiffRedactsTOMLEnvNamesArgvAndTokenShapes(t *testing.T) {
 	for name, line := range map[string]string{
 		"plain toml":          `command = "npx"`,
 		"keyboard":            `layout = "keyboard"`,
-		"env reference":       `API_KEY = "${GATEWAY_API_KEY}"`,
+		"env reference":       `API_KEY = "${ZUANO_API_KEY}"`,
 		"flag reference":      `args = ["--token", "${DOCS_TOKEN}"]`,
 		"ordinary arg":        `args = ["-y", "@acme/tool"]`,
 		"monkey is not a key": `monkey = "banana"`,
@@ -187,7 +187,7 @@ func TestBearerEnvMustBeAnEnvironmentVariableName(t *testing.T) {
 			t.Errorf("BearerEnv %q was accepted", bad)
 		}
 	}
-	s := MCPServer{Name: "gw", URL: "https://gateway.example.com/mcp", BearerEnv: "GATEWAY_API_KEY"}
+	s := MCPServer{Name: "gw", URL: "https://gateway.example.com/mcp", BearerEnv: "ZUANO_API_KEY"}
 	if err := s.Validate(); err != nil {
 		t.Errorf("valid name rejected: %v", err)
 	}

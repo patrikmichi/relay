@@ -6,7 +6,7 @@
       "url": "https://gateway.example.com/api/mcp",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer {env:GATEWAY_API_KEY}"
+        "Authorization": "Bearer {env:ZUANO_API_KEY}"
       }
     },
     "docs": {

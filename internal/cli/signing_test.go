@@ -146,7 +146,7 @@ func TestLoginPinsKeysOnFirstUseAndRefusesChanges(t *testing.T) {
 
 func TestTrustKeyReplacesPinnedKeysOnlyWhenConfirmed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	_, first := keyFromSeed(1)
 	_, second := keyFromSeed(2)
 	keys := []signing.Key{second}
@@ -172,8 +172,8 @@ func TestTrustKeyReplacesPinnedKeysOnlyWhenConfirmed(t *testing.T) {
 		t.Fatal("trust-key did not pin the new key")
 	}
 
-	t.Setenv("RELAY_AGENT", "1")
-	if _, err := runCommand(t, configTrustKeyCmd(), "--gateway-url", srv.URL, "--yes"); err == nil || !strings.Contains(err.Error(), "RELAY_AGENT") {
+	t.Setenv("ZUANO_AGENT", "1")
+	if _, err := runCommand(t, configTrustKeyCmd(), "--gateway-url", srv.URL, "--yes"); err == nil || !strings.Contains(err.Error(), "ZUANO_AGENT") {
 		t.Errorf("trust-key in agent mode = %v", err)
 	}
 }

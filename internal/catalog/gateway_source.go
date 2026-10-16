@@ -32,7 +32,7 @@ import (
 
 // Doer is the minimal HTTP interface FetchSkill needs to reach the gateway's
 // governed download endpoint. *client.Client (relay's auto-refreshing
-// OAuth/keychain-backed gateway client, or a GATEWAY_API_KEY bearer client)
+// OAuth/keychain-backed gateway client, or a ZUANO_API_KEY bearer client)
 // satisfies this directly — this package never imports internal/client, to
 // keep the dependency direction one-way (cli -> catalog -> agentport;
 // catalog -> client only via this narrow interface at the call site, not a

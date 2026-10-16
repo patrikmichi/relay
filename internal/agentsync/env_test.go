@@ -8,7 +8,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-func envBundle() Bundle { return Bundle{Env: []EnvVar{{Name: "RELAY_AGENT", Value: "1"}}} }
+func envBundle() Bundle { return Bundle{Env: []EnvVar{{Name: "ZUANO_AGENT", Value: "1"}}} }
 
 func envOpts() Options {
 	return Options{Agents: []AgentID{Claude, Codex}, Scopes: []Scope{ScopeUser}, Kinds: []Kind{KindEnv}}
@@ -22,26 +22,26 @@ func TestEnvKeepsTheUsersOwnVariables(t *testing.T) {
 	syncAll(t, env, userBundle(envBundle()), envOpts())
 	got := readFile(t, settings)
 	contains(t, got, `"EDITOR": "vim"`)
-	contains(t, got, `"RELAY_AGENT": "1"`)
+	contains(t, got, `"ZUANO_AGENT": "1"`)
 
 	syncAll(t, env, userBundle(Bundle{}), envOpts())
 	got = readFile(t, settings)
 	contains(t, got, `"EDITOR": "vim"`)
-	if strings.Contains(got, "RELAY_AGENT") {
-		t.Errorf("RELAY_AGENT left behind:\n%s", got)
+	if strings.Contains(got, "ZUANO_AGENT") {
+		t.Errorf("ZUANO_AGENT left behind:\n%s", got)
 	}
 }
 
 func TestEnvVariableTheUserSetDifferentlyIsNotOverwritten(t *testing.T) {
 	env := newEnv(t)
 	settings := filepath.Join(env.Home, ".claude", "settings.json")
-	writeFile(t, settings, "{\n  \"env\": {\n    \"RELAY_AGENT\": \"0\"\n  }\n}\n")
+	writeFile(t, settings, "{\n  \"env\": {\n    \"ZUANO_AGENT\": \"0\"\n  }\n}\n")
 
 	plan := syncAll(t, env, userBundle(envBundle()), envOpts())
-	if got := statusOf(plan.Items, KindEnv, "RELAY_AGENT"); got != StatusConflict {
+	if got := statusOf(plan.Items, KindEnv, "ZUANO_AGENT"); got != StatusConflict {
 		t.Fatalf("status = %q, want conflict", got)
 	}
-	contains(t, readFile(t, settings), `"RELAY_AGENT": "0"`)
+	contains(t, readFile(t, settings), `"ZUANO_AGENT": "0"`)
 }
 
 func TestEnvIsUserScopeOnly(t *testing.T) {
@@ -91,7 +91,7 @@ func TestCodexEnvTableTheUserDefinedIsReportedNotReplaced(t *testing.T) {
 	if got := statusOf(plan.Items, KindEnv, "shell_environment_policy.set"); got != StatusConflict {
 		t.Fatalf("status = %q, want conflict", got)
 	}
-	if strings.Contains(readFile(t, config), "RELAY_AGENT") {
+	if strings.Contains(readFile(t, config), "ZUANO_AGENT") {
 		t.Error("the user's table was modified")
 	}
 }

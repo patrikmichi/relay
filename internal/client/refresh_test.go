@@ -42,9 +42,9 @@ func seedSession(t *testing.T, gatewayOrigin, email string, tok keychain.TokenDa
 
 func TestResolve_GatewayAPIKeyTakesPrecedence(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "static-bearer-key")
-	t.Setenv("RELAY_API_KEY_ORIGIN", "https://gw.example.com")
-	t.Setenv("RELAY_EMAIL", "someone@example.com") // present but must be ignored
+	t.Setenv("ZUANO_API_KEY", "static-bearer-key")
+	t.Setenv("ZUANO_API_KEY_ORIGIN", "https://gw.example.com")
+	t.Setenv("ZUANO_EMAIL", "someone@example.com") // present but must be ignored
 
 	c, err := client.Resolve("https://gw.example.com")
 	if err != nil {
@@ -60,8 +60,8 @@ func TestResolve_GatewayAPIKeyTakesPrecedence(t *testing.T) {
 
 func TestResolve_NoSessionReturnsErrNotLoggedIn(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 
 	_, err := client.Resolve("https://gw.example.com")
 	if err != client.ErrNotLoggedIn {
@@ -71,8 +71,8 @@ func TestResolve_NoSessionReturnsErrNotLoggedIn(t *testing.T) {
 
 func TestResolve_UsesPersistedLoginEmail(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 
 	seedSession(t, "https://gw.example.com", "persisted@example.com", keychain.TokenData{
 		AccessToken:  "access-1",
@@ -95,7 +95,7 @@ func TestResolve_UsesPersistedLoginEmail(t *testing.T) {
 
 func TestResolve_RelayEmailOverridesPersistedEmail(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	seedSession(t, "https://gw.example.com", "persisted@example.com", keychain.TokenData{
 		AccessToken: "persisted-access", RefreshToken: "persisted-refresh",
@@ -105,7 +105,7 @@ func TestResolve_RelayEmailOverridesPersistedEmail(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed override token: %v", err)
 	}
-	t.Setenv("RELAY_EMAIL", "override@example.com")
+	t.Setenv("ZUANO_EMAIL", "override@example.com")
 
 	c, err := client.Resolve("https://gw.example.com")
 	if err != nil {
@@ -123,7 +123,7 @@ func TestResolve_RelayEmailOverridesPersistedEmail(t *testing.T) {
 
 func TestDo_RefreshesAndRetriesOnceOn401(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	var apiHits int
 	var refreshHits int
@@ -200,7 +200,7 @@ func TestDo_RefreshesAndRetriesOnceOn401(t *testing.T) {
 
 func TestDo_ReturnsOriginalStyle401WhenRefreshFails(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/cli/refresh", func(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +241,7 @@ func TestDo_NoRefreshCapability_SendsOnce(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// client.New has no email/refresh token — matches a GATEWAY_API_KEY client.
+	// client.New has no email/refresh token — matches a ZUANO_API_KEY client.
 	c := client.New(srv.URL, "static-key")
 	resp, err := c.Get("/api/test")
 	if err != nil {
@@ -261,7 +261,7 @@ func TestDo_NoRefreshCapability_SendsOnce(t *testing.T) {
 
 func TestDo_ProactivelyRefreshesNearExpiry(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	var refreshHits int
 	var capturedAuth string
@@ -316,7 +316,7 @@ func TestDo_ProactivelyRefreshesNearExpiry(t *testing.T) {
 
 func TestDo_DoesNotRefreshWhenFarFromExpiry(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	var refreshHits int
 	mux := http.NewServeMux()
@@ -356,7 +356,7 @@ func TestDo_DoesNotRefreshWhenFarFromExpiry(t *testing.T) {
 
 func TestDo_PostRetriesWithBodyIntactAfter401(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	var bodies []string
 	var attempt int

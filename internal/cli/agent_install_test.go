@@ -48,7 +48,7 @@ func buildCanonicalAgentBundle(t *testing.T, name string) []byte {
 // (GET /api/catalog/resources/<id>/download) with the real
 // X-Resource-Content-Sha256 (plus legacy X-Skill-Content-Sha256 alias)
 // headers the gateway route is contracted to set. Requires a bearer
-// Authorization header (any non-empty value — GATEWAY_API_KEY bearer auth).
+// Authorization header (any non-empty value — ZUANO_API_KEY bearer auth).
 func newMockAgentCatalogGateway(t *testing.T, wantID string, bundle []byte, version string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func newMockAgentCatalogGateway(t *testing.T, wantID string, bundle []byte, vers
 func TestAgentInstall_CatalogID_RoundTripToClaude(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalAgentBundle(t, "pr-reviewer")
 	srv := newMockAgentCatalogGateway(t, "res_agent123", bundle, "1.2.0")
@@ -118,7 +118,7 @@ func TestAgentInstall_CatalogID_RoundTripToClaude(t *testing.T) {
 func TestAgentInstall_CatalogID_FanOutToTwoTargets(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalAgentBundle(t, "pr-reviewer")
 	srv := newMockAgentCatalogGateway(t, "res_fanout_agent", bundle, "2.0.0")
@@ -155,7 +155,7 @@ func TestAgentInstall_CatalogID_FanOutToTwoTargets(t *testing.T) {
 func TestAgentInstall_CatalogID_ChecksumMismatch_NonZeroExitNoWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalAgentBundle(t, "pr-reviewer")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +186,7 @@ func TestAgentInstall_CatalogID_ChecksumMismatch_NonZeroExitNoWrite(t *testing.T
 func TestAgentInstall_NoGatewayConfigured_FailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	// Deliberately no GATEWAY_API_KEY / RELAY_EMAIL / keychain session, and
+	// Deliberately no ZUANO_API_KEY / ZUANO_EMAIL / keychain session, and
 	// no --gateway-url override.
 
 	cmd := AgentInstallCmd()
@@ -212,7 +212,7 @@ func TestAgentInstall_NoGatewayConfigured_FailsClosed(t *testing.T) {
 func TestAgentInstall_OfflineFlag_FailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token") // even with creds available...
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token") // even with creds available...
 
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
@@ -229,7 +229,7 @@ func TestAgentInstall_OfflineFlag_FailsClosed(t *testing.T) {
 func TestAgentInstall_UnknownToProviderErrors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalAgentBundle(t, "pr-reviewer")
 	srv := newMockAgentCatalogGateway(t, "res_agent_unknown_to", bundle, "1.0.0")
@@ -251,7 +251,7 @@ func TestAgentInstall_UnknownToProviderErrors(t *testing.T) {
 func TestAgentInstall_ToOmitted_NoProvidersDetectedErrors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	bundle := buildCanonicalAgentBundle(t, "pr-reviewer")
 	srv := newMockAgentCatalogGateway(t, "res_agent_no_targets", bundle, "1.0.0")
@@ -268,7 +268,7 @@ func TestAgentInstall_ToOmitted_NoProvidersDetectedErrors(t *testing.T) {
 func TestAgentInstall_LocalOfflineAndRollback(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_URL", "")
 	source := filepath.Join(t.TempDir(), "reviewer.md")
 	if err := os.WriteFile(source, []byte("---\nname: reviewer\ndescription: reviews code\n---\nReview carefully.\n"), 0600); err != nil {
 		t.Fatal(err)

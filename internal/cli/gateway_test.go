@@ -10,7 +10,7 @@ import (
 	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// withLoggedInSession sets RELAY_EMAIL and writes a matching token into the
+// withLoggedInSession sets ZUANO_EMAIL and writes a matching token into the
 // (mocked, see call_test.go's keyring.MockInit init()) OS keychain, keyed to
 // gatewayURL, so resolveClient succeeds without ever dialing the network —
 // needed to reach the Offline()/resolveGatewayURLOrFailClosed branch in
@@ -20,7 +20,7 @@ import (
 func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string) {
 	t.Helper()
 	email = "offline-test@example.com"
-	t.Setenv("RELAY_EMAIL", email)
+	t.Setenv("ZUANO_EMAIL", email)
 	origin, err := config.NormalizeGatewayURL(gatewayURL)
 	if err != nil {
 		t.Fatalf("normalize gateway URL: %v", err)
@@ -35,11 +35,11 @@ func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string)
 	return email, origin
 }
 
-// withNoGateway unsets $GATEWAY_URL and points $HOME at a fresh temp dir so
+// withNoGateway unsets $ZUANO_URL and points $HOME at a fresh temp dir so
 // no ~/.config/relay/config.json is picked up.
 func withNoGateway(t *testing.T) {
 	t.Helper()
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_URL", "")
 	t.Setenv("HOME", t.TempDir())
 }
 
@@ -159,7 +159,7 @@ func TestCall_CatalogVerb_FailsClosedWhenNoGateway(t *testing.T) {
 // when a gateway URL would otherwise resolve successfully.
 func withOffline(t *testing.T) {
 	t.Helper()
-	t.Setenv("GATEWAY_URL", "https://configured.example.com")
+	t.Setenv("ZUANO_URL", "https://configured.example.com")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
 }

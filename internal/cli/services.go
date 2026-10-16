@@ -60,7 +60,7 @@ manages the shared credentials. Link your own account with 'relay connect
 		},
 	}
 
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&noStatus, "no-status", false, "Skip the per-service connection status probes")
 	return cmd
 }

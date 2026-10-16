@@ -287,12 +287,12 @@ func captureStdout(t *testing.T, fn func()) string {
 // ---- BuildServiceCommands (dynamic sub-command registration) ----
 
 func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testing.T) {
-	// BuildServiceCommands resolves a client.Client (GATEWAY_API_KEY /
-	// RELAY_EMAIL+keychain / persisted login email+keychain) before it does
+	// BuildServiceCommands resolves a client.Client (ZUANO_API_KEY /
+	// ZUANO_EMAIL+keychain / persisted login email+keychain) before it does
 	// anything network-related; without any of those it must no-op.
 	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	root := &cobra.Command{Use: "relay"}
 	if err := BuildServiceCommands(root, "http://example.invalid"); err != nil {
@@ -309,7 +309,7 @@ func TestBuildServiceCommands_RegistersOnlyAccessibleServicesWithTools(t *testin
 // rejected outright, never silently shadowing (or being shadowed by) it.
 func TestBuildServiceCommandsRejectsCollisionWithStaticCommand(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -346,7 +346,7 @@ func TestBuildServiceCommandsRejectsCollisionWithStaticCommand(t *testing.T) {
 // rather than relying solely on the live command-tree walk.
 func TestBuildServiceCommandsRejectsReservedName(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "synthetic-test-key")
+	t.Setenv("ZUANO_API_KEY", "synthetic-test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

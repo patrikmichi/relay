@@ -56,7 +56,7 @@ func newEvalGateway(t *testing.T) *evalGateway {
 		refuse:    map[string]int{},
 	}
 	evalPollInterval, evalSettleDelay = time.Millisecond, 0
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	g.Server = httptest.NewServer(http.HandlerFunc(g.serve))
 	t.Cleanup(g.Close)
 	withAPIKeyGateway(t, g.Server)
@@ -741,11 +741,11 @@ func TestQuality_SkillAndDashboard(t *testing.T) {
 
 func TestEvalAPI_AgentSessionRefusalsPointToThePersonalProfile(t *testing.T) {
 	g := newEvalGateway(t)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	for _, status := range []int{http.StatusForbidden, http.StatusUnauthorized} {
 		g.refuse["POST /evals/sets"] = status
 		_, err := evalCmd(t, g, SkillEvalsCmd(), "sets", "create", "evskill", "--name", "x")
-		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "unset RELAY_AGENT") {
+		if err == nil || !strings.Contains(err.Error(), "agent session") || !strings.Contains(err.Error(), "unset ZUANO_AGENT") {
 			t.Errorf("status %d: %v", status, err)
 		}
 	}

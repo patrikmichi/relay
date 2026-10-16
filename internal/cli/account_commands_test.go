@@ -26,13 +26,13 @@ func syntheticKey(parts ...string) string {
 }
 
 // withAPIKeyGateway isolates HOME and authenticates every client.Resolve
-// call through GATEWAY_API_KEY against srv.
+// call through ZUANO_API_KEY against srv.
 func withAPIKeyGateway(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_URL", srv.URL)
-	t.Setenv("GATEWAY_API_KEY", syntheticKey("api"))
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_URL", srv.URL)
+	t.Setenv("ZUANO_API_KEY", syntheticKey("api"))
 }
 
 // runCommand executes cmd with args and returns stdout+stderr and the error.
@@ -139,8 +139,8 @@ func TestConfigShow_ReportsConfiguredAndEffectiveValues(t *testing.T) {
 	if err := config.Save(config.Config{GatewayURL: "https://saved.example.com", Email: "saved@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GATEWAY_URL", "https://env.example.com")
-	t.Setenv("RELAY_EMAIL", "env@example.com")
+	t.Setenv("ZUANO_URL", "https://env.example.com")
+	t.Setenv("ZUANO_EMAIL", "env@example.com")
 
 	out, err := runCommand(t, ConfigCmd(), "show")
 	if err != nil {
@@ -165,7 +165,7 @@ func TestConfigShow_ReportsConfiguredAndEffectiveValues(t *testing.T) {
 
 func TestConfigShow_SucceedsWhenNothingIsConfigured(t *testing.T) {
 	withNoGateway(t)
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_EMAIL", "")
 
 	out, err := runCommand(t, ConfigCmd(), "show")
 	if err != nil {
@@ -254,8 +254,8 @@ func TestWhoami_ServerErrorsAreReported(t *testing.T) {
 
 func TestWhoami_NotLoggedIn(t *testing.T) {
 	withNoGateway(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	_, err := runCommand(t, WhoamiCmd(), "--gateway-url", "https://gateway.example.com")
 	if err == nil || !strings.Contains(err.Error(), "not logged in") {
 		t.Fatalf("expected not-logged-in error, got %v", err)
@@ -273,7 +273,7 @@ func TestTokensList_PrintsSessionWithoutTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tokens list: %v", err)
 	}
-	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "GATEWAY_API_KEY (not stored by relay)"} {
+	for _, want := range []string{"Email:     dev@example.com", "Services:  clockify", "Issued at: 2026-01-01", "Expires:   2026-02-01", "ZUANO_API_KEY (not stored by relay)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -281,7 +281,7 @@ func TestTokensList_PrintsSessionWithoutTheToken(t *testing.T) {
 	if strings.Contains(out, "keychain") {
 		t.Errorf("an API key was described as stored in the keychain:\n%s", out)
 	}
-	if strings.Contains(out, os.Getenv("GATEWAY_API_KEY")) {
+	if strings.Contains(out, os.Getenv("ZUANO_API_KEY")) {
 		t.Fatal("tokens list must never print the bearer token")
 	}
 }
@@ -289,7 +289,7 @@ func TestTokensList_PrintsSessionWithoutTheToken(t *testing.T) {
 func TestTokensList_ClaimsTheKeychainOnlyForALoginSession(t *testing.T) {
 	srv := whoamiServer(t, http.StatusOK, map[string]any{"email": "offline-test@example.com", "services": []string{}, "issuedAt": ""}, nil)
 	withNoGateway(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	withLoggedInSession(t, srv.URL)
 
 	out, err := runCommand(t, TokensCmd(), "list", "--gateway-url", srv.URL)
@@ -306,7 +306,7 @@ func TestTokensList_ClaimsTheKeychainOnlyForALoginSession(t *testing.T) {
 
 func TestProfileLabelDoesNotClaimApprovalsForAnAPIKey(t *testing.T) {
 	c := client.New("https://gateway.example.com", "key")
-	if got := profileLabel(c); strings.Contains(got, "wait for approval") || !strings.Contains(got, "GATEWAY_API_KEY") {
+	if got := profileLabel(c); strings.Contains(got, "wait for approval") || !strings.Contains(got, "ZUANO_API_KEY") {
 		t.Errorf("label = %q", got)
 	}
 }
@@ -383,7 +383,7 @@ func TestSessionRemoval_RevokesRemotelyAndDeletesLocalSession(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				srv, calls := logoutServer(t, status)
 				withNoGateway(t)
-				t.Setenv("GATEWAY_API_KEY", "")
+				t.Setenv("ZUANO_API_KEY", "")
 				email, origin := withLoggedInSession(t, srv.URL)
 
 				cmd, args := build()
@@ -419,7 +419,7 @@ func TestSessionRemoval_OfflineDeletesLocallyWithoutDialing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv, calls := logoutServer(t, http.StatusOK)
 			withNoGateway(t)
-			t.Setenv("GATEWAY_API_KEY", "")
+			t.Setenv("ZUANO_API_KEY", "")
 			email, origin := withLoggedInSession(t, srv.URL)
 			SetOffline(true)
 			t.Cleanup(func() { SetOffline(false) })
@@ -468,8 +468,8 @@ func TestSessionRemoval_RefusesAPIKeySessions(t *testing.T) {
 			withAPIKeyGateway(t, srv)
 			cmd, args := build()
 			_, err := runCommand(t, cmd, args...)
-			if err == nil || !strings.Contains(err.Error(), "GATEWAY_API_KEY") {
-				t.Fatalf("expected GATEWAY_API_KEY refusal, got %v", err)
+			if err == nil || !strings.Contains(err.Error(), "ZUANO_API_KEY") {
+				t.Fatalf("expected ZUANO_API_KEY refusal, got %v", err)
 			}
 			if calls.Load() != 0 {
 				t.Error("an API-key session must never be revoked remotely")
@@ -495,8 +495,8 @@ func TestSessionRemoval_NotLoggedIn(t *testing.T) {
 	for name, build := range sessionCommands() {
 		t.Run(name, func(t *testing.T) {
 			withNoGateway(t)
-			t.Setenv("GATEWAY_API_KEY", "")
-			t.Setenv("RELAY_EMAIL", "")
+			t.Setenv("ZUANO_API_KEY", "")
+			t.Setenv("ZUANO_EMAIL", "")
 			cmd, args := build()
 			_, err := runCommand(t, cmd, append(args, "--gateway-url", "https://gateway.example.com")...)
 			if err == nil || !strings.Contains(err.Error(), "not logged in") {
@@ -735,7 +735,7 @@ func TestBuildServiceCommands_RegistersCallableToolCommands(t *testing.T) {
 func TestBuildServiceCommands_DegradesOnDiscoveryFailure(t *testing.T) {
 	withAPIKeyGateway(t, integrationsServer(t, http.StatusInternalServerError, nil))
 	root := &cobra.Command{Use: "relay"}
-	if err := BuildServiceCommands(root, os.Getenv("GATEWAY_URL")); err != nil {
+	if err := BuildServiceCommands(root, os.Getenv("ZUANO_URL")); err != nil {
 		t.Fatalf("discovery failure must not abort startup: %v", err)
 	}
 	if len(root.Commands()) != 0 {

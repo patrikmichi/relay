@@ -27,8 +27,8 @@ func (s *seen) add(r *http.Request) {
 
 func TestBoundSessionSendsDPoPProofsAndKeepsItsKeyAcrossARefresh(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	key, err := dpop.Create(false)
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestBoundSessionSendsDPoPProofsAndKeepsItsKeyAcrossARefresh(t *testing.T) {
 
 func TestSessionWhoseKeyIsGoneAsksForANewLogin(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	seedSession(t, "https://gw.example.com", "user@example.com", keychain.TokenData{
 		AccessToken: "a", RefreshToken: "r", ExpiresAt: time.Now().Add(time.Hour).Unix(),
 		DPoPKey: "file:00000000000000000000000000000000",
@@ -95,8 +95,8 @@ func TestSessionWhoseKeyIsGoneAsksForANewLogin(t *testing.T) {
 
 func TestShortLivedStrictTokensAreRefreshedAheadOfExpiry(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	var refreshes int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/refresh" {

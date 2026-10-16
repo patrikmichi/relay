@@ -57,7 +57,7 @@ All targets use migration fidelity checks, overwrite protection, history and rol
 	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Accept non-security fidelity loss")
 	cmd.Flags().StringVar(&version, "version", "", "Exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "stable or beta (default: gateway's default channel)")
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&requireSig, "require-signature", false, "Refuse a download the gateway did not sign")
 
 	return cmd

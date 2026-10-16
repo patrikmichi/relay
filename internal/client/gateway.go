@@ -20,18 +20,18 @@ import (
 	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// ErrNotLoggedIn is returned by Resolve when neither GATEWAY_API_KEY nor a
-// usable CLI session (RELAY_EMAIL / persisted login email + a matching OS
+// ErrNotLoggedIn is returned by Resolve when neither ZUANO_API_KEY nor a
+// usable CLI session (ZUANO_EMAIL / persisted login email + a matching OS
 // keychain entry) can be found.
-var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or set GATEWAY_API_KEY for non-interactive auth")
+var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or set ZUANO_API_KEY for non-interactive auth")
 
-// ErrAgentNotLoggedIn is returned by Resolve when RELAY_AGENT selects the
+// ErrAgentNotLoggedIn is returned by Resolve when ZUANO_AGENT selects the
 // agent profile and no agent session is stored. It never falls back to the
 // human session: that session is not held to approvals.
-var ErrAgentNotLoggedIn = errors.New("no agent session. Run `relay login --agent` (RELAY_AGENT=1 selects the agent profile), or unset RELAY_AGENT to use your own session")
+var ErrAgentNotLoggedIn = errors.New("no agent session. Run `relay login --agent` (ZUANO_AGENT=1 selects the agent profile), or unset ZUANO_AGENT to use your own session")
 
 // ActiveProfile is the keychain profile this process uses: the agent
-// profile when RELAY_AGENT is set, the human one otherwise.
+// profile when ZUANO_AGENT is set, the human one otherwise.
 func ActiveProfile() keychain.Profile {
 	if config.AgentMode() {
 		return keychain.ProfileAgent
@@ -157,7 +157,7 @@ func New(gatewayURL, accessToken string) *Client {
 	}
 }
 
-// checkAPIKeyOrigin keeps GATEWAY_API_KEY from reaching a gateway that a flag
+// checkAPIKeyOrigin keeps ZUANO_API_KEY from reaching a gateway that a flag
 // or environment variable redirected the CLI to. A local development gateway
 // is the one origin that needs no binding.
 func checkAPIKeyOrigin(origin string) error {
@@ -171,9 +171,9 @@ func checkAPIKeyOrigin(origin string) error {
 	case bound == "" && config.IsLoopbackOrigin(origin):
 		return nil
 	case bound == "":
-		return fmt.Errorf("refusing to send GATEWAY_API_KEY to %s: the key is not bound to a gateway. Set RELAY_API_KEY_ORIGIN=%s, or save the gateway in the config file", origin, origin)
+		return fmt.Errorf("refusing to send ZUANO_API_KEY to %s: the key is not bound to a gateway. Set ZUANO_API_KEY_ORIGIN=%s, or save the gateway in the config file", origin, origin)
 	}
-	return fmt.Errorf("refusing to send GATEWAY_API_KEY to %s: the key is bound to %s (RELAY_API_KEY_ORIGIN or the saved gateway). Change RELAY_API_KEY_ORIGIN deliberately to use another gateway", origin, bound)
+	return fmt.Errorf("refusing to send ZUANO_API_KEY to %s: the key is bound to %s (ZUANO_API_KEY_ORIGIN or the saved gateway). Change ZUANO_API_KEY_ORIGIN deliberately to use another gateway", origin, bound)
 }
 
 // Resolve builds an authenticated Client for gateway calls.
@@ -184,7 +184,7 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 	}
 
 	profile := ActiveProfile()
-	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
+	if apiKey := os.Getenv("ZUANO_API_KEY"); apiKey != "" {
 		if err := checkAPIKeyOrigin(origin); err != nil {
 			return nil, err
 		}
@@ -222,7 +222,7 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		var unavailable *keychain.UnavailableError
 		switch {
 		case errors.As(err, &unavailable):
-			return nil, fmt.Errorf("keychain unavailable: %v. Use GATEWAY_API_KEY for headless use", unavailable.Err)
+			return nil, fmt.Errorf("keychain unavailable: %v. Use ZUANO_API_KEY for headless use", unavailable.Err)
 		default:
 			return nil, fmt.Errorf("%w; run `relay login` to replace the stored session", err)
 		}
@@ -264,14 +264,14 @@ func (c *Client) lockAccount() string {
 }
 
 // Email returns the identity this Client was resolved for, or "" for a
-// bearer-only Client (New / GATEWAY_API_KEY) that has no CLI session.
+// bearer-only Client (New / ZUANO_API_KEY) that has no CLI session.
 func (c *Client) Email() string {
 	return c.email
 }
 
 // GatewayOrigin returns the normalized gateway identity this Client's
 // keychain-backed OAuth session (if any) is bound to, or "" for a
-// bearer-only Client (New / GATEWAY_API_KEY) that has no CLI session.
+// bearer-only Client (New / ZUANO_API_KEY) that has no CLI session.
 func (c *Client) GatewayOrigin() string {
 	return c.gatewayOrigin
 }

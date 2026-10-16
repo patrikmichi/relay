@@ -31,7 +31,7 @@ func seedSession(t *testing.T, gatewayOrigin, email string, tok keychain.TokenDa
 
 func resolveSeededClient(t *testing.T, gatewayURL string) *client.Client {
 	t.Helper()
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	c, err := client.Resolve(gatewayURL)
 	if err != nil {
 		t.Fatalf("client.Resolve: %v", err)

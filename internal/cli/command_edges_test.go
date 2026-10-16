@@ -126,8 +126,8 @@ func TestMcpInspect_FailsClosedAndRequiresSession(t *testing.T) {
 	if _, err := runCommand(t, McpInspectCmd(), "res_1"); err == nil || !strings.Contains(err.Error(), offlineGuidance) {
 		t.Errorf("expected offline guidance, got %v", err)
 	}
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	if _, err := runCommand(t, McpInspectCmd(), "res_1", "--gateway-url", "https://gateway.example.com"); !errors.Is(err, client.ErrNotLoggedIn) {
 		t.Errorf("expected ErrNotLoggedIn, got %v", err)
 	}

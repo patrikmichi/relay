@@ -15,7 +15,7 @@ func TestAgentSessionDenied(t *testing.T) {
 	if err == nil {
 		t.Fatal("agent 403 produced no error")
 	}
-	for _, want := range []string{"Agent credentials cannot change this", "unset RELAY_AGENT", "MCP tools"} {
+	for _, want := range []string{"Agent credentials cannot change this", "unset ZUANO_AGENT", "MCP tools"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
@@ -57,13 +57,13 @@ func TestAgentSessionDenied_AcceptsEveryErrorEnvelope(t *testing.T) {
 }
 
 func TestPublishForbiddenForAgentSessionSurfacesReason(t *testing.T) {
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	err := handlePublishResponse(http.StatusForbidden, http.Header{}, []byte(`{"error":"Forbidden: Agent credentials cannot change this"}`), "")
 	if err == nil || !strings.Contains(err.Error(), "Agent credentials cannot change this") {
 		t.Fatalf("got %v", err)
 	}
 
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	err = handlePublishResponse(http.StatusForbidden, http.Header{}, []byte(`{"error":"x"}`), "")
 	if err == nil || !strings.Contains(err.Error(), "not authorized to publish") {
 		t.Fatalf("personal 403: %v", err)

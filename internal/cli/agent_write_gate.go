@@ -15,11 +15,11 @@ import (
 )
 
 // refuseInAgentMode stops a command that changes coding agent configuration
-// when RELAY_AGENT selects the agent profile: an agent must not widen its
+// when ZUANO_AGENT selects the agent profile: an agent must not widen its
 // own tools or hooks.
 func refuseInAgentMode(what string) error {
 	if config.AgentMode() {
-		return fmt.Errorf("%s changes coding agent configuration, which is refused while RELAY_AGENT is set (--yes does not override this); ask the person who runs this machine to do it", what)
+		return fmt.Errorf("%s changes coding agent configuration, which is refused while ZUANO_AGENT is set (--yes does not override this); ask the person who runs this machine to do it", what)
 	}
 	return nil
 }

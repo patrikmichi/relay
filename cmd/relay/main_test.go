@@ -94,13 +94,13 @@ func TestShouldBuildDynamicCommands(t *testing.T) {
 // TestRootCmd_Offline_SkipsDynamicRegistration_NoNetworkCall is a
 // main-level smoke test: executing the full root command tree with
 // --offline against an unregistered dynamic command name must never dial
-// the gateway. GATEWAY_URL is set to an address nothing listens on
+// the gateway. ZUANO_URL is set to an address nothing listens on
 // (127.0.0.1:1 is refused instantly rather than hanging) so that IF
 // BuildServiceCommands were mistakenly invoked, the resulting network
 // error would surface loudly in the command's output instead of this test
 // silently passing for the wrong reason.
 func TestRootCmd_Offline_SkipsDynamicRegistration_NoNetworkCall(t *testing.T) {
-	t.Setenv("GATEWAY_URL", "http://127.0.0.1:1")
+	t.Setenv("ZUANO_URL", "http://127.0.0.1:1")
 	t.Setenv("HOME", t.TempDir())
 	cli.SetOffline(false) // reset package-level state between tests
 	t.Cleanup(func() { cli.SetOffline(false) })

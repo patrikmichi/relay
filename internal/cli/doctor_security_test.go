@@ -37,9 +37,9 @@ func doctorGateway(t *testing.T, strict bool, passkeys string) *httptest.Server 
 
 func loginForDoctor(t *testing.T, srv *httptest.Server, keyRef string) {
 	t.Helper()
-	t.Setenv("GATEWAY_URL", srv.URL)
+	t.Setenv("ZUANO_URL", srv.URL)
 	origin, _ := config.NormalizeGatewayURL(srv.URL)
-	t.Setenv("RELAY_EMAIL", "doctor@example.com")
+	t.Setenv("ZUANO_EMAIL", "doctor@example.com")
 	if err := keychain.WriteToken(origin, "doctor@example.com", keychain.TokenData{AccessToken: syntheticKey("access"), ExpiresAt: time.Now().Add(time.Hour).Unix(), DPoPKey: keyRef}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestDoctor_BoundSessionReportsItsKeyAndAMissingKeyFails(t *testing.T) {
 
 func TestDoctor_ReportsAStrayEmailOnlyKeychainEntry(t *testing.T) {
 	setupDoctor(t)
-	t.Setenv("RELAY_EMAIL", "stray@example.com")
+	t.Setenv("ZUANO_EMAIL", "stray@example.com")
 	if err := keyring.Set("relay-cli", "oauth-refresh-token:stray@example.com", `{"access_token":"stray"}`); err != nil {
 		t.Fatal(err)
 	}

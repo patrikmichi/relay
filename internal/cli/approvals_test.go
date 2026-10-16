@@ -39,7 +39,7 @@ func approvalsGateway(t *testing.T, handlers map[string]func(w http.ResponseWrit
 	}))
 	t.Cleanup(srv.Close)
 	withAPIKeyGateway(t, srv)
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	awaitRetryDelay = time.Millisecond
 	t.Cleanup(func() { awaitRetryDelay = time.Second })
 	return srv, &bodies
@@ -140,7 +140,7 @@ func decisionGateway(t *testing.T, show func(http.ResponseWriter, map[string]any
 	}))
 	t.Cleanup(srv.Close)
 	withAPIKeyGateway(t, srv)
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	return &requests
 }
 
@@ -198,7 +198,7 @@ func TestApprovalsDecide_NoBrowserPrintsTheLinkAndAQRCode(t *testing.T) {
 func TestApprovalsDecide_AgentSessionPrintsTheLinkInsteadOfOpeningABrowser(t *testing.T) {
 	decisionGateway(t, reply(200, pendingShowJSON))
 	opened := stubBrowserWith(t, nil)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	out, err := runWithInput(t, ApprovalsCmd(), "", "approve", "apr_1")
 	if err != nil {

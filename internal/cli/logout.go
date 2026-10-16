@@ -38,7 +38,7 @@ func LogoutCmd() *cobra.Command {
 				return err
 			}
 			if c.Email() == "" {
-				return errors.New("authenticated via GATEWAY_API_KEY — there is no local CLI session to log out of")
+				return errors.New("authenticated via ZUANO_API_KEY — there is no local CLI session to log out of")
 			}
 
 			if Offline() {

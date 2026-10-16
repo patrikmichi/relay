@@ -87,7 +87,7 @@ type approvalFlags struct {
 }
 
 func (f *approvalFlags) bind(cmd *cobra.Command, jsonHelp string) {
-	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, jsonHelp)
 }
 
@@ -104,7 +104,7 @@ collect the result of one that was approved.
 A decision is made only in a browser, with your passkey: 'approve' and 'deny'
 open the approval page (or print a link and a QR code for your phone) and send
 no decision themselves. Collecting (wait) needs the session that made the
-call, so run it with the same RELAY_AGENT setting.
+call, so run it with the same ZUANO_AGENT setting.
 
 wait exit status
   0   approved and executed
@@ -530,7 +530,7 @@ func approvalsWaitCmd() *cobra.Command {
 		Short: "Wait for a decision, then print the result of the approved call",
 		Long: `Waits until the approval is decided or the timeout ends, runs the approved call
 once and prints its result. Only the session that made the call can collect
-it, so run this with the same RELAY_AGENT setting as the call.
+it, so run this with the same ZUANO_AGENT setting as the call.
 
 Exit status: 0 approved and executed, 1 the call failed or an error, 10
 denied, 11 expired, 12 still pending when the timeout ended.`,
@@ -671,7 +671,7 @@ func reportOutcome(out io.Writer, jsonOut bool, id string, raw []byte, o awaitOu
 	case "pending":
 		fmt.Fprintf(out, "Still pending (expires %s). Run `relay approvals wait %s` to keep waiting.\n", o.ExpiresAt, id)
 	default:
-		return &ExitError{Code: 1, Msg: fmt.Sprintf("approval %s not found, or it was made by another session; collect it with the RELAY_AGENT setting of the session that made the call", id)}
+		return &ExitError{Code: 1, Msg: fmt.Sprintf("approval %s not found, or it was made by another session; collect it with the ZUANO_AGENT setting of the session that made the call", id)}
 	}
 	return &ExitError{Code: code}
 }

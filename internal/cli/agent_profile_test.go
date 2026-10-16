@@ -31,10 +31,10 @@ func TestWhoami_NamesTheProfileInUse(t *testing.T) {
 	}))
 	defer srv.Close()
 	withNoGateway(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	withAgentAndHumanSessions(t, srv.URL)
 
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	out, err := runCommand(t, WhoamiCmd(), "--gateway-url", srv.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -43,12 +43,12 @@ func TestWhoami_NamesTheProfileInUse(t *testing.T) {
 		t.Errorf("human whoami used %q:\n%s", bearer, out)
 	}
 
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	out, err = runCommand(t, WhoamiCmd(), "--gateway-url", srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Profile:  agent (RELAY_AGENT=1") || bearer != "Bearer agent-access-token" {
+	if !strings.Contains(out, "Profile:  agent (ZUANO_AGENT=1") || bearer != "Bearer agent-access-token" {
 		t.Errorf("agent whoami used %q:\n%s", bearer, out)
 	}
 }
@@ -60,9 +60,9 @@ func TestWhoami_AgentModeWithoutAgentSessionDoesNotUseTheHumanOne(t *testing.T) 
 	}))
 	defer srv.Close()
 	withNoGateway(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	withLoggedInSession(t, srv.URL)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	_, err := runCommand(t, WhoamiCmd(), "--gateway-url", srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "relay login --agent") {
@@ -73,9 +73,9 @@ func TestWhoami_AgentModeWithoutAgentSessionDoesNotUseTheHumanOne(t *testing.T) 
 func TestLogout_AgentProfileRemovesOnlyTheAgentSession(t *testing.T) {
 	srv, calls := logoutServer(t, http.StatusOK)
 	withNoGateway(t)
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	email, origin := withAgentAndHumanSessions(t, srv.URL)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	out, err := runCommand(t, LogoutCmd(), "--gateway-url", srv.URL)
 	if err != nil {

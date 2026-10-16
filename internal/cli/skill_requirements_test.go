@@ -30,8 +30,8 @@ type requirementsGateway struct {
 func newRequirementsGateway(t *testing.T, required ...string) *requirementsGateway {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_AGENT", "")
 	g := &requirementsGateway{connected: map[string]bool{}, required: required, status: http.StatusOK}
 	bundle := buildCanonicalSkillBundle(t, "weekly-timesheet")
 	g.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

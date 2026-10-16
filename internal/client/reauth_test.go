@@ -16,8 +16,8 @@ import (
 
 func TestReauthRequiredIsReportedWithoutARefreshAttempt(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	var refreshes atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/refresh" {
@@ -47,8 +47,8 @@ func TestReauthRequiredIsReportedWithoutARefreshAttempt(t *testing.T) {
 
 func TestAnExpiredTokenIsStillRefreshedOnce(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
 	var refreshes atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

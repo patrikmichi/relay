@@ -586,16 +586,16 @@ func TestRunPublish_Error_401(t *testing.T) {
 	}
 }
 
-// TestResolvePublishDoer_NoToken verifies that a missing RELAY_EMAIL (and no
-// persisted login / GATEWAY_API_KEY) returns an actionable error.
+// TestResolvePublishDoer_NoToken verifies that a missing ZUANO_EMAIL (and no
+// persisted login / ZUANO_API_KEY) returns an actionable error.
 func TestResolvePublishDoer_NoToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
 
 	_, err := resolvePublishDoer("")
 	if err == nil {
-		t.Fatal("expected error when RELAY_EMAIL is unset, got nil")
+		t.Fatal("expected error when ZUANO_EMAIL is unset, got nil")
 	}
 	if !strings.Contains(err.Error(), "relay login") {
 		t.Errorf("error should mention `relay login`, got: %v", err)
@@ -649,15 +649,15 @@ func TestRunPublish_CatalogURL_UsesGatewayURL(t *testing.T) {
 	}
 }
 
-// TestRunPublish_CatalogURL_FallsBackToEnv verifies catalogURL falls back to GATEWAY_URL env
+// TestRunPublish_CatalogURL_FallsBackToEnv verifies catalogURL falls back to ZUANO_URL env
 // when no gatewayURL is passed.
 func TestRunPublish_CatalogURL_FallsBackToEnv(t *testing.T) {
 	const envGW = "https://env-gw.example.com"
-	t.Setenv("GATEWAY_URL", envGW)
+	t.Setenv("ZUANO_URL", envGW)
 
 	url := catalogURL("res_456", "")
 	if !strings.HasPrefix(url, envGW) {
-		t.Errorf("catalog URL should start with env GATEWAY_URL %q, got %q", envGW, url)
+		t.Errorf("catalog URL should start with env ZUANO_URL %q, got %q", envGW, url)
 	}
 }
 

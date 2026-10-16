@@ -13,7 +13,7 @@ import (
 )
 
 func TestSkillSearch_PrintsResultsTable(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/catalog/skills/search" {
@@ -39,7 +39,7 @@ func TestSkillSearch_PrintsResultsTable(t *testing.T) {
 }
 
 func TestSkillSearch_JSONOutput(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok": true, "data": [{"id": "res_abc", "slug": "pr-triage"}]}`))
@@ -59,7 +59,7 @@ func TestSkillSearch_JSONOutput(t *testing.T) {
 }
 
 func TestSkillSearch_NoResults(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok": true, "data": []}`))
@@ -79,7 +79,7 @@ func TestSkillSearch_NoResults(t *testing.T) {
 }
 
 func TestSkillSearch_AggregateDisabledDegradesWithGuidance(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -111,7 +111,7 @@ func TestSkillSearch_NoGatewayConfiguredDegrades(t *testing.T) {
 }
 
 func TestSkillSearch_RPCErrorSurfaces(t *testing.T) {
-	t.Setenv("GATEWAY_API_KEY", "test-bearer-token")
+	t.Setenv("ZUANO_API_KEY", "test-bearer-token")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"bad args"}}`))

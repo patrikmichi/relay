@@ -147,9 +147,9 @@ func TestPublishRejectsContradictoryAliasType(t *testing.T) {
 // even though the intended work is entirely local packaging/validation.
 func TestDryRunSucceedsWithoutCredentials(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.config/relay/config.json or keychain
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_URL", "")
 
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\ntype: skill\nname: demo\n---\nBody.\n"), 0o600); err != nil {
@@ -476,7 +476,7 @@ func TestSecretExclusionCoversCommonCredentialFilenames(t *testing.T) {
 func TestAuthorizeReturnsExplicitUnsupportedError(t *testing.T) {
 	cmd := AuthorizeCmd()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-token")
+	t.Setenv("ZUANO_API_KEY", "test-token")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }))
 	defer srv.Close()
 	cmd.SetArgs([]string{"google-workspace", "--tool", "gmail_list_messages", "--gateway-url", srv.URL})

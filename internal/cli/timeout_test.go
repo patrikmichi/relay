@@ -80,7 +80,7 @@ func TestRequestContext_ZeroMeansNoDeadline(t *testing.T) {
 	}
 	defer cancel()
 	if _, ok := ctx.Deadline(); ok {
-		t.Fatal("RELAY_TIMEOUT=0 must leave the request without a deadline")
+		t.Fatal("ZUANO_TIMEOUT=0 must leave the request without a deadline")
 	}
 }
 

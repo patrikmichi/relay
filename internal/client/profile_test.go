@@ -26,9 +26,9 @@ func seedProfile(t *testing.T, profile keychain.Profile, origin, email, access, 
 
 func TestResolve_AgentModeUsesTheAgentSession(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_AGENT", "1")
 	seedProfile(t, keychain.ProfileHuman, profileGateway, "user@example.com", "human-access", "human-refresh", time.Now().Add(time.Hour))
 	seedProfile(t, keychain.ProfileAgent, profileGateway, "user@example.com", "agent-access", "agent-refresh", time.Now().Add(time.Hour))
 	if err := config.SetEmail("user@example.com"); err != nil {
@@ -43,7 +43,7 @@ func TestResolve_AgentModeUsesTheAgentSession(t *testing.T) {
 		t.Errorf("client = %q profile %q, want the agent session", c.AccessToken, c.Profile())
 	}
 
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 	c, err = client.Resolve(profileGateway)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -55,9 +55,9 @@ func TestResolve_AgentModeUsesTheAgentSession(t *testing.T) {
 
 func TestResolve_AgentModeNeverFallsBackToTheHumanSession(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_AGENT", "1")
 	seedProfile(t, keychain.ProfileHuman, profileGateway, "human-only@example.com", "human-access", "human-refresh", time.Now().Add(time.Hour))
 	if err := config.SetEmail("human-only@example.com"); err != nil {
 		t.Fatal(err)
@@ -70,9 +70,9 @@ func TestResolve_AgentModeNeverFallsBackToTheHumanSession(t *testing.T) {
 
 func TestResolve_AgentModeWithNoIdentityIsAgentNotLoggedIn(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	if _, err := client.Resolve(profileGateway); !errors.Is(err, client.ErrAgentNotLoggedIn) {
 		t.Fatalf("Resolve = %v, want ErrAgentNotLoggedIn", err)
@@ -81,9 +81,9 @@ func TestResolve_AgentModeWithNoIdentityIsAgentNotLoggedIn(t *testing.T) {
 
 func TestResolve_APIKeyReportsTheActiveProfile(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "static-bearer-key")
-	t.Setenv("RELAY_API_KEY_ORIGIN", profileGateway)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_API_KEY", "static-bearer-key")
+	t.Setenv("ZUANO_API_KEY_ORIGIN", profileGateway)
+	t.Setenv("ZUANO_AGENT", "1")
 
 	c, err := client.Resolve(profileGateway)
 	if err != nil {
@@ -96,9 +96,9 @@ func TestResolve_APIKeyReportsTheActiveProfile(t *testing.T) {
 
 func TestDo_AgentRefreshRotatesOnlyTheAgentSession(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "")
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "")
+	t.Setenv("ZUANO_AGENT", "1")
 
 	var refreshedWith string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

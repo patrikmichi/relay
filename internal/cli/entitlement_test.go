@@ -20,7 +20,7 @@ func refusingGateway(t *testing.T, status int, headers map[string]string, body s
 	}))
 	t.Cleanup(srv.Close)
 	withAPIKeyGateway(t, srv)
-	t.Setenv("RELAY_AGENT", "")
+	t.Setenv("ZUANO_AGENT", "")
 }
 
 func TestEntitlementRefusals_ExitCodesAndUpgradeLinkOnEveryCommand(t *testing.T) {
@@ -70,7 +70,7 @@ func TestEntitlementRefusals_ExitCodesAndUpgradeLinkOnEveryCommand(t *testing.T)
 
 func TestEntitlementRefusals_AnAgentSessionGetsTheSameMapping(t *testing.T) {
 	refusingGateway(t, 402, nil, `{"error":"plan_required","message":"needs Pro","upgrade_url":"https://gw.example/u"}`)
-	t.Setenv("RELAY_AGENT", "1")
+	t.Setenv("ZUANO_AGENT", "1")
 	_, err := runCommand(t, CallCmd(), "stripe", "create_refund")
 	if got := exitCodeOf(err); got != 30 {
 		t.Fatalf("exit %d (%v), want 30", got, err)

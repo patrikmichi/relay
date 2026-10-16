@@ -58,6 +58,6 @@
     ]
   },
   "env": {
-    "RELAY_AGENT": "1"
+    "ZUANO_AGENT": "1"
   }
 }

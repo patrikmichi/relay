@@ -209,7 +209,7 @@ Examples:
 			return runSkillInfo(cmd, args[0], gatewayURL, jsonOut)
 		},
 	}
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print one JSON document on stdout; the text goes to stderr")
 	return cmd
 }

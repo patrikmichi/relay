@@ -78,7 +78,7 @@ func (a *evalAPI) request(ctx context.Context, method, path string, body any) ([
 		rd = bytes.NewReader(b)
 	}
 	// One request is bounded like any other control request: --timeout and
-	// RELAY_TIMEOUT apply, 0 meaning no limit.
+	// ZUANO_TIMEOUT apply, 0 meaning no limit.
 	ctx, cancel, err := requestContext(ctx, controlRequest)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ type evalFlags struct {
 }
 
 func (f *evalFlags) add(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, "Print the gateway's JSON instead of text")
 }
 

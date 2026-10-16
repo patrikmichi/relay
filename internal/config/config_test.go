@@ -61,7 +61,7 @@ func TestSave_CreatesDir(t *testing.T) {
 
 func TestGatewayURL_EmptyWithoutEnvOrConfig(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "")
+	t.Setenv("ZUANO_URL", "")
 
 	url, err := config.GatewayURL()
 	if err != nil {
@@ -75,7 +75,7 @@ func TestGatewayURL_EmptyWithoutEnvOrConfig(t *testing.T) {
 func TestGatewayURL_EnvVarOverride(t *testing.T) {
 	withTempHome(t)
 	const override = "https://override.example.com"
-	t.Setenv("GATEWAY_URL", override)
+	t.Setenv("ZUANO_URL", override)
 
 	url, err := config.GatewayURL()
 	if err != nil {
@@ -88,7 +88,7 @@ func TestGatewayURL_EnvVarOverride(t *testing.T) {
 
 func TestGatewayURL_FromConfig(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "") // ensure env var doesn't interfere
+	t.Setenv("ZUANO_URL", "") // ensure env var doesn't interfere
 
 	const customURL = "https://my-gateway.example.com"
 	cfg := config.Config{GatewayURL: customURL}

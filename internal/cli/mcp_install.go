@@ -64,7 +64,7 @@ updated.`,
 	fl.StringArrayVar(&f.args, "arg", nil, "Argument for --command (repeatable)")
 	fl.StringArrayVar(&f.env, "env", nil, "Environment for --command as KEY=VALUE (repeatable; a ${VAR} reference is translated per agent)")
 	fl.StringVar(&f.bearerEnv, "bearer-env", "", "Environment variable holding a bearer token for --url")
-	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, then the config file)")
+	fl.StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
 	return cmd
 }
 
@@ -97,7 +97,7 @@ func addMcpSyncFlags(cmd *cobra.Command, f *mcpInstallFlags) {
 	fl.BoolVar(&f.dryRun, "dry-run", false, "Show the diff and write nothing")
 	fl.BoolVar(&f.jsonOut, "json", false, "Print the report as JSON")
 	fl.BoolVar(&f.force, "force", false, "Replace same-named entries relay does not manage")
-	fl.BoolVar(&f.yes, "yes", false, "Write without asking when a local command is added (review with --dry-run first; refused when RELAY_AGENT is set)")
+	fl.BoolVar(&f.yes, "yes", false, "Write without asking when a local command is added (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	fl.StringVar(&f.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
 }
 

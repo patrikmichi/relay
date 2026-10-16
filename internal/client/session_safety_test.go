@@ -26,8 +26,8 @@ import (
 // attach it to a gateway the user did not save in the config file.
 func TestCredentialNotSentToUnboundGateway(t *testing.T) {
 	keyring.MockInit()
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "review@example.invalid")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "review@example.invalid")
 	if err := keyring.Set("relay-cli", "oauth-refresh-token:review@example.invalid",
 		`{"access_token":"gateway-A-access","refresh_token":"gateway-A-refresh"}`); err != nil {
 		t.Fatal(err)
@@ -50,8 +50,8 @@ func TestCredentialNotSentToUnboundGateway(t *testing.T) {
 // other's bearer token.
 func TestSameEmailSessionsCoexistAcrossGateways(t *testing.T) {
 	keyring.MockInit()
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "review@example.invalid")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "review@example.invalid")
 
 	var seenB string
 	gatewayB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,8 +152,8 @@ func TestRefreshRespectsContextDeadline(t *testing.T) {
 // at most one client may submit a given refresh token value.
 func TestConcurrentClientsDoNotReuseStaleRefreshToken(t *testing.T) {
 	keyring.MockInit()
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "review@example.invalid")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "review@example.invalid")
 
 	var mu sync.Mutex
 	var submitted []string
@@ -243,8 +243,8 @@ func (f *fakeSessionStore) Write(_, _ string, d keychain.TokenData) error {
 // the already-rotated expiry and skip it.
 func TestSharedClientConcurrentRequestsRefreshOnce(t *testing.T) {
 	keyring.MockInit()
-	t.Setenv("GATEWAY_API_KEY", "")
-	t.Setenv("RELAY_EMAIL", "review@example.invalid")
+	t.Setenv("ZUANO_API_KEY", "")
+	t.Setenv("ZUANO_EMAIL", "review@example.invalid")
 
 	var refreshHits int32
 	mux := http.NewServeMux()

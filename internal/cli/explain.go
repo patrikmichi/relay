@@ -54,7 +54,7 @@ Uses the cached catalog when offline or when the gateway cannot be reached.`,
 			return err
 		},
 	}
-	call.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $GATEWAY_URL, config, or built-in default)")
+	call.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, config, or built-in default)")
 	call.Flags().BoolVar(&asJSON, "json", false, "Print {service, tool, risk, decision, approval} as JSON")
 	explain.AddCommand(call)
 	return explain

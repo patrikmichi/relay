@@ -13,7 +13,7 @@ import (
 
 func TestAuthorizeVerifiesGrantBeforeSuccess(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-token")
+	t.Setenv("ZUANO_API_KEY", "test-token")
 	previous := authorizationPollInterval
 	authorizationPollInterval = time.Millisecond
 	defer func() { authorizationPollInterval = previous }()
@@ -72,7 +72,7 @@ func TestAuthorizeRejectsFalseConfirmationAndDenial(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			t.Setenv("GATEWAY_API_KEY", "test-token")
+			t.Setenv("ZUANO_API_KEY", "test-token")
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
@@ -115,7 +115,7 @@ func authorizeServer(t *testing.T, pollStatuses []int) (*httptest.Server, *int) 
 func runAuthorize(t *testing.T, srv *httptest.Server) (string, error) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-token")
+	t.Setenv("ZUANO_API_KEY", "test-token")
 	previous := authorizationPollInterval
 	authorizationPollInterval = time.Millisecond
 	t.Cleanup(func() { authorizationPollInterval = previous })
@@ -159,7 +159,7 @@ func TestAuthorizeMapsRefusalsAndDoesNotRetryThem(t *testing.T) {
 
 func TestAuthorizeCancellation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GATEWAY_API_KEY", "test-token")
+	t.Setenv("ZUANO_API_KEY", "test-token")
 	cmd := AuthorizeCmd()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

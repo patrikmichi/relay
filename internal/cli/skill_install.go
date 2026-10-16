@@ -55,7 +55,7 @@ like a path (contains a path separator) but doesn't exist on disk is
 reported as a missing local path rather than guessed at as a catalog id.
 
 A catalog-id install requires a reachable, authenticated gateway
-(GATEWAY_URL/GATEWAY_API_KEY env vars, or a prior 'relay login') and fails
+(ZUANO_URL/ZUANO_API_KEY env vars, or a prior 'relay login') and fails
 closed — no partial writes — on: no gateway configured / --offline, a
 content-hash mismatch, a missing/failed scan verdict, or a malformed bundle.
 
@@ -107,7 +107,7 @@ Examples:
 	cmd.Flags().BoolVar(&acceptLoss, "accept-loss", false, "Proceed despite non-security fidelity loss without an interactive prompt")
 	cmd.Flags().StringVar(&version, "version", "", "Catalog install only: exact semver (default: latest on --channel)")
 	cmd.Flags().StringVar(&channel, "channel", "", "Catalog install only: stable or beta (default: gateway's default channel)")
-	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $GATEWAY_URL, then the config file)")
+	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL for a catalog install (default: $ZUANO_URL, then the config file)")
 	cmd.Flags().BoolVar(&requireSig, "require-signature", false, "Catalog install only: refuse a download the gateway did not sign")
 
 	return cmd

@@ -21,7 +21,7 @@ import (
 
 const (
 	gatewayServerName = "relay"
-	gatewayAPIKeyEnv  = "GATEWAY_API_KEY"
+	gatewayAPIKeyEnv  = "ZUANO_API_KEY"
 )
 
 type agentSyncOpts struct {
@@ -124,11 +124,11 @@ func syncEnv() (agentsync.Env, error) {
 // an API key in the environment the agents read it by name; otherwise the
 // entry carries no credentials and the agent signs in with OAuth.
 //
-// Its URL is the gateway saved in the config file, never $GATEWAY_URL: an
+// Its URL is the gateway saved in the config file, never $ZUANO_URL: an
 // environment variable must not decide where every agent sends its traffic.
 // override (an explicit --gateway-url) replaces it and is returned as changed
 // when it differs from the saved one, so the caller can ask first. ignored
-// is a $GATEWAY_URL that was left out.
+// is a $ZUANO_URL that was left out.
 func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, ignored string, err error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -149,7 +149,7 @@ func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, i
 			changed = gw
 		}
 	}
-	if env := os.Getenv("GATEWAY_URL"); env != "" && override == "" {
+	if env := os.Getenv("ZUANO_URL"); env != "" && override == "" {
 		if n, nerr := config.NormalizeGatewayURL(env); nerr != nil || n != gw {
 			ignored = env
 		}
@@ -172,9 +172,9 @@ func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, i
 
 // agentEnvVar selects the agent profile in relay itself: the CLI session
 // marked as an agent's, held to approvals, instead of the person's own.
-const agentEnvVar = "RELAY_AGENT"
+const agentEnvVar = "ZUANO_AGENT"
 
-// markRelayServers returns servers with RELAY_AGENT=1 in the environment of
+// markRelayServers returns servers with ZUANO_AGENT=1 in the environment of
 // every stdio server that runs relay, so a relay started by an agent uses the
 // agent profile. The saved source is left as the user wrote it.
 func markRelayServers(servers []agentsync.MCPServer) []agentsync.MCPServer {
@@ -209,7 +209,7 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 	}
 	if slices.Contains(kinds.file, agentsync.KindEnv) && len(user.Env) > 0 {
 		if cfg, err := config.Load(); err == nil && cfg.AgentEmail == "" {
-			warns = append(warns, "agents will run relay as the agent profile (RELAY_AGENT=1) but no agent session exists; run `relay login --agent`")
+			warns = append(warns, "agents will run relay as the agent profile (ZUANO_AGENT=1) but no agent session exists; run `relay login --agent`")
 		}
 	}
 	return warns
@@ -217,7 +217,7 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 
 // gatewayNotes reports how the gateway entry's URL was chosen: changed is a
 // gateway other than the saved one, which needs the person's confirmation;
-// ignoredEnv is a $GATEWAY_URL that was left out.
+// ignoredEnv is a $ZUANO_URL that was left out.
 type gatewayNotes struct{ changed, ignoredEnv string }
 
 func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayURL string, override map[agentsync.Scope]agentsync.MCPSource) (bundles map[agentsync.Scope]agentsync.Bundle, warns []string, notes gatewayNotes, err error) {
@@ -325,7 +325,7 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	}
 	run.gatewayURL = gw.changed
 	if gw.ignoredEnv != "" {
-		warns = append(warns, fmt.Sprintf("ignoring $GATEWAY_URL (%s): agent configs use the gateway saved in the config file; pass --gateway-url to write another", textsafe.Clean(gw.ignoredEnv)))
+		warns = append(warns, fmt.Sprintf("ignoring $ZUANO_URL (%s): agent configs use the gateway saved in the config file; pass --gateway-url to write another", textsafe.Clean(gw.ignoredEnv)))
 	}
 	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns

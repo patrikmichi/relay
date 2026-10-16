@@ -78,7 +78,7 @@ func TestDoctorReportsEveryArtifactKindPerAgent(t *testing.T) {
 func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 	home := doctorSyncSetup(t)
 	saveGateway(t, "https://gateway.example.com")
-	t.Setenv("GATEWAY_API_KEY", "")
+	t.Setenv("ZUANO_API_KEY", "")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
 	if _, err := runCommand(t, SyncCmd(), "--mcp-auth", "oauth", "--yes"); err != nil {
@@ -111,12 +111,12 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 func TestDoctorChecksBearerEnvironmentOfSyncedMCPServers(t *testing.T) {
 	doctorSyncSetup(t)
 	saveGateway(t, "https://gateway.example.com")
-	t.Setenv("GATEWAY_API_KEY", "x")
+	t.Setenv("ZUANO_API_KEY", "x")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
 
 	checks, _ := doctorChecksByName(t)
-	if c, ok := checks["mcp-env:GATEWAY_API_KEY"]; ok {
+	if c, ok := checks["mcp-env:ZUANO_API_KEY"]; ok {
 		t.Errorf("the gateway entry authenticates with OAuth and reads no variable: %+v", c)
 	}
 

@@ -61,7 +61,7 @@ func TestResolveEmail(t *testing.T) {
 		if err := config.SetEmail("stored@example.com"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("RELAY_EMAIL", "override@example.com")
+		t.Setenv("ZUANO_EMAIL", "override@example.com")
 		got, err := config.ResolveEmail()
 		if err != nil || got != "override@example.com" {
 			t.Fatalf("got %q, %v; want override@example.com", got, err)
@@ -69,7 +69,7 @@ func TestResolveEmail(t *testing.T) {
 	})
 	t.Run("falls back to persisted email", func(t *testing.T) {
 		withTempHome(t)
-		t.Setenv("RELAY_EMAIL", "")
+		t.Setenv("ZUANO_EMAIL", "")
 		if err := config.SetEmail("stored@example.com"); err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestResolveEmail(t *testing.T) {
 	})
 	t.Run("not logged in", func(t *testing.T) {
 		withTempHome(t)
-		t.Setenv("RELAY_EMAIL", "")
+		t.Setenv("ZUANO_EMAIL", "")
 		_, err := config.ResolveEmail()
 		if err == nil || !strings.Contains(err.Error(), "relay login") {
 			t.Fatalf("expected a not-logged-in error naming `relay login`, got %v", err)
@@ -88,7 +88,7 @@ func TestResolveEmail(t *testing.T) {
 	})
 	t.Run("corrupt config is an error", func(t *testing.T) {
 		home := withTempHome(t)
-		t.Setenv("RELAY_EMAIL", "")
+		t.Setenv("ZUANO_EMAIL", "")
 		writeConfigFile(t, home, "[]")
 		if _, err := config.ResolveEmail(); err == nil {
 			t.Fatal("expected an error for a corrupt config")
@@ -98,8 +98,8 @@ func TestResolveEmail(t *testing.T) {
 
 func TestUnresolvableHomeIsAnError(t *testing.T) {
 	t.Setenv("HOME", "")
-	t.Setenv("GATEWAY_URL", "")
-	t.Setenv("RELAY_EMAIL", "")
+	t.Setenv("ZUANO_URL", "")
+	t.Setenv("ZUANO_EMAIL", "")
 
 	if _, err := config.Load(); err == nil {
 		t.Error("Load: expected an error without a home directory")
@@ -179,9 +179,9 @@ func TestSave_PrivatePermissions(t *testing.T) {
 
 func TestGatewayURL_EnvValueIsValidated(t *testing.T) {
 	withTempHome(t)
-	t.Setenv("GATEWAY_URL", "http://gw.example.com")
+	t.Setenv("ZUANO_URL", "http://gw.example.com")
 	if _, err := config.GatewayURL(); err == nil {
-		t.Fatal("expected a remote plain-HTTP GATEWAY_URL to be rejected")
+		t.Fatal("expected a remote plain-HTTP ZUANO_URL to be rejected")
 	}
 }
 
