@@ -260,6 +260,10 @@ type agentSyncRun struct {
 	agents []agentsync.AgentID
 	// stdio names the servers that run a local command.
 	stdio map[string]bool
+	// projectRemote names the remote servers a project directory declares.
+	// A project is untrusted input: its servers can send the session to a
+	// host it chose.
+	projectRemote map[string]bool
 	// gatewayURL is set when the gateway entry would point somewhere other
 	// than the gateway saved in the config file.
 	gatewayURL string
@@ -304,10 +308,14 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns
 	run.stdio = map[string]bool{}
-	for _, b := range bundles {
+	run.projectRemote = map[string]bool{}
+	for scope, b := range bundles {
 		for _, s := range b.MCP {
 			if s.Command != "" {
 				run.stdio[s.Name] = true
+			}
+			if s.URL != "" && scope == agentsync.ScopeProject {
+				run.projectRemote[s.Name] = true
 			}
 		}
 	}

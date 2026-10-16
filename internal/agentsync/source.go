@@ -131,8 +131,15 @@ func (s MCPServer) Validate() error {
 			return fmt.Errorf("MCP server %q: %w", s.Name, err)
 		}
 	}
+	if s.BearerEnv != "" && !envVarName.MatchString(s.BearerEnv) {
+		return fmt.Errorf("MCP server %q: bearer env %q is not an environment variable name", s.Name, s.BearerEnv)
+	}
 	return nil
 }
+
+// envVarName is the portable shape of an environment variable name; anything
+// else could break out of the ${NAME} reference an agent expands.
+var envVarName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 // checkRemoteURL accepts https, or http for a loopback host, so a synced
 // server never sends its credentials in clear text over a network.

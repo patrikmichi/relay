@@ -125,6 +125,19 @@ func TestMCPSourceRoundTripAndValidation(t *testing.T) {
 	}
 }
 
+func TestBearerEnvMustBeAnEnvironmentVariableName(t *testing.T) {
+	for _, bad := range []string{"lower", "A B", "X}\"", "1ABC", "A-B", "${HOME}"} {
+		s := MCPServer{Name: "gw", URL: "https://gateway.example.com/mcp", BearerEnv: bad}
+		if err := s.Validate(); err == nil {
+			t.Errorf("BearerEnv %q was accepted", bad)
+		}
+	}
+	s := MCPServer{Name: "gw", URL: "https://gateway.example.com/mcp", BearerEnv: "GATEWAY_API_KEY"}
+	if err := s.Validate(); err != nil {
+		t.Errorf("valid name rejected: %v", err)
+	}
+}
+
 func TestTOMLKeyAndStringEscaping(t *testing.T) {
 	if tomlKey("docs") != "docs" || tomlKey("a.b") != `"a.b"` {
 		t.Fatal("tomlKey")

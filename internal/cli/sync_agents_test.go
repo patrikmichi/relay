@@ -172,7 +172,7 @@ func TestSyncProjectScopeUsesProjectSources(t *testing.T) {
 	project := t.TempDir()
 	t.Chdir(project)
 	writeTestFile(t, filepath.Join(project, ".relay", "rules", "repo.md"), "Run the tests.\n")
-	if _, err := runCommand(t, SyncCmd(), "--scope", "project", "--to", "claude,gemini"); err != nil {
+	if _, err := runCommand(t, SyncCmd(), "--scope", "project", "--to", "claude,gemini", "--yes"); err != nil {
 		t.Fatal(err)
 	}
 	for _, rel := range []string{"CLAUDE.md", "GEMINI.md"} {

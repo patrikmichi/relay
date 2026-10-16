@@ -24,8 +24,9 @@ func refuseInAgentMode(what string) error {
 	return nil
 }
 
-// execItems lists the planned entries that make an agent run code: hooks and
-// stdio MCP servers that are added or changed.
+// execItems lists the planned entries that make an agent run code or take
+// direction from the project: hooks, stdio MCP servers, a project's remote
+// MCP servers and a project's rules, when added or changed.
 func (r *agentSyncRun) execItems() []agentsync.Item {
 	var out []agentsync.Item
 	for _, it := range r.items {
@@ -35,9 +36,13 @@ func (r *agentSyncRun) execItems() []agentsync.Item {
 		switch it.Kind {
 		case agentsync.KindHooks:
 			out = append(out, it)
+		case agentsync.KindRules:
+			if it.Scope == agentsync.ScopeProject {
+				out = append(out, it)
+			}
 		case agentsync.KindMCP:
 			// An entry without a server name cannot be shown to be remote, so it is gated.
-			if it.Server == "" || r.stdio[it.Server] {
+			if it.Server == "" || r.stdio[it.Server] || (it.Scope == agentsync.ScopeProject && r.projectRemote[it.Server]) {
 				out = append(out, it)
 			}
 		}
@@ -63,7 +68,7 @@ func confirmAgentWrite(cmd *cobra.Command, run *agentSyncRun, what string, yes b
 	}
 	in := cmd.InOrStdin()
 	if !canPrompt(in) {
-		return fmt.Errorf("%s adds or changes hooks, local commands or the gateway URL in agent configuration. Review it with --dry-run, then re-run in a terminal to approve it, or pass --yes", what)
+		return fmt.Errorf("%s adds or changes hooks, local commands, the gateway URL, or a project's rules or remote servers in agent configuration. Review it with --dry-run, then re-run in a terminal to approve it, or pass --yes", what)
 	}
 
 	out := cmd.ErrOrStderr()
