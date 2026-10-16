@@ -460,8 +460,8 @@ func TestEval_FailOnRegressionFailsWhenNothingWasVerified(t *testing.T) {
 		g := newEvalGateway(t)
 		g.summary = summary
 		_, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--fail-on-regression")
-		if ExitCode(err) != exitEvalRegression || !strings.Contains(err.Error(), "not verified") {
-			t.Errorf("%s: err = %v (exit %d), want exit %d", name, err, ExitCode(err), exitEvalRegression)
+		if ExitCode(err) != exitEvalFailed || !strings.Contains(err.Error(), "not verified") {
+			t.Errorf("%s: err = %v (exit %d), want exit %d", name, err, ExitCode(err), exitEvalFailed)
 		}
 		g.runPolls = 0
 		if _, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--wait"); err != nil {

@@ -229,11 +229,11 @@ func SkillEvalCmd() *cobra.Command {
 skill; a task run grades the answers. Without --wait the run starts and its id
 is printed; with --wait relay polls and prints the scores.
 
-Exit status: 0 on success, %d when the run failed or was cancelled, %d with
---fail-on-regression when a validation score dropped against the previous
-version or a variant got significantly worse than the baseline, or when no case
-was scored or some ended in an error (nothing was verified), 4 when
---wait-timeout passed. Use --json for machine-readable output.
+Exit status: 0 on success, %d when the run failed or was cancelled (with
+--fail-on-regression also when no case was scored or some ended in an error,
+since nothing was verified), %d with --fail-on-regression when a validation
+score dropped against the previous version or a variant got significantly
+worse than the baseline, 4 when --wait-timeout passed. Use --json for machine-readable output.
 
 Examples:
   relay skill eval weekly-timesheet --wait
@@ -425,7 +425,7 @@ func runExit(r evalRun, failOnRegression bool) error {
 		}
 		// A gate that scored nothing, or lost cases to errors, cannot show there was no regression.
 		if why := unscored(r); why != "" {
-			return &ExitError{Code: exitEvalRegression, Msg: "not verified: " + why}
+			return &ExitError{Code: exitEvalFailed, Msg: "not verified: " + why}
 		}
 	}
 	return nil
