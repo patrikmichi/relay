@@ -42,23 +42,72 @@ its HTTP client, so no route needs to handle them separately.
 | `503` `{"error": "billing_unavailable", "message"}` with `Retry-After` | prints the message and the wait | 32 |
 | `403` `{"error": "org_suspended" \| "seat_suspended", "message"}` | prints the message | 33 |
 | `429` `{"error": "rate_limited", "message"}` with `Retry-After` | prints the message and the wait | 13 |
-| `429` `{"error": "quota_exceeded", "message", "metric", "limit", "resets_at"}` | prints metric, limit and reset | 13 |
+| `429` `{"error": "quota_exceeded", "message", "metric", "limit", "resets_at"}` | prints metric, limit and reset | 31 |
 | `401` `{"error": "step_up_required", "step_up_id", "step_up_url"}` | completes the step-up, see below | 14 when nobody can |
 | `401` `{"error": "reauth_required"}` | treated like an expired token: `zuano login` | 1 |
 | `200`/`403` body or MCP `structuredContent` `{"reason": "policy_off", "message"}` | prints the message | 10 |
 
 Source: billing plan section 5.8 (codes, statuses, JSON, exit 30 to 33),
-scalability plan sections 5.9 and 8 (`429` quota, exit 13), risk policy plan
+scalability plan sections 5.9 and 8 (`429` quota, exit 31), risk policy plan
 sections 5.2 and 5.14 (`policy_off`, exit 10; `step_up_required`, exit 14).
 A plan quota is `402` `quota_exceeded` (exit 31); a rate limit is `429`
-`rate_limited` (exit 13). A metered `429` `quota_exceeded` is also accepted and
-exits 13. `limit` is a limit key (text) in a plan refusal and a number in a
+`rate_limited` (exit 13, never a quota). A metered `429` `quota_exceeded` is
+also accepted and exits 31. `limit` is a limit key (text) in a plan refusal and a number in a
 quota refusal; zuano reads either.
 
 Every response may carry `X-Request-Id: req_<ulid>`. zuano sends its own
 `X-Request-Id: cli_<ulid>` on every request as client correlation, and adds the
 gateway's id to each refusal and failed-call message as `request id: req_...`.
 `--debug` prints the id of every response.
+
+## CLI exit codes
+
+One table for every status a command can end with. A test checks it against
+the constants in the code, both ways.
+
+| Code | Name | Notes |
+|---|---|---|
+| 0 | `ok` | |
+| 1 | `error` | unclassified failure; also `spec_fetch_blocked` and `federated_mode_unsupported`, with the code in the JSON |
+| 2 | `usage` | bad flags or unreadable input; `policy plan --detailed-exitcode` also returns 2 for "changes present" |
+| 4 | `signature_invalid` | any signature or content-hash verification failure; never a timeout |
+| 10 | `denied` | `policy_off`, DLP block, `meta_executor_blocked`, `source_not_preferred`, `agent_not_allowed`, `denied_by_policy`, `tool_not_pinned` |
+| 11 | `approval_expired` | |
+| 12 | `pending_approval` | held call |
+| 13 | `rate_limited` | `429` only; never a quota |
+| 14 | `step_up_required` | non-interactive session |
+| 15 | `plan_stale` | the organisation changed since the plan was made |
+| 16 | `invalid_manifest` | `422` `invalid_manifest` |
+| 17 | `wait_timeout` | a `--wait` or request time limit passed |
+| 20 | `run_failed` | an eval, export or automation run ended failed |
+| 21 | `eval_regression` | |
+| 22 | `session_too_large` | `413` on capture |
+| 23 | `eval_inconclusive` | |
+| 24 | `eval_threshold_not_met` | |
+| 30 | `plan_required` | also `limit_reached`, `verification_required` |
+| 31 | `quota_exceeded` | also `spend_cap_reached`, daily caps |
+| 32 | `billing_unavailable` | |
+| 33 | `suspended` | `org_suspended`, `seat_suspended`, `ip_not_allowed`, identity suspended |
+| 34 | `network_offline` | |
+| 40 | `policy_invalid` | also DLP policy documents |
+| 41 | `policy_conflict` | |
+| 42 | `policy_managed_in_git` | |
+| 43 | `tool_definition_changed` | |
+| 44 | `upstream_quarantined` | also `registry_server_deleted` |
+| 45 | `evidence_bundle_invalid` | `compliance verify` |
+| 46 | `evidence_keys_missing` | `compliance verify` |
+| 50 | `a2a_chain_refused` | `a2a_loop`, `a2a_depth_exceeded`, `a2a_chain_limit` |
+| 51 | `chain_killed` | |
+| 52 | `chain_budget_exhausted` | |
+| 53 | `agent_card_changed` | |
+| 60 | `spec_invalid` | |
+| 61 | `spec_unsupported` | |
+| 62 | `connector_conflict` | `connector_slug_taken`, `connector_version_conflict` |
+| 63 | `quality_gate_failed` | |
+
+SDK builder and catalog refusal codes map onto these by class: `400`, `409` and
+`422` end with 1 and keep the code in the JSON, `403` with 10, `402` with 30
+or 31.
 
 ## Login
 
@@ -121,7 +170,7 @@ of FILE are this client's decisions, following the table columns.
 
 ## Webhooks
 
-All under `/api/webhooks/`, bearer auth, organisation from the credential. A
+All under `/api/v1/webhooks/` (triggers, webhooks and event streams, including `GET /api/v1/triggers/stream`, live under `/api/v1`), bearer auth, organisation from the credential. A
 write by an agent session may answer `202` with the held-call document (exit
 12). Fixtures: `webhooks-endpoints.json`, `webhooks-endpoint-create.json`,
 `webhooks-triggers.json`, `webhooks-subscriptions.json`,
@@ -540,7 +589,7 @@ A checkpoint line is `{"org_id", "date", "last_seq", "head_hash", "kid",
 checked against the recomputed one.
 
 Source: DLP and compliance packs plan (export bundle, API and CLI sections). The
-plan names the routes, the bundle layout and exit codes 40 and 41 for `verify`;
+plan names the routes, the bundle layout and exit codes 45 and 46 for `verify`;
 the exact manifest and checkpoint fields, the event hash input and the response
 wrappers are this client's reading and must match what the gateway writes.
 

@@ -15,8 +15,8 @@ import (
 
 // Exit statuses of `zuano compliance verify`.
 const (
-	exitBundleInvalid = 40
-	exitKeysMissing   = 41
+	exitBundleInvalid = 45
+	exitKeysMissing   = 46
 )
 
 func complianceVerifyCmd() *cobra.Command {
@@ -27,7 +27,7 @@ func complianceVerifyCmd() *cobra.Command {
 		Long: `Needs no login. Checks the manifest signature, that every file matches the
 hash the signed manifest lists and that nothing else is in the archive, then
 recomputes the audit hash chain event by event and checks the signed daily
-checkpoints. A bundle that does not check out exits 40 and each file or event
+checkpoints. A bundle that does not check out exits 45 and each file or event
 that failed is named.
 
 The public keys come from --keys (a file you obtained from the gateway's

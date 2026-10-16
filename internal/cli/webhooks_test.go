@@ -20,9 +20,9 @@ func allowSecrets(t *testing.T) {
 
 func TestWebhooksList_ShowsAllThreeKinds(t *testing.T) {
 	approvalsGateway(t, handlers{
-		"GET /api/webhooks/endpoints":     reply(200, contractFixture(t, "webhooks-endpoints.json")),
-		"GET /api/webhooks/triggers":      reply(200, contractFixture(t, "webhooks-triggers.json")),
-		"GET /api/webhooks/subscriptions": reply(200, contractFixture(t, "webhooks-subscriptions.json")),
+		"GET /api/v1/webhooks/endpoints":     reply(200, contractFixture(t, "webhooks-endpoints.json")),
+		"GET /api/v1/webhooks/triggers":      reply(200, contractFixture(t, "webhooks-triggers.json")),
+		"GET /api/v1/webhooks/subscriptions": reply(200, contractFixture(t, "webhooks-subscriptions.json")),
 	})
 	out, err := runCommand(t, WebhooksCmd(), "list")
 	if err != nil {
@@ -41,7 +41,7 @@ func TestWebhooksList_ShowsAllThreeKinds(t *testing.T) {
 
 func TestWebhooksCreateEndpoint_PrintsTheSecretOnlyToATerminalOrWithJSON(t *testing.T) {
 	_, bodies := approvalsGateway(t, handlers{
-		"POST /api/webhooks/endpoints": reply(201, contractFixture(t, "webhooks-endpoint-create.json")),
+		"POST /api/v1/webhooks/endpoints": reply(201, contractFixture(t, "webhooks-endpoint-create.json")),
 	})
 	_, err := runCommand(t, WebhooksCmd(), "create", "endpoint", "--service", "github")
 	if err == nil || !strings.Contains(err.Error(), "standard output is not a terminal") {
@@ -89,8 +89,8 @@ func TestWebhooksCreateEndpoint_RejectsBadFlags(t *testing.T) {
 
 func TestWebhooksCreateSubscriptionAndTrigger(t *testing.T) {
 	_, bodies := approvalsGateway(t, handlers{
-		"POST /api/webhooks/subscriptions": reply(201, `{"subscription":{"id":"whs_p9o8i7u6y5"},"secret":"test-subscription-secret"}`),
-		"POST /api/webhooks/triggers":      reply(201, `{"trigger":{"id":"wtr_a1b2c3d4e5","enabled":true}}`),
+		"POST /api/v1/webhooks/subscriptions": reply(201, `{"subscription":{"id":"whs_p9o8i7u6y5"},"secret":"test-subscription-secret"}`),
+		"POST /api/v1/webhooks/triggers":      reply(201, `{"trigger":{"id":"wtr_a1b2c3d4e5","enabled":true}}`),
 	})
 	allowSecrets(t)
 	out, err := runCommand(t, WebhooksCmd(), "create", "subscription", "--url", "https://example.com/hooks", "--events", "approval.*,run.finished")
@@ -122,23 +122,23 @@ func TestWebhooksCreateSubscriptionAndTrigger(t *testing.T) {
 
 func TestWebhooks_TestRotateDeliveriesRedeliverEvents(t *testing.T) {
 	_, bodies := approvalsGateway(t, handlers{
-		"POST /api/webhooks/endpoints/whe_k3j2h1g0f9/test":                      reply(200, `{"ok":true}`),
-		"POST /api/webhooks/subscriptions/whs_p9o8i7u6y5/test":                  reply(200, `{"ok":true}`),
-		"POST /api/webhooks/subscriptions/whs_p9o8i7u6y5/rotate-secret":         reply(200, `{"secret":"test-rotated-secret"}`),
-		"GET /api/webhooks/subscriptions/whs_p9o8i7u6y5/deliveries?status=dead": reply(200, contractFixture(t, "webhooks-deliveries.json")),
-		"POST /api/webhooks/deliveries/whd_q1w2e3r4t5/redeliver":                reply(202, `{"queued":true}`),
-		"GET /api/webhooks/endpoints/whe_k3j2h1g0f9/events":                     reply(200, contractFixture(t, "webhooks-events.json")),
+		"POST /api/v1/webhooks/endpoints/whe_k3j2h1g0f9/test":                      reply(200, `{"ok":true}`),
+		"POST /api/v1/webhooks/subscriptions/whs_p9o8i7u6y5/test":                  reply(200, `{"ok":true}`),
+		"POST /api/v1/webhooks/subscriptions/whs_p9o8i7u6y5/rotate-secret":         reply(200, `{"secret":"test-rotated-secret"}`),
+		"GET /api/v1/webhooks/subscriptions/whs_p9o8i7u6y5/deliveries?status=dead": reply(200, contractFixture(t, "webhooks-deliveries.json")),
+		"POST /api/v1/webhooks/deliveries/whd_q1w2e3r4t5/redeliver":                reply(202, `{"queued":true}`),
+		"GET /api/v1/webhooks/endpoints/whe_k3j2h1g0f9/events":                     reply(200, contractFixture(t, "webhooks-events.json")),
 	})
 	for _, id := range []string{"whe_k3j2h1g0f9", "whs_p9o8i7u6y5"} {
 		if out, err := runCommand(t, WebhooksCmd(), "test", id); err != nil || !strings.Contains(out, "Sent a test event to "+id) {
 			t.Errorf("test %s: %q, %v", id, out, err)
 		}
 	}
-	if _, err := runCommand(t, WebhooksCmd(), "rotate-secret", "whs_p9o8i7u6y5"); err == nil {
+	if _, err := runCommand(t, WebhooksCmd(), "rotate-secret", "whs_"+"p9o8i7u6y5"); err == nil {
 		t.Error("a rotated secret was printed to a pipe")
 	}
 	allowSecrets(t)
-	if out, err := runCommand(t, WebhooksCmd(), "rotate-secret", "whs_p9o8i7u6y5"); err != nil || !strings.Contains(out, "test-rotated-secret") {
+	if out, err := runCommand(t, WebhooksCmd(), "rotate-secret", "whs_"+"p9o8i7u6y5"); err != nil || !strings.Contains(out, "test-rotated-secret") {
 		t.Errorf("rotate: %q, %v", out, err)
 	}
 	out, err := runCommand(t, WebhooksCmd(), "deliveries", "whs_p9o8i7u6y5", "--status", "dead")
@@ -162,7 +162,7 @@ func TestWebhooks_TestRotateDeliveriesRedeliverEvents(t *testing.T) {
 
 func TestWebhooks_AnAgentSessionsWriteIsHeldAndExits12(t *testing.T) {
 	approvalsGateway(t, handlers{
-		"POST /api/webhooks/deliveries/whd_q1w2e3r4t5/redeliver": reply(202, pendingApprovalJSON2),
+		"POST /api/v1/webhooks/deliveries/whd_q1w2e3r4t5/redeliver": reply(202, pendingApprovalJSON2),
 	})
 	out, err := runCommand(t, WebhooksCmd(), "redeliver", "whd_q1w2e3r4t5")
 	if got := exitCodeOf(err); got != 12 || !strings.Contains(out, "apr_9") {

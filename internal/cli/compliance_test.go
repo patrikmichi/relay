@@ -120,7 +120,7 @@ func TestComplianceExportWithoutWaitAndExitCodes(t *testing.T) {
 	if out, err := runCommand(t, ComplianceCmd(), append(args, "--json")...); err != nil || !strings.Contains(out, "export_id") {
 		t.Errorf("json: %q %v", out, err)
 	}
-	if _, err := runCommand(t, ComplianceCmd(), append(args, "--wait", "--wait-timeout", "5ms")...); exitCodeOf(err) != 4 {
+	if _, err := runCommand(t, ComplianceCmd(), append(args, "--wait", "--wait-timeout", "5ms")...); exitCodeOf(err) != 17 {
 		t.Errorf("timeout: exit %d, %v", exitCodeOf(err), err)
 	}
 	complianceGateway(t, exportRoutes(`{"job":{"id":"job_1","status":"failed","error":"render failed"}}`, nil, ""))
@@ -400,18 +400,18 @@ func TestComplianceVerifyOffline(t *testing.T) {
 
 	other := signingtest.New("ev1")
 	out, err = runCommand(t, ComplianceCmd(), "verify", bundle, "--keys", writeKeys(t, map[string]any{"evidence": []signing.Key{other.Key}}))
-	if exitCodeOf(err) != 40 || !strings.Contains(out, "manifest.json: the signature does not verify") {
+	if exitCodeOf(err) != 45 || !strings.Contains(out, "manifest.json: the signature does not verify") {
 		t.Errorf("wrong key: exit %d %q %v", exitCodeOf(err), out, err)
 	}
 	tampered := testBundle(t, signer, "control_id,status\n")
 	data := rewriteZip(t, tampered, "controls.csv", []byte("control_id,status\nCC1,gap\n"))
 	out, err = runCommand(t, ComplianceCmd(), "verify", data, "--keys", keys)
-	if exitCodeOf(err) != 40 || !strings.Contains(out, "controls.csv") {
+	if exitCodeOf(err) != 45 || !strings.Contains(out, "controls.csv") {
 		t.Errorf("tampered: exit %d %q %v", exitCodeOf(err), out, err)
 	}
 	notZip := filepath.Join(t.TempDir(), "x.zip")
 	_ = os.WriteFile(notZip, []byte("nope"), 0o600)
-	if _, err := runCommand(t, ComplianceCmd(), "verify", notZip, "--keys", keys); exitCodeOf(err) != 40 {
+	if _, err := runCommand(t, ComplianceCmd(), "verify", notZip, "--keys", keys); exitCodeOf(err) != 45 {
 		t.Errorf("not a zip: exit %d", exitCodeOf(err))
 	}
 	for name, k := range map[string]string{"missing": filepath.Join(t.TempDir(), "none.json"), "garbled": func() string {
@@ -419,7 +419,7 @@ func TestComplianceVerifyOffline(t *testing.T) {
 		_ = os.WriteFile(p, []byte("{"), 0o600)
 		return p
 	}(), "empty": writeKeys(t, map[string]any{})} {
-		if _, err := runCommand(t, ComplianceCmd(), "verify", bundle, "--keys", k); exitCodeOf(err) != 41 {
+		if _, err := runCommand(t, ComplianceCmd(), "verify", bundle, "--keys", k); exitCodeOf(err) != 46 {
 			t.Errorf("%s keys: exit %d, %v", name, exitCodeOf(err), err)
 		}
 	}
@@ -464,20 +464,20 @@ func TestComplianceVerifyFetchesThePublishedKeys(t *testing.T) {
 	}
 
 	complianceGateway(t, routeMap{"GET /.well-known/zuano-evidence-keys": jsonReply(404, `{}`)})
-	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 41 {
+	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 46 {
 		t.Errorf("no keys published: exit %d, %v", exitCodeOf(err), err)
 	}
 	complianceGateway(t, routeMap{
 		"GET /.well-known/zuano-evidence-keys": jsonReply(200, mustJSON(map[string]any{"keys": []signing.Key{signer.Key}})),
 		"GET /.well-known/zuano-audit-keys":    jsonReply(404, `{}`),
 	})
-	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 41 {
+	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 46 {
 		t.Errorf("no audit keys: exit %d, %v", exitCodeOf(err), err)
 	}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("ZUANO_URL", "")
 	t.Setenv("ZUANO_API_KEY", "")
-	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 41 || !strings.Contains(err.Error(), "--keys") {
+	if _, err := runCommand(t, ComplianceCmd(), "verify", bundle); exitCodeOf(err) != 46 || !strings.Contains(err.Error(), "--keys") {
 		t.Errorf("no gateway: exit %d, %v", exitCodeOf(err), err)
 	}
 }

@@ -47,10 +47,10 @@ quota resets, and the upgrade link.
 | Status | Gateway error codes | HTTP |
 |---|---|---|
 | 30 | `plan_required`, `limit_reached`, `verification_required` | 402 |
-| 31 | `quota_exceeded`, `spend_cap_reached` | 402 |
+| 31 | `quota_exceeded`, `spend_cap_reached`, daily caps (`daily_cap`) | 402, or 429 for a metered quota |
 | 32 | `billing_unavailable` (the message says when to retry) | 503 |
 | 33 | `org_suspended`, `seat_suspended` | 403 |
-| 13 | `quota_exceeded` on a metered quota | 429 |
+| 13 | `rate_limited`: too many requests, wait and retry | 429 |
 
 Statuses 13 and 14 (step-up) are described in [approvals.md](approvals.md#exit-statuses)
 and [step-up.md](step-up.md). `zuano call --wait` treats 402 as final: it does

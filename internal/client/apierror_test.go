@@ -86,14 +86,14 @@ func TestBillingUnavailableCarriesRetryAfter(t *testing.T) {
 	}
 }
 
-func TestQuotaExceededOn429IsExit13(t *testing.T) {
+func TestQuotaExceededOn429IsExit31(t *testing.T) {
 	c := refusalServer(t, 429, nil, `{"error":"quota_exceeded","message":"agent runs used up","metric":"agent_runs","limit":100,"resets_at":"2026-10-17T00:00:00Z"}`)
 	_, err := c.Get("/x")
 	var q *QuotaExceededError
 	if !errors.As(err, &q) {
 		t.Fatalf("err = %v, want *QuotaExceededError", err)
 	}
-	if q.ExitCode() != ExitQuotaExceeded || q.Metric != "agent_runs" || q.Limit != "100" || q.ResetsAt == "" {
+	if q.ExitCode() != ExitUsageExhausted || q.Metric != "agent_runs" || q.Limit != "100" || q.ResetsAt == "" {
 		t.Errorf("quota = %+v", q)
 	}
 	if !strings.Contains(err.Error(), "metric agent_runs") || !strings.Contains(err.Error(), "limit 100") {

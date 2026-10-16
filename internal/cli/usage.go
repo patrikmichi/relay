@@ -38,8 +38,7 @@ func UsageCmd() *cobra.Command {
 		Short: "Show the organisation's quota usage against its limits",
 		Long: `Prints each quota metric with what the organisation used in its window, the
 soft limit that raises a warning and the hard limit that blocks. A metric at
-its hard limit refuses further use with exit status 13 (or 31 when billing
-refuses it); 'zuano billing usage' shows metered usage and cost.`,
+its hard limit refuses further use with exit status 31; 'zuano billing usage' shows metered usage and cost.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			q := url.Values{}

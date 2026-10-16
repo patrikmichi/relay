@@ -8,10 +8,39 @@ import (
 
 const policyOffReason = "policy_off"
 
+// refusalCodes maps the reasons a call or a request can be refused for to the
+// exit status that ends the command. The reasons that map to 1 are failures
+// whose code stays in the JSON.
+var refusalCodes = map[string]int{
+	policyOffReason:              exitDenied,
+	"denied_by_policy":           exitDenied,
+	"tool_not_pinned":            exitDenied,
+	"meta_executor_blocked":      exitDenied,
+	"source_not_preferred":       exitDenied,
+	"agent_not_allowed":          exitDenied,
+	"tool_definition_changed":    exitToolChanged,
+	"upstream_quarantined":       exitQuarantined,
+	"registry_server_deleted":    exitQuarantined,
+	"a2a_loop":                   exitA2AChainRefused,
+	"a2a_depth_exceeded":         exitA2AChainRefused,
+	"a2a_chain_limit":            exitA2AChainRefused,
+	"chain_killed":               exitChainKilled,
+	"chain_budget_exhausted":     exitChainBudget,
+	"agent_card_changed":         exitAgentCardChanged,
+	"spec_invalid":               exitSpecInvalid,
+	"spec_unsupported":           exitSpecUnsupported,
+	"connector_slug_taken":       exitConnectorClash,
+	"connector_version_conflict": exitConnectorClash,
+	"quality_gate_failed":        exitQualityGate,
+	"spec_fetch_blocked":         1,
+	"federated_mode_unsupported": 1,
+}
+
 // policyRefusal recognises a call the organisation's or the platform's risk
-// policy turned off: a body, or an MCP result, whose reason is policy_off. It
-// ends with exit status 10, the status of a denial, and the gateway's
-// sentence, which names the policy source and who can change it.
+// policy turned off, or the firewall or the catalog refused: a body, or an MCP
+// result, whose reason is one of refusalCodes. It ends with the matching exit
+// status and the gateway's sentence, which names the policy source and who can
+// change it.
 func policyRefusal(body []byte, env *mcpEnvelope) error {
 	candidates := [][]byte{body}
 	if env != nil && env.Result != nil && env.Result.IsError && len(env.Result.StructuredContent) > 0 {
@@ -23,7 +52,11 @@ func policyRefusal(body []byte, env *mcpEnvelope) error {
 			Message string `json:"message"`
 			Error   string `json:"error"`
 		}
-		if json.Unmarshal(raw, &doc) != nil || doc.Reason != policyOffReason {
+		if json.Unmarshal(raw, &doc) != nil {
+			continue
+		}
+		code, ok := refusalCodes[doc.Reason]
+		if !ok {
 			continue
 		}
 		msg := doc.Message
@@ -33,7 +66,7 @@ func policyRefusal(body []byte, env *mcpEnvelope) error {
 		if msg == "" {
 			msg = "blocked by policy"
 		}
-		return &ExitError{Code: exitDenied, Msg: textsafe.Clean(msg)}
+		return &ExitError{Code: code, Msg: textsafe.Clean(msg)}
 	}
 	return nil
 }

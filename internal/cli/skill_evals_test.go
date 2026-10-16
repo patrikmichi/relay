@@ -537,8 +537,8 @@ func TestEval_RequestsHonourTheTimeoutFlag(t *testing.T) {
 	}
 	t.Cleanup(resetTimeoutFlag)
 	_, err := evalCmd(t, g, SkillEvalsCmd(), "sets", "list", "evskill")
-	if err == nil || ExitCode(err) != 4 {
-		t.Fatalf("err = %v (exit %d), want the timeout exit status 4", err, ExitCode(err))
+	if err == nil || ExitCode(err) != 17 {
+		t.Fatalf("err = %v (exit %d), want the timeout exit status 17", err, ExitCode(err))
 	}
 }
 
@@ -558,7 +558,7 @@ func TestEval_WaitTimeoutExitsWithTheTimeoutStatus(t *testing.T) {
 	g := newEvalGateway(t)
 	g.runStates = []string{"running"}
 	out, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--wait", "--wait-timeout", "20ms")
-	if err == nil || ExitCode(err) != 4 || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "--run evr_1 --wait") {
+	if err == nil || ExitCode(err) != 17 || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "--run evr_1 --wait") {
 		t.Fatalf("err = %v (exit %d)\n%s", err, ExitCode(err), out)
 	}
 }

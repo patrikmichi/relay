@@ -51,14 +51,14 @@ refused while ZUANO_AGENT is set (exit 10). Auditors can use the read commands.
 
 export --wait exit status
   0   the bundle is ready (and downloaded with --out)
-  4   still running when --wait-timeout ended
+  17  still running when --wait-timeout ended
   20  the export failed
   30-33  the plan does not allow it
 
 verify exit status
   0   the bundle is valid
-  40  verification failed; each file or event that does not check out is named
-  41  the public keys could not be obtained`,
+  45  verification failed; each file or event that does not check out is named
+  46  the public keys could not be obtained`,
 	}
 	cmd.AddCommand(compliancePacksCmd(), complianceControlsCmd(), complianceExportCmd(), complianceExportsCmd(), complianceSchedulesCmd(),
 		complianceShareCmd(), complianceVerifyCmd(), complianceIncidentsCmd(), complianceDSRCmd(), complianceAccessReviewCmd())
@@ -244,7 +244,7 @@ downloads the bundle when it is ready. The range includes --from and stops befor
 	return cmd
 }
 
-// waitExportJob follows a job to its end: exit 4 when time runs out, 20 when
+// waitExportJob follows a job to its end: exit 17 when time runs out, 20 when
 // the export fails.
 func waitExportJob(cmd *cobra.Command, c *client.Client, jobID string, total time.Duration) error {
 	deadline := time.Now().Add(total)
@@ -265,10 +265,10 @@ func waitExportJob(cmd *cobra.Command, c *client.Client, jobID string, total tim
 			if e := doc.errorText(); e != "" {
 				msg += ": " + textsafe.Clean(e)
 			}
-			return &ExitError{Code: 20, Msg: msg}
+			return &ExitError{Code: exitRunFailed, Msg: msg}
 		}
 		if time.Now().After(deadline) {
-			return &ExitError{Code: 4, Msg: fmt.Sprintf("the export is still running after %s; follow it with `%s`", total, brand.Cmd("compliance exports list"))}
+			return &ExitError{Code: exitWaitTimeout, Msg: fmt.Sprintf("the export is still running after %s; follow it with `%s`", total, brand.Cmd("compliance exports list"))}
 		}
 		select {
 		case <-cmd.Context().Done():

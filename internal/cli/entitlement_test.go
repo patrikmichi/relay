@@ -40,7 +40,7 @@ func TestEntitlementRefusals_ExitCodesAndUpgradeLinkOnEveryCommand(t *testing.T)
 		{"billing down", 503, map[string]string{"Retry-After": "20"}, `{"error":"billing_unavailable","message":"billing is unavailable"}`, 32, "retry after 20s"},
 		{"suspended org", 403, nil, `{"error":"org_suspended","message":"the organisation is suspended"}`, 33, "suspended"},
 		{"suspended seat", 403, nil, `{"error":"seat_suspended","message":"your seat is suspended"}`, 33, "your seat is suspended"},
-		{"metered quota", 429, nil, `{"error":"quota_exceeded","message":"agent runs used up","metric":"agent_runs","limit":50,"resets_at":"2026-10-17T00:00:00Z"}`, 13, "metric agent_runs"},
+		{"metered quota", 429, nil, `{"error":"quota_exceeded","message":"agent runs used up","metric":"agent_runs","limit":50,"resets_at":"2026-10-17T00:00:00Z"}`, 31, "metric agent_runs"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			refusingGateway(t, tc.status, tc.headers, tc.body)

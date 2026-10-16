@@ -17,11 +17,11 @@ import (
 	"github.com/patrikmichi/zuano/internal/keychain"
 )
 
-// Exit statuses of the skill eval commands, on top of 0, 1 and the root
-// timeout status 4.
+// Exit statuses of the skill eval commands, on top of 0, 1 and the wait
+// timeout status 17.
 const (
-	exitEvalFailed     = 20 // the run or job ended failed or cancelled
-	exitEvalRegression = 21 // --fail-on-regression and a score dropped
+	exitEvalFailed     = exitRunFailed // the run or job ended failed or cancelled
+	exitEvalRegression = 21            // --fail-on-regression and a score dropped
 )
 
 // One request is bounded by --timeout; waiting for a run is bounded separately

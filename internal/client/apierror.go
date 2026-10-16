@@ -14,8 +14,10 @@ import (
 
 // Process exit statuses for the gateway refusals every command shares.
 const (
-	ExitQuotaExceeded = 13
-	ExitStepUp        = 14
+	// ExitRateLimited is a request rate limit; it clears by waiting. A quota
+	// is ExitUsageExhausted.
+	ExitRateLimited = 13
+	ExitStepUp      = 14
 	// ExitPlanRequired is a feature or limit the plan does not include.
 	ExitPlanRequired = 30
 	// ExitUsageExhausted is a metered allowance or spend cap that is used up.
@@ -126,7 +128,7 @@ type RateLimitedError struct {
 }
 
 // ExitCode is the process exit status for the refusal.
-func (e *RateLimitedError) ExitCode() int { return ExitQuotaExceeded }
+func (e *RateLimitedError) ExitCode() int { return ExitRateLimited }
 
 func (e *RateLimitedError) Error() string {
 	msg := textsafe.Clean(e.Message)
@@ -140,7 +142,7 @@ func (e *RateLimitedError) Error() string {
 }
 
 // ExitCode is the process exit status for the refusal.
-func (e *QuotaExceededError) ExitCode() int { return ExitQuotaExceeded }
+func (e *QuotaExceededError) ExitCode() int { return ExitUsageExhausted }
 
 func (e *QuotaExceededError) Error() string {
 	msg := textsafe.Clean(e.Message)

@@ -193,10 +193,10 @@ func TestUsage_PassesTheDatesAndPrintsJSONUnchanged(t *testing.T) {
 	}
 }
 
-func TestUsage_AQuotaRefusalIsExit13(t *testing.T) {
+func TestUsage_AQuotaRefusalIsExit31(t *testing.T) {
 	refusingGateway(t, 429, nil, `{"error":"quota_exceeded","metric":"api_requests","limit":1000,"resets_at":"2026-10-17T00:00:00Z"}`)
 	_, err := runCommand(t, UsageCmd())
-	if got := exitCodeOf(err); got != 13 {
-		t.Fatalf("exit %d (%v), want 13", got, err)
+	if got := exitCodeOf(err); got != 31 {
+		t.Fatalf("exit %d (%v), want 31", got, err)
 	}
 }

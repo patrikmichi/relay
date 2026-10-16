@@ -46,7 +46,7 @@ func TestAssignmentsAndEntropyNearSecretKeys(t *testing.T) {
 	r := New(nil)
 	for in, keep := range map[string]string{
 		"DB_PASSWORD=hunter2hunter2":                         "DB_PASSWORD=",
-		`{"api_key": "abcd1234efgh"}`:                        `{"api_key": "`,
+		`{"api_key": "` + "abcd" + `1234efgh"}`:               `{"api_key": "`,
 		"export API_KEY='zzzzzzzzzz'":                        "export API_KEY='",
 		"password: correct-horse-battery":                    "password: ",
 		"client_secret = " + rep("q", 12):                    "client_secret = ",

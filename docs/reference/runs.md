@@ -45,7 +45,7 @@ ended with the job still going. `--json` prints only the final document.
 
 Members see their own jobs; admins see all of the organisation's, metadata
 only. `zuano usage` shows the quotas that bound how many jobs may start; a
-start refused by a quota exits 13 (see [billing.md](billing.md#exit-statuses)).
+start refused by a quota exits 31 (see [billing.md](billing.md#exit-statuses)).
 
 ## Skill evals
 

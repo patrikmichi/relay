@@ -116,8 +116,8 @@ type ExitError struct {
 func (e *ExitError) Error() string { return e.Msg }
 
 // ExitCode maps a command error to the process exit status: the code of an
-// ExitError, 4 when a gateway request hit zuano's time limit, 1 for any other
-// failure.
+// ExitError, 17 when a gateway request or a --wait hit its time limit, 1 for
+// any other failure. 4 is only a signature or hash that does not verify.
 func ExitCode(err error) int {
 	var exit *ExitError
 	if errors.As(err, &exit) {
@@ -128,7 +128,7 @@ func ExitCode(err error) int {
 		return coded.ExitCode()
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return 4
+		return exitWaitTimeout
 	}
 	return 1
 }

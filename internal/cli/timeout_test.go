@@ -127,8 +127,8 @@ func TestCallTool_TimeoutNamesFlagAndExitsFour(t *testing.T) {
 	if te.Limit != 50*time.Millisecond || !strings.Contains(err.Error(), "--timeout") {
 		t.Fatalf("message %q must name the --timeout limit of 50ms", err)
 	}
-	if code := ExitCode(fmt.Errorf("wrapped: %w", err)); code != 4 {
-		t.Fatalf("ExitCode = %d, want 4", code)
+	if code := ExitCode(fmt.Errorf("wrapped: %w", err)); code != 17 {
+		t.Fatalf("ExitCode = %d, want 17", code)
 	}
 }
 
@@ -160,8 +160,8 @@ func TestExitCode(t *testing.T) {
 	if ExitCode(errors.New("boom")) != 1 {
 		t.Fatal("ordinary errors exit 1")
 	}
-	if ExitCode(&TimeoutError{Limit: time.Second, Source: "set by --timeout"}) != 4 {
-		t.Fatal("timeouts exit 4")
+	if ExitCode(&TimeoutError{Limit: time.Second, Source: "set by --timeout"}) != 17 {
+		t.Fatal("timeouts exit 17")
 	}
 }
 

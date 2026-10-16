@@ -161,7 +161,7 @@ func TestCall_ARESTAcceptedJobWithWaitReportsAFailedRun(t *testing.T) {
 	}
 }
 
-func TestCall_AQuotaRefusalOnWaitPollingIsExit13(t *testing.T) {
+func TestCall_AQuotaRefusalOnWaitPollingIsExit31(t *testing.T) {
 	fastJobPolls(t)
 	var polls atomic.Int32
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
@@ -172,8 +172,8 @@ func TestCall_AQuotaRefusalOnWaitPollingIsExit13(t *testing.T) {
 		},
 	})
 	_, err := runCommand(t, CallCmd(), "agents", "run_agent", "--wait")
-	if got := exitCodeOf(err); got != 13 || polls.Load() != 1 {
-		t.Fatalf("exit %d (%v) after %d polls, want 13 after one", got, err, polls.Load())
+	if got := exitCodeOf(err); got != 31 || polls.Load() != 1 {
+		t.Fatalf("exit %d (%v) after %d polls, want 31 after one", got, err, polls.Load())
 	}
 }
 

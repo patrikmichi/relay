@@ -427,7 +427,7 @@ a gateway.
 | `zuano explain call <service> <tool> [--json]` | gateway | Report a tool's risk class and decision, and whether an agent needs an approval or a grant |
 | `zuano approvals list\|show\|approve\|deny\|wait` | gateway | List held calls, open the page where one is approved or denied with a passkey (`--no-browser` prints a link and QR code), or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
 | `zuano billing status\|usage\|open` | gateway | Show the plan, seats and spend cap, metered usage against allowances (`--meter`, `--period`, `--by`), or open the billing page; a request the plan refuses exits 30 to 33 with the upgrade link ([docs/reference/billing.md](docs/reference/billing.md)) |
-| `zuano usage [--from] [--to]` | gateway | Show each quota metric against its soft and hard limit; a used-up quota exits 13 |
+| `zuano usage [--from] [--to]` | gateway | Show each quota metric against its soft and hard limit; a used-up quota exits 31 |
 | `zuano sessions list\|revoke\|revoke-all` | gateway | List your browser and CLI sessions on the gateway, revoke one, or sign out everywhere (a passkey step-up); see [docs/reference/security-commands.md](docs/reference/security-commands.md) |
 | `zuano audit verify\|export` | gateway | Verify the audit log's hash chain and checkpoints, or export events as JSON lines or CSV, resumable with `--resume` (org admins; [docs/reference/observability.md](docs/reference/observability.md)) |
 | `zuano trace <request_id\|trace_id\|approval_id>` | gateway | Show the spans, audit entries and errors the gateway recorded for a request (org admins) |
@@ -518,7 +518,7 @@ with environment variables — env always wins over the config file:
 | `ZUANO_API_KEY_ORIGIN` | The one gateway origin `ZUANO_API_KEY` may be sent to, e.g. `https://app.zuano.ai`. Needed in CI when no gateway is saved; a `--gateway-url` or `$ZUANO_URL` for another origin is refused |
 | `ZUANO_EMAIL` | Selects which keychain-stored session to use (overrides the last `zuano login`'d identity) |
 | `ZUANO_AGENT` | `1` makes zuano use the agent profile's session, which the gateway holds to approvals, and never your own; `zuano login` then signs the agent profile in. `zuano sync` sets it for the agents it configures |
-| `ZUANO_TIMEOUT` | Limit for each gateway request, e.g. `90s` or `10m`; `0` means no limit. Defaults: 30s, 150s for tool calls and uploads. `--timeout` overrides it. A request that hits the limit exits with status 4 |
+| `ZUANO_TIMEOUT` | Limit for each gateway request, e.g. `90s` or `10m`; `0` means no limit. Defaults: 30s, 150s for tool calls and uploads. `--timeout` overrides it. A request that hits the limit exits with status 17 |
 
 Interactive sessions authenticate via `zuano login` (OAuth, tokens stored in
 the OS keychain, auto-refreshing). Non-interactive contexts should set

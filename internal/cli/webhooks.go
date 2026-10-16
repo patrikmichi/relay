@@ -17,7 +17,10 @@ import (
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
-const maxTriggerFile = 1 << 20
+const (
+	maxTriggerFile = 1 << 20
+	webhooksAPI    = "/api/v1/webhooks"
+)
 
 var webhookIDPattern = regexp.MustCompile(`^(whe|whs|whd|wtr)_[A-Za-z0-9_-]{6,40}$`)
 
@@ -61,9 +64,9 @@ func webhookID(arg string, prefixes ...string) (string, error) {
 // webhookPath maps an endpoint or subscription id to its API collection.
 func webhookPath(id string) string {
 	if strings.HasPrefix(id, "whs_") {
-		return "/api/webhooks/subscriptions/" + url.PathEscape(id)
+		return webhooksAPI + "/subscriptions/" + url.PathEscape(id)
 	}
-	return "/api/webhooks/endpoints/" + url.PathEscape(id)
+	return webhooksAPI + "/endpoints/" + url.PathEscape(id)
 }
 
 func webhooksListCmd() *cobra.Command {
@@ -87,7 +90,7 @@ func webhooksListCmd() *cobra.Command {
 				dst  *[]webhookRow
 			}{{"endpoints", &doc.Endpoints}, {"triggers", &doc.Triggers}, {"subscriptions", &doc.Subscriptions}} {
 				var page map[string][]webhookRow
-				if _, err := gatewayJSON(cmd.Context(), c, http.MethodGet, "/api/webhooks/"+part.name, nil, &page); err != nil {
+				if _, err := gatewayJSON(cmd.Context(), c, http.MethodGet, webhooksAPI+"/"+part.name, nil, &page); err != nil {
 					return err
 				}
 				*part.dst = page[part.name]
@@ -211,7 +214,7 @@ func createEndpointCmd() *cobra.Command {
 				Endpoint webhookRow `json:"endpoint"`
 				Secret   string     `json:"secret"`
 			}
-			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/endpoints", body, &res)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhooksAPI+"/endpoints", body, &res)
 			if err != nil {
 				return err
 			}
@@ -263,7 +266,7 @@ func createSubscriptionCmd() *cobra.Command {
 				Subscription webhookRow `json:"subscription"`
 				Secret       string     `json:"secret"`
 			}
-			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/subscriptions", map[string]any{"url": target, "event_types": events, "description": description}, &res)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhooksAPI+"/subscriptions", map[string]any{"url": target, "event_types": events, "description": description}, &res)
 			if err != nil {
 				return err
 			}
@@ -325,7 +328,7 @@ gateway validates them. Use - to read the definition from standard input.`,
 			var res struct {
 				Trigger webhookRow `json:"trigger"`
 			}
-			resp, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/triggers", body, &res)
+			resp, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhooksAPI+"/triggers", body, &res)
 			if err != nil {
 				return err
 			}
@@ -450,7 +453,7 @@ func webhooksRedeliverCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, "/api/webhooks/deliveries/"+url.PathEscape(id)+"/redeliver", map[string]any{}, nil)
+			raw, err := gatewayWrite(cmd, c, f.jsonOut, http.MethodPost, webhooksAPI+"/deliveries/"+url.PathEscape(id)+"/redeliver", map[string]any{}, nil)
 			if err != nil {
 				return err
 			}

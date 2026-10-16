@@ -68,8 +68,8 @@ func TestRefusals_CarryTheRequestID(t *testing.T) {
 		exit   int
 	}{
 		"plan quota":  {402, `{"error":"quota_exceeded","message":"used up"}`, "used up (quota_exceeded); retry after 7s; request id: req_9", ExitUsageExhausted},
-		"rate limit":  {429, `{"error":"rate_limited","message":"slow down"}`, "slow down; retry after 7s; request id: req_9", ExitQuotaExceeded},
-		"metered cap": {429, `{"error":"quota_exceeded","message":"cap","metric":"calls"}`, "cap (metric calls); request id: req_9", ExitQuotaExceeded},
+		"rate limit":  {429, `{"error":"rate_limited","message":"slow down"}`, "slow down; retry after 7s; request id: req_9", ExitRateLimited},
+		"metered cap": {429, `{"error":"quota_exceeded","message":"cap","metric":"calls"}`, "cap (metric calls); request id: req_9", ExitUsageExhausted},
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
