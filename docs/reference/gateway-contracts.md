@@ -70,6 +70,46 @@ must reject a Bearer decision (risk policy plan 5.3).
 Source: risk policy plan 5.4 and 5.14. The status document is this client's
 decision; the plan names the route and the three states.
 
+## Sessions
+
+| Route | Response |
+|---|---|
+| `GET /api/me/sessions` | `{"sessions": [{"id", "kind": "dashboard\|viewer\|cli_personal\|cli_agent", "auth_method", "created_at", "last_seen_at", "idle_expires_at", "absolute_expires_at", "ip_prefix", "user_agent", "current"}]}`. Fixture: `sessions.json` |
+| `DELETE /api/me/sessions/{id}` | `200` any JSON |
+| `POST /api/me/sessions/revoke-all` | `200` any JSON; step-up gated |
+
+Source: risk policy plan 5.6, 5.13 and 5.14. The session document follows the
+`user_sessions` table; relay lists CLI sessions beside browser ones, which the
+plan asks for, so the gateway must include them.
+
+## Audit
+
+| Route | Response |
+|---|---|
+| `GET /api/admin/audit/verify?from=&to=` | `{"ok", "from", "to", "events", "checkpoints", "firstBadSeq": null\|int, "reason": null\|text}`. Fixtures: `audit-verify-ok.json`, `audit-verify-broken.json` |
+| `GET /api/admin/audit/export?format=ndjson\|csv&from=&to=&q=&actor=&service=&tool=&outcome=` | the events, streamed, in the requested format |
+
+Source: risk policy plan 5.10 and 5.13 (routes, filters, NDJSON/CSV). The verify
+document and the `format` parameter are this client's decision.
+
+## Risk policy preview
+
+`GET /api/admin/risk-policy/preview?service=&tool=&params=<json>&principal=`.
+Fixtures: `policy-preview-off.json`, `policy-preview-approval.json`,
+`policy-preview-platform.json`.
+
+```json
+{"service", "tool", "risk", "principal",
+ "decision": {"mode": "off|approval|allowed",
+              "source": "platform_block|org_tool_override|org_matrix|default",
+              "ruleId": null|text, "predicate": null|text,
+              "changeableBy": "platform|org_admin"}}
+```
+
+Source: risk policy plan 5.2 (`RiskDecision`) and 5.13 (the preview route). The
+`principal` parameter and the wrapper are this client's decision; the plan says
+the preview "explains the decision for a principal".
+
 ## Billing
 
 `GET /api/billing/status` (Bearer, any member; a member without billing rights

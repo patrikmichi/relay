@@ -136,14 +136,21 @@ func approvalsDo(parent context.Context, c *client.Client, kind requestKind, met
 	defer func() { err = timeoutCause(ctx, err) }()
 
 	var resp *http.Response
-	if method == http.MethodGet {
+	switch method {
+	case http.MethodGet:
 		resp, err = c.GetContext(ctx, path)
-	} else {
+	case http.MethodPost:
 		payload, merr := json.Marshal(body)
 		if merr != nil {
 			return 0, nil, fmt.Errorf("marshal request body: %w", merr)
 		}
 		resp, err = c.PostContext(ctx, path, "application/json", bytes.NewReader(payload))
+	default:
+		req, rerr := http.NewRequestWithContext(ctx, method, c.GatewayURL+path, nil)
+		if rerr != nil {
+			return 0, nil, fmt.Errorf("create request: %w", rerr)
+		}
+		resp, err = c.Do(req)
 	}
 	if err != nil {
 		return 0, nil, fmt.Errorf("%s %s: %w", method, path, err)

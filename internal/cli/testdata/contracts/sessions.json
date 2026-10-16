@@ -1,0 +1,28 @@
+{
+  "sessions": [
+    {
+      "id": "ses_browser1",
+      "kind": "dashboard",
+      "auth_method": "google",
+      "created_at": "2026-10-16T08:00:00Z",
+      "last_seen_at": "2026-10-16T11:58:00Z",
+      "idle_expires_at": "2026-10-16T19:58:00Z",
+      "absolute_expires_at": "2026-10-23T08:00:00Z",
+      "ip_prefix": "203.0.113.0/24",
+      "user_agent": "Firefox on Linux",
+      "current": false
+    },
+    {
+      "id": "ses_cli1",
+      "kind": "cli_personal",
+      "auth_method": "device_code",
+      "created_at": "2026-10-15T09:00:00Z",
+      "last_seen_at": "2026-10-16T11:59:00Z",
+      "idle_expires_at": "2026-10-16T19:59:00Z",
+      "absolute_expires_at": "2026-10-22T09:00:00Z",
+      "ip_prefix": "203.0.113.0/24",
+      "user_agent": "relay/0.3.0 (linux/amd64)",
+      "current": true
+    }
+  ]
+}
