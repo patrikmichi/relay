@@ -1014,3 +1014,34 @@ SESSION = {"id", "userId", "identity", "configVersion", "createdAt", "lastUsedAt
 Secret values are never in a response: `secretFields` carries only whether
 each is set. Ids are `ac_`, `ca_`, `lnk_`, `ses_` and `scf_` followed by the
 identifier; the CLI refuses an argument with another prefix before sending it.
+
+## Recipes
+
+Bearer auth, under `/api/v1`. The routes and the recipe shape are the plan's;
+the wrappers, `signature.signed` and the key document are this client's
+decisions.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /recipes?service=&q=&source=&status=&cursor=&limit=&forCaller=true` | `{"items": [RECIPE], "nextCursor"?}`; with `forCaller` each step carries `risk` and `approval` for the caller |
+| `GET /recipes/{id or slug}?version=&forCaller=true` | `{"recipe": RECIPE}` |
+| `GET /recipes/{id}/versions` | `{"items": [{"version", "status", "at", "by"?}]}` |
+| `POST /recipes/{id}:promote` | `{}`; `201` `{"skill": {"id", "slug", "url"}, "versionId"}` |
+| `GET /org/recipe-settings`, `PUT /org/recipe-settings` | `{"settings": {"contributeCrossOrg", "serveRecipes": "all\|org_only\|off", "mineOrgPrivate"}}`; PUT takes any of the three |
+| `GET /recipes/keys` | public: `{"keys": [{"kid", "alg": "ed25519", "publicKey": base64}]}` |
+
+```json
+RECIPE = {"id", "slug", "version", "title", "useCase", "services", "difficulty": {"level", "reason"}, "primaryTools", "relatedTools",
+          "steps": [{"order", "kind", "condition"?, "fallbackFor"?, "tool", "instruction", "risk"?, "approval"?}],
+          "pitfalls": [{"tool", "errorCodes"?, "text", "fix"}], "tools": [{"tool", "idempotency", "idempotencyParam"?}],
+          "source", "overrides"?, "status", "evidence": {"successRate", "successRateLow", "sampleSize", "windowDays", "lastEval"?},
+          "signature": {"alg", "keyId", "signer": "platform|org", "contentHash": hex sha256, "sig": base64, "signed": SIGNED}, "url"}
+SIGNED = the object that was signed: id, version, title, useCase, services, difficulty, primaryTools, relatedTools,
+         steps (without risk and approval), pitfalls, and anything else the gateway signs
+```
+
+`sig` is an Ed25519 signature over the canonical JSON (sorted keys, no
+whitespace) of `signed`; `contentHash` is the hex SHA-256 of the same bytes.
+The CLI compares the fields it prints with `signed`, so a changed step does not
+verify; other keys in `signed` (the catalog version, scope, organisation) are
+signed but not compared.

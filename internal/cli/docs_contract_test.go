@@ -62,3 +62,7 @@ func TestBuilderReferenceDocumentsEveryCommandAndFlag(t *testing.T) {
 		assertDocumented(t, c.cmd, c.path, "../../docs/reference/builder.md")
 	}
 }
+
+func TestRecipesReferenceDocumentsEveryCommandAndFlag(t *testing.T) {
+	assertDocumented(t, RecipesCmd(), "zuano recipes", "../../docs/reference/recipes.md")
+}
