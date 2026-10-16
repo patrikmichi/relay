@@ -194,10 +194,13 @@ func TestRunSync_Revocation(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Pre-create a stale plugin dir (not in the manifest).
+	// Pre-create a stale plugin dir (not in the manifest) that an earlier sync wrote.
 	staleDir := filepath.Join(dir, "plugins", "old-revoked-plugin")
 	if err := os.MkdirAll(staleDir, 0o700); err != nil {
 		t.Fatalf("create stale dir: %v", err)
+	}
+	if err := saveOwnedFiles(dir, "old-revoked-plugin", nil); err != nil {
+		t.Fatal(err)
 	}
 
 	// Also pre-create a dir that IS in the manifest — it should survive.
@@ -234,10 +237,13 @@ func TestRunSync_DryRun_RevocationReported(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Pre-create a stale plugin dir.
+	// Pre-create a stale plugin dir that an earlier sync wrote.
 	staleDir := filepath.Join(dir, "plugins", "old-revoked-plugin")
 	if err := os.MkdirAll(staleDir, 0o700); err != nil {
 		t.Fatalf("create stale dir: %v", err)
+	}
+	if err := saveOwnedFiles(dir, "old-revoked-plugin", nil); err != nil {
+		t.Fatal(err)
 	}
 
 	doer := &testDoer{srv: srv}
@@ -374,6 +380,10 @@ func TestStalePluginDirs(t *testing.T) {
 	// Create plugins dir with two entries: one in manifest, one not.
 	_ = os.MkdirAll(filepath.Join(dir, "plugins", "searcher-001"), 0o700)
 	_ = os.MkdirAll(filepath.Join(dir, "plugins", "old-plugin"), 0o700)
+	_ = os.MkdirAll(filepath.Join(dir, "plugins", "users-own-plugin"), 0o700)
+	if err := saveOwnedFiles(dir, "old-plugin", nil); err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := marketplaceManifest{
 		Name: "test",
@@ -544,6 +554,7 @@ func TestSafePluginID(t *testing.T) {
 		{"./plugins/../../.ssh/authorized_keys", true, ""},
 		{"./plugins/a/b", true, ""},
 		{`./plugins/a\b`, true, ""},
+		{"./plugins/.", true, ""},  // would be the plugins directory itself
 		{"./plugins/", true, ""},   // empty after stripping
 		{"./plugins/..", true, ""}, // dotdot only
 		{"./plugins/foo..bar", true, ""},

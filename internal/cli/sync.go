@@ -540,7 +540,7 @@ func fetchManagedSettings(d syncDoer) ([]byte, error) {
 // Returns the safe ID string on success.
 func safePluginID(source string) (string, error) {
 	id := pluginIDFromSource(source)
-	if id == "" {
+	if id == "" || id == "." {
 		return "", fmt.Errorf("plugin source %q yields an empty id", source)
 	}
 	if strings.ContainsAny(id, "/\\") || strings.Contains(id, "..") {
@@ -611,9 +611,15 @@ func stalePluginDirs(localDir string, manifest marketplaceManifest) ([]string, e
 		if !e.IsDir() {
 			continue
 		}
-		if _, ok := known[e.Name()]; !ok {
-			stale = append(stale, e.Name())
+		if _, ok := known[e.Name()]; ok {
+			continue
 		}
+		// With --dir the marketplace can be a directory that also holds the
+		// user's own plugins; only ones a sync recorded writing are relay's.
+		if _, err := os.Stat(ownedFilesPath(localDir, e.Name())); err != nil {
+			continue
+		}
+		stale = append(stale, e.Name())
 	}
 	return stale, nil
 }

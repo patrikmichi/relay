@@ -123,6 +123,9 @@ func TestRunSync_FailureBeforeManifestWritePreservesStalePluginDir(t *testing.T)
 	if err := os.MkdirAll(staleDir, 0o700); err != nil {
 		t.Fatalf("create stale dir: %v", err)
 	}
+	if err := saveOwnedFiles(dir, "old-revoked-plugin", nil); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := runSync(&testDoer{srv: srv}, dir, false); err == nil {
 		t.Fatal("sync should fail on the managed-settings 500")
