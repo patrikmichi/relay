@@ -43,7 +43,7 @@ func TestApprovalsDecide_ShowsTheFullCallAndSendsNothingWhenDeclined(t *testing.
 
 func TestApprovalsApprove_RefusesToApproveWhatItCannotShow(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/approvals/apr_1?full=1": reply(200, `{"approval":`+pendingApprovalJSON+`,"args_preview":null}`),
+		"GET /api/approvals/apr_1?full=1": reply(200, `{"approval":`+pendingApprovalJSON+`,"args_preview":null,"truncated":false}`),
 		"POST /api/approvals/apr_1/deny":  reply(200, `{"ok":true,"approval":{"approval_id":"apr_1","status":"denied"}}`),
 	})
 	if _, err := decide(t, "y\n", "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), "blind") {
@@ -55,7 +55,7 @@ func TestApprovalsApprove_RefusesToApproveWhatItCannotShow(t *testing.T) {
 }
 
 func TestApprovalsDecide_StripsControlCharactersFromTheReview(t *testing.T) {
-	evil := `{"approval":{"approval_id":"apr_1","status":"pending","service":"stripe\u001b[2J","tool":"x\u009b","requester":"a\r@b"},"args_preview":{"k":"v\u001b[31m"}}`
+	evil := `{"approval":{"approval_id":"apr_1","status":"pending","service":"stripe\u001b[2J","tool":"x\u009b","requester":"a\r@b"},"args":{"k":"v\u001b[31m"},"truncated":false}`
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
 		"GET /api/approvals/apr_1?full=1": reply(200, evil),
 	})

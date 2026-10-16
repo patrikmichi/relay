@@ -121,7 +121,7 @@ func TestApprovalsShow_PrintsTheApprovalAndArgumentPreview(t *testing.T) {
 	}
 }
 
-const fullCallJSON = `{"approval":` + pendingApprovalJSON + `,"args_preview":{"charge":"ch_1","amount":4200,"memo":"refund the whole order"}}`
+const fullCallJSON = `{"approval":` + pendingApprovalJSON + `,"args":{"charge":"ch_1","amount":4200,"memo":"refund the whole order"},"truncated":false}`
 
 // reviewable adds the full-call fetch every decision makes before asking.
 func reviewable(handlers map[string]func(http.ResponseWriter, map[string]any)) map[string]func(http.ResponseWriter, map[string]any) {

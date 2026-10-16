@@ -326,14 +326,16 @@ func confirmDecision(cmd *cobra.Command, c *client.Client, id string, approve bo
 	if code != http.StatusOK {
 		return approvalError(code, raw)
 	}
+	// ?full=1 answers {approval, args, truncated}; with nothing stored it
+	// answers args_preview:null instead, so a missing "args" means none held.
 	var doc struct {
-		Approval    approvalRecord  `json:"approval"`
-		ArgsPreview json.RawMessage `json:"args_preview"`
+		Approval approvalRecord  `json:"approval"`
+		Args     json.RawMessage `json:"args"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return fmt.Errorf("decode approval: %w", err)
 	}
-	hasArgs := len(doc.ArgsPreview) > 0 && string(doc.ArgsPreview) != "null"
+	hasArgs := len(doc.Args) > 0 && string(doc.Args) != "null"
 	if approve && !hasArgs {
 		return errors.New("the gateway no longer has this call's arguments, so relay cannot show what would run: refusing to approve it blind. Deny it, or ask the agent to repeat the call")
 	}
@@ -341,7 +343,7 @@ func confirmDecision(cmd *cobra.Command, c *client.Client, id string, approve bo
 	out := cmd.ErrOrStderr()
 	printApproval(out, doc.Approval)
 	if hasArgs {
-		fmt.Fprintf(out, "Arguments: %s\n", indentJSON(doc.ArgsPreview))
+		fmt.Fprintf(out, "Arguments: %s\n", indentJSON(doc.Args))
 	} else {
 		fmt.Fprintln(out, "Arguments: no longer available")
 	}
