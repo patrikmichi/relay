@@ -43,6 +43,19 @@ number in a quota refusal; relay reads either.
 | `POST /api/cli/device/code` | `{"principal": "cli_personal" \| "cli_agent"}`; no `agent` field |
 | `POST /api/cli/token`, `POST /api/cli/device/token`, `POST /api/cli/refresh` | no principal: it is fixed at issue |
 
+Device binding (risk policy plan 5.5): the token requests also carry a `DPoP`
+proof header (no `ath`) and `dpop_key_type` (`hardware` or `software`, form
+field or JSON field). The response's `token_type` is `DPoP` when the session is
+bound to the key and `Bearer` otherwise; `400 {"error": "hardware_key_required"}`
+refuses a software key. `POST /api/cli/refresh` carries a proof too. Bound
+requests use `Authorization: DPoP <token>` and a `DPoP` proof with `htm`,
+`htu`, `iat`, `jti`, `ath`. `dpop_key_type` and the refusal code are this
+client's decision.
+
+`GET /api/me/passkeys` returns `{"passkeys": [{"id", "name", "created_at",
+"last_used_at": null|text, "backed_up"}]}` (fixture `passkeys.json`) and
+`GET /api/cli/whoami` may add `"strict_mode": true`; `relay doctor` reads both.
+
 Source: risk policy plan 5.1 and 5.14. A credential without a principal is
 answered `401 {"error": "reauth_required"}`; relay does not refresh such a
 session and tells the person to run `relay login`.

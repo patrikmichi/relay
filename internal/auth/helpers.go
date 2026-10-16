@@ -17,11 +17,17 @@ import (
 // keychain write is the one that matters; a config-persist failure is logged
 // but non-fatal (mirrors Login's same best-effort treatment in login.go).
 func writeToken(profile keychain.Profile, gatewayOrigin, email, accessToken, refreshToken string, expiresIn int) error {
+	return writeBoundToken(profile, gatewayOrigin, email, accessToken, refreshToken, expiresIn, "")
+}
+
+// writeBoundToken is writeToken for a session bound to the device key keyRef.
+func writeBoundToken(profile keychain.Profile, gatewayOrigin, email, accessToken, refreshToken string, expiresIn int, keyRef string) error {
 	if err := keychain.WriteProfileToken(profile, gatewayOrigin, email, keychain.TokenData{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
 		ExpiresAt:    time.Now().Add(time.Duration(expiresIn) * time.Second).Unix(),
+		DPoPKey:      keyRef,
 	}); err != nil {
 		return err
 	}

@@ -31,6 +31,11 @@ type TokenData struct {
 	RefreshToken  string `json:"refresh_token"`
 	Email         string `json:"email"`
 	ExpiresIn     int    `json:"expires_in"`
+	// DPoPKey references the device key a strict organisation bound this
+	// session to ("file:<id>" or "tpm:<id>", see internal/dpop). Empty for an
+	// ordinary bearer session. Every request and refresh of the session must
+	// carry a proof from that key.
+	DPoPKey string `json:"dpop_key,omitempty"`
 	// ExpiresAt is the absolute Unix-seconds expiry of AccessToken, computed
 	// at write time (now + ExpiresIn). ExpiresIn alone only records a
 	// relative TTL as of mint time, which is useless for a later process to

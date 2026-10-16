@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/patrikmichi/relay/internal/brand"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/dpop"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
@@ -64,6 +66,8 @@ type Client struct {
 
 	stepUp StepUpHandler
 	proofs ProofSigner
+	// dpopKey is the reference of the device key the session is bound to.
+	dpopKey string
 }
 
 // errRedirectRefused is returned via http.Client.CheckRedirect to refuse
@@ -227,6 +231,13 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 	c := New(origin, tokenData.AccessToken)
 	c.profile = profile
 	c.stepUp = defaultStepUp
+	if tokenData.DPoPKey != "" {
+		key, err := dpop.Load(tokenData.DPoPKey)
+		if err != nil {
+			return nil, fmt.Errorf("this session is bound to a device key that cannot be used (%v); run `%s` to sign in again", err, brand.Cmd("login"))
+		}
+		c.proofs, c.dpopKey = dpop.NewSigner(key), tokenData.DPoPKey
+	}
 	c.store = keychainSessionStore{profile: profile}
 	c.email = email
 	c.gatewayOrigin = origin
@@ -308,7 +319,7 @@ func (c *Client) refreshLocked(ctx context.Context) error {
 		return nil
 	}
 
-	result, err := refreshOAuthToken(ctx, c.GatewayURL, c.refreshToken)
+	result, err := refreshOAuthToken(ctx, c.GatewayURL, c.refreshToken, c.proofs)
 	if err != nil {
 		return err
 	}
@@ -330,6 +341,7 @@ func (c *Client) refreshLocked(ctx context.Context) error {
 		RefreshToken: result.RefreshToken,
 		ExpiresIn:    expiresIn,
 		ExpiresAt:    expiresAt.Unix(),
+		DPoPKey:      c.dpopKey,
 	}); err != nil {
 		fmt.Fprintf(persistWarning, "relay: WARNING: the session was refreshed but could not be saved to the OS keychain (%v). This process keeps working, but the next relay command will find a revoked token and ask you to run `relay login` again.\n", err)
 	}

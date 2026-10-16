@@ -42,7 +42,7 @@ func LogoutCmd() *cobra.Command {
 			}
 
 			if Offline() {
-				if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
+				if err := auth.ForgetSession(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s (NOT revoked on gateway)\n", c.Email())

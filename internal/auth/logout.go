@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/patrikmichi/relay/internal/client"
-	"github.com/patrikmichi/relay/internal/keychain"
 )
 
 // LogoutResult reports the two independently-outcomed halves of a logout:
@@ -50,7 +49,7 @@ func Logout(ctx context.Context, c *client.Client) (LogoutResult, error) {
 	// Always delete the keychain entry — offline logout removes exactly the
 	// selected (gatewayOrigin, email) entry, independent of the remote
 	// outcome above.
-	if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
+	if err := ForgetSession(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 		return result, fmt.Errorf("delete keychain entry: %w", err)
 	}
 	return result, nil

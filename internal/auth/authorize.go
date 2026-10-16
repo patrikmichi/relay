@@ -14,6 +14,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/dpop"
 	"github.com/patrikmichi/relay/internal/keychain"
 	"github.com/patrikmichi/relay/internal/textsafe"
 )
@@ -181,7 +182,12 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 	if interval < 5 {
 		interval = 5
 	}
-	return pollDeviceTokenProfile(pollCtx, origin, dc.DeviceCode, interval, profile)
+	binding := newDeviceBinding(out)
+	res, err := pollDeviceTokenBound(pollCtx, origin, dc.DeviceCode, interval, profile, binding, out)
+	if err != nil {
+		binding.discard()
+	}
+	return res, err
 }
 
 // pollDeviceTokenProfile polls the device token endpoint until authorized,
@@ -191,6 +197,13 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 // poll loop's own deadline. gatewayURL must already be a normalized origin
 // (see DeviceLogin).
 func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int, profile keychain.Profile) (*LoginResult, error) {
+	return pollDeviceTokenBound(ctx, gatewayURL, deviceCode, intervalSecs, profile, nil, io.Discard)
+}
+
+// pollDeviceTokenBound is pollDeviceTokenProfile with a device key: each poll
+// carries a fresh DPoP proof, and the key is kept only if the gateway bound
+// the session to it.
+func pollDeviceTokenBound(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int, profile keychain.Profile, binding *deviceBinding, diagnostic io.Writer) (*LoginResult, error) {
 	tokenEndpoint := fmt.Sprintf("%s/api/cli/device/token", strings.TrimRight(gatewayURL, "/"))
 
 	failures := 0
@@ -214,7 +227,11 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 		default:
 		}
 
-		reqBody, err := json.Marshal(map[string]any{"device_code": deviceCode})
+		payload := map[string]any{"device_code": deviceCode}
+		if binding != nil {
+			payload["dpop_key_type"] = binding.keyType()
+		}
+		reqBody, err := json.Marshal(payload)
 		if err != nil {
 			return nil, fmt.Errorf("encode poll request: %w", err)
 		}
@@ -223,6 +240,9 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 			return nil, fmt.Errorf("create poll request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if err := binding.sign(req); err != nil {
+			return nil, fmt.Errorf("sign the poll request: %w", err)
+		}
 
 		resp, err := client.NoRedirectHTTPClient().Do(req)
 		if err != nil {
@@ -260,7 +280,12 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 				expiresIn = 3600
 			}
 
-			if err := writeToken(profile, gatewayURL, dtr.Email, dtr.AccessToken, dtr.RefreshToken, expiresIn); err != nil {
+			keyRef := binding.settle(dtr.TokenType, diagnostic)
+			dropReplacedKey(profile, gatewayURL, dtr.Email, keyRef)
+			if err := writeBoundToken(profile, gatewayURL, dtr.Email, dtr.AccessToken, dtr.RefreshToken, expiresIn, keyRef); err != nil {
+				if keyRef != "" {
+					_ = dpop.Delete(keyRef)
+				}
 				return nil, err
 			}
 
@@ -287,6 +312,10 @@ func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, 
 			continue
 
 		case resp.StatusCode == http.StatusBadRequest:
+			binding.discard()
+			if hint := tokenErrorHint(dtr.Error); hint != nil {
+				return nil, hint
+			}
 			if dtr.Error == "expired_token" {
 				return nil, fmt.Errorf("device code expired — run `relay login --device` again")
 			}

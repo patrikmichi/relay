@@ -31,7 +31,7 @@ func TestRefreshOAuthToken_Failures(t *testing.T) {
 				_, _ = io.WriteString(w, tc.body)
 			}))
 			defer srv.Close()
-			_, err := refreshOAuthToken(context.Background(), srv.URL, "refresh")
+			_, err := refreshOAuthToken(context.Background(), srv.URL, "refresh", nil)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("got %v, want error containing %q", err, tc.wantErr)
 			}
@@ -43,10 +43,10 @@ func TestRefreshOAuthToken_TransportAndRequestErrors(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
 	srv.Close()
-	if _, err := refreshOAuthToken(context.Background(), url, "refresh"); err == nil || !strings.Contains(err.Error(), "POST ") {
+	if _, err := refreshOAuthToken(context.Background(), url, "refresh", nil); err == nil || !strings.Contains(err.Error(), "POST ") {
 		t.Errorf("got %v, want a transport error", err)
 	}
-	if _, err := refreshOAuthToken(context.Background(), "https://gw.example.com\x7f", "refresh"); err == nil || !strings.Contains(err.Error(), "create refresh request") {
+	if _, err := refreshOAuthToken(context.Background(), "https://gw.example.com\x7f", "refresh", nil); err == nil || !strings.Contains(err.Error(), "create refresh request") {
 		t.Errorf("got %v, want a request construction error", err)
 	}
 }

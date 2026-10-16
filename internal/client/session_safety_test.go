@@ -102,7 +102,7 @@ func TestRefreshRedirectDoesNotLeakBody(t *testing.T) {
 	}))
 	defer src.Close()
 
-	_, err := refreshOAuthToken(context.Background(), src.URL, "synthetic-private-refresh")
+	_, err := refreshOAuthToken(context.Background(), src.URL, "synthetic-private-refresh", nil)
 	if err == nil {
 		t.Fatal("expected refresh to reject the cross-origin redirect, got nil error")
 	}

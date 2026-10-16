@@ -20,6 +20,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/dpop"
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
@@ -145,20 +146,28 @@ func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, wri
 
 	exchangeCtx, cancelExchange := context.WithTimeout(parent, exchangeTimeout)
 	defer cancelExchange()
-	resp, err := exchangeCodeContext(exchangeCtx, origin, authCode, verifier, redirectURI)
+	binding := newDeviceBinding(diagnostic)
+	resp, err := exchangeCodeContext(exchangeCtx, origin, authCode, verifier, redirectURI, binding)
 	if err != nil {
+		binding.discard()
 		if errors.Is(parent.Err(), context.Canceled) {
 			return nil, fmt.Errorf("login cancelled")
 		}
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 
+	keyRef := binding.settle(resp.TokenType, diagnostic)
+	dropReplacedKey(profile, origin, resp.Email, keyRef)
 	if err := keychain.WriteProfileToken(profile, origin, resp.Email, keychain.TokenData{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
 		ExpiresIn:    resp.ExpiresIn,
 		ExpiresAt:    time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second).Unix(),
+		DPoPKey:      keyRef,
 	}); err != nil {
+		if keyRef != "" {
+			_ = dpop.Delete(keyRef)
+		}
 		return nil, err // keychain error is user-visible, caller exits 1
 	}
 	persistLogin(profile, resp.Email, diagnostic)
@@ -232,16 +241,22 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge, prin
 
 // exchangeCode exchanges an authorization code for a token pair.
 func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
-	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI)
+	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI, nil)
 }
 
-func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
+// exchangeCodeContext sends the code with a DPoP proof from binding, when
+// there is one, and says where the key lives, so a strict organisation can
+// bind the session to it and enforce a hardware-key requirement.
+func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string, binding *deviceBinding) (*tokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/cli/token", strings.TrimRight(gatewayURL, "/"))
 
 	data := url.Values{
 		"code":          {code},
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
+	}
+	if binding != nil {
+		data.Set("dpop_key_type", binding.keyType())
 	}
 
 	// Token exchange must never follow a redirect — a compromised or
@@ -254,6 +269,9 @@ func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redire
 		return nil, fmt.Errorf("create token exchange request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := binding.sign(req); err != nil {
+		return nil, fmt.Errorf("sign the token request: %w", err)
+	}
 
 	resp, err := client.NoRedirectHTTPClient().Do(req)
 	if err != nil {
@@ -262,6 +280,13 @@ func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redire
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		var refusal struct {
+			Error string `json:"error"`
+		}
+		_ = decodeJSONCapped(resp.Body, &refusal)
+		if hint := tokenErrorHint(refusal.Error); hint != nil {
+			return nil, hint
+		}
 		return nil, fmt.Errorf("token exchange failed (HTTP %d)", resp.StatusCode)
 	}
 

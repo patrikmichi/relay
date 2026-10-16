@@ -44,7 +44,7 @@ func readCapped(r io.Reader, limit int64) ([]byte, error) {
 // caller MUST persist the rotated pair before it can be used again. ctx
 // bounds the whole request, including the case where the caller's own
 // deadline is what should stop a stalled refresh.
-func refreshOAuthToken(ctx context.Context, gatewayURL, refreshToken string) (*refreshResult, error) {
+func refreshOAuthToken(ctx context.Context, gatewayURL, refreshToken string, proofs ProofSigner) (*refreshResult, error) {
 	endpoint := strings.TrimRight(gatewayURL, "/") + "/api/cli/refresh"
 
 	body, err := json.Marshal(map[string]string{"refresh_token": refreshToken})
@@ -57,6 +57,14 @@ func refreshOAuthToken(ctx context.Context, gatewayURL, refreshToken string) (*r
 		return nil, fmt.Errorf("create refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// A session bound to a device key refreshes only with a proof from it.
+	if proofs != nil {
+		proof, err := proofs.Proof(http.MethodPost, endpoint, "")
+		if err != nil {
+			return nil, fmt.Errorf("sign DPoP proof: %w", err)
+		}
+		req.Header.Set("DPoP", proof)
+	}
 
 	// Refresh must never follow a redirect — the request body carries a
 	// secret refresh token, which a redirect-following client would forward
