@@ -17,7 +17,8 @@ func CallCmd() *cobra.Command {
 	var gatewayURL string
 	var rawArgs, jsonArgs []string
 	var jsonOut, noBrowser bool
-	var wait string
+	var wait, saveFiles string
+	var files []string
 
 	cmd := &cobra.Command{
 		Use:   "call <service> <tool>",
@@ -27,6 +28,11 @@ func CallCmd() *cobra.Command {
 Arguments are passed as key=value pairs via --arg flags; the value is always a
 string, so an id such as 007 stays "007". Use --arg-json key=<json> for a
 number, boolean, object or array.
+
+--file param=@path uploads a local file to the gateway's file store, waits for
+it to be ready and passes it as the argument param (file:fil_...), so the file
+is not limited by the size of a request body. --save-files DIR saves the files
+a result refers to.
 
 A call the gateway holds for approval (an agent session's writes) prints the
 approval id, risk and expiry and exits 12. With --wait[=SECONDS] the command
@@ -50,6 +56,7 @@ Example:
 			}
 			opts.jsonArgs = jsonArgs
 			opts.bindPresence(cmd, noBrowser)
+			opts.files, opts.saveFiles = files, saveFiles
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -69,5 +76,6 @@ Example:
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print an approval link instead of opening it in a browser")
+	addFileFlags(cmd, &files, &saveFiles)
 	return cmd
 }

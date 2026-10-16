@@ -1,0 +1,1 @@
+{"file_id":"fil_abc123def456","upload":{"url":"https://store.example/files/org_1/fil_abc123def456?sig=redacted","method":"PUT","headers":{"x-ms-blob-type":"BlockBlob"},"expires_at":"2026-10-16T12:15:00.000Z"}}

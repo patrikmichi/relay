@@ -71,6 +71,10 @@ type callOpts struct {
 	waitFor time.Duration
 	// jsonArgs are --arg-json key=<json> pairs, sent with their JSON types.
 	jsonArgs []string
+	// files are --file param=@path pairs, uploaded before the call; saveFiles
+	// is the directory --save-files writes the result's files to.
+	files     []string
+	saveFiles string
 	// noBrowser, in and interactive describe who can answer an approval link:
 	// --no-browser, where a confirmation is read from, and whether a person is
 	// at the keyboard.

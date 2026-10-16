@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -154,6 +155,9 @@ func contentBlockText(raw json.RawMessage) (string, bool) {
 }
 
 func renderContentBlock(raw json.RawMessage) string {
+	if link, ok := resourceLinkText(raw); ok {
+		return link
+	}
 	if text, ok := contentBlockText(raw); ok {
 		var parsed interface{}
 		if err := json.Unmarshal([]byte(text), &parsed); err != nil {
@@ -222,7 +226,14 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 	if len(opts) > 0 {
 		o = opts[0]
 	}
-	held, err := sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, o.wait, out)
+	if len(o.files) > 0 {
+		refs, err := uploadCallFiles(parent, c, o.files, rawArgs, o.jsonArgs)
+		if err != nil {
+			return err
+		}
+		rawArgs = append(slices.Clone(rawArgs), refs...)
+	}
+	held, err := sendToolCall(parent, c, service, tool, rawArgs, o, jsonOut, o.wait, out)
 	if err != nil || held == nil {
 		return err
 	}
@@ -231,7 +242,7 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 		return handleStartedJob(parent, c, held.job, jsonOut, o, out)
 	case held.elicit != nil:
 		retry := func() (*heldCall, error) {
-			return sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, false, out)
+			return sendToolCall(parent, c, service, tool, rawArgs, o, jsonOut, false, out)
 		}
 		return handleURLElicitation(parent, c, held.elicit, retry, jsonOut, o, out)
 	}
@@ -252,14 +263,14 @@ type heldCall struct {
 // work instead of running it to the end. With jsonOut it prints the raw
 // JSON-RPC envelope, except for a call that waiting will replace with the
 // final result.
-func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs, jsonArgs []string, jsonOut, waiting bool, out io.Writer) (unfinished *heldCall, err error) {
+func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs []string, o callOpts, jsonOut, waiting bool, out io.Writer) (unfinished *heldCall, err error) {
 	ctx, cancel, err := requestContext(parent, toolCallRequest)
 	if err != nil {
 		return nil, err
 	}
 	defer cancel()
 	defer func() { err = timeoutCause(ctx, err) }()
-	arguments, err := buildToolArguments(rawArgs, jsonArgs)
+	arguments, err := buildToolArguments(rawArgs, o.jsonArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -347,17 +358,18 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 		return nil, fmt.Errorf("tool reported failure: %s", renderContentBlocks(env.Result.Content))
 	}
 
-	if jsonOut {
-		return nil, nil // raw envelope already printed above
+	if !jsonOut {
+		if len(env.Result.Content) == 0 {
+			fmt.Fprintln(out, "{}")
+		}
+		for _, block := range env.Result.Content {
+			fmt.Fprintln(out, renderContentBlock(block))
+		}
 	}
-
-	if len(env.Result.Content) == 0 {
-		fmt.Fprintln(out, "{}")
-		return nil, nil
-	}
-
-	for _, block := range env.Result.Content {
-		fmt.Fprintln(out, renderContentBlock(block))
+	if o.saveFiles != "" {
+		// The result is already printed; a file that cannot be saved is
+		// reported without hiding it.
+		return nil, saveResultFiles(parent, c, env.Result, o.saveFiles, out, jsonOut)
 	}
 	return nil, nil
 }
@@ -366,7 +378,8 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Command {
 	var rawArgs, jsonArgs []string
 	var jsonOut, noBrowser bool
-	var wait string
+	var wait, saveFiles string
+	var files []string
 	cmd := &cobra.Command{
 		Use:                toolName,
 		Short:              toolDesc,
@@ -378,6 +391,7 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 			}
 			opts.jsonArgs = jsonArgs
 			opts.bindPresence(cmd, noBrowser)
+			opts.files, opts.saveFiles = files, saveFiles
 			gURL, err := resolveGatewayURLOrFailClosed(gatewayURL)
 			if err != nil {
 				return err
@@ -394,6 +408,7 @@ func buildToolCmd(serviceName, toolName, toolDesc, gatewayURL string) *cobra.Com
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the full raw JSON-RPC response instead of human-rendered output")
 	addWaitFlag(cmd, &wait)
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print an approval link instead of opening it in a browser")
+	addFileFlags(cmd, &files, &saveFiles)
 	return cmd
 }
 

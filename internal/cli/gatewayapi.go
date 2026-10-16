@@ -19,10 +19,10 @@ func gatewayJSON(ctx context.Context, c *client.Client, method, path string, bod
 	if err != nil {
 		return nil, err
 	}
-	if status != http.StatusOK && status != http.StatusAccepted {
+	if status != http.StatusOK && status != http.StatusCreated && status != http.StatusAccepted && status != http.StatusNoContent {
 		return nil, gatewayStatusError(status, raw)
 	}
-	if out != nil {
+	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
 			return nil, fmt.Errorf("decode %s: %w", path, err)
 		}

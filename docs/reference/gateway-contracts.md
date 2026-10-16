@@ -85,6 +85,40 @@ Source: risk policy plan 5.1 and 5.14. A credential without a principal is
 answered `401 {"error": "reauth_required"}`; zuano does not refresh such a
 session and tells the person to run `zuano login`.
 
+## File store
+
+Auth is the usual bearer; the organisation comes from the credential.
+Fixtures: `file-create.json`, `file-meta.json`, `files-list.json`,
+`mcp-file-result.json`.
+
+| Route | Request and response |
+|---|---|
+| `POST /api/files` | `{"name", "content_type", "size", "sha256", "share_with_org"}` answers `{"file_id": "fil_...", "upload": {"url", "method": "PUT", "headers": {}, "expires_at"}}`; over a limit: `402 quota_exceeded` or `413` |
+| `PUT {upload.url}` | the object store, not the gateway: zuano sends the bytes, the listed headers and no credential |
+| `POST /api/files/{id}/complete` | `{}` answers `{"file": FILE}` |
+| `GET /api/files/{id}` | `{"file": FILE}`; `404` for a file the caller may not read |
+| `GET /api/files?state=&created_via=&cursor=` | `{"files": [FILE], "next_cursor": null\|text}` |
+| `GET /api/files/{id}/download` | `302` to a signed address (zuano does not send its credential there), or `200` with the bytes |
+| `DELETE /api/files/{id}` | `200` or `204` |
+
+```json
+FILE = {"id": "fil_...", "name", "content_type", "size_bytes", "sha256": null|hex,
+        "state": "pending|uploaded|scanning|ready|quarantined|failed|deleted",
+        "created_via", "shared_with_org", "expires_at", "created_at",
+        "scan": {"verdict": "clean|warn|blocked"}}
+```
+
+A tool takes a file argument as the string `file:fil_...`. A tool result may
+carry `{"type": "resource_link", "uri", "name", "mimeType", "size"}` content
+blocks and `structuredContent.files[]` of `{"file_id", "name", "mime_type",
+"size", "sha256", "download_url", "expires_at"}`; zuano downloads by `file_id`
+through the route above and ignores `download_url`.
+
+Source: file store plan, sections "Lifecycle", "Surfaces" and "relay CLI
+changes". The plan names the routes, the upload target and the result blocks;
+the `{"file": ...}` and `{"files": ...}` wrappers and the `snake_case` fields
+of FILE are this client's decisions, following the table columns.
+
 ## Approvals
 
 | Route | Use |

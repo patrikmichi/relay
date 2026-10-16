@@ -146,9 +146,20 @@ func approvalsDo(parent context.Context, c *client.Client, kind requestKind, met
 		}
 		resp, err = c.PostContext(ctx, path, "application/json", bytes.NewReader(payload))
 	default:
-		req, rerr := http.NewRequestWithContext(ctx, method, c.GatewayURL+path, nil)
+		var payload io.Reader
+		if body != nil {
+			raw, merr := json.Marshal(body)
+			if merr != nil {
+				return 0, nil, fmt.Errorf("marshal request body: %w", merr)
+			}
+			payload = bytes.NewReader(raw)
+		}
+		req, rerr := http.NewRequestWithContext(ctx, method, c.GatewayURL+path, payload)
 		if rerr != nil {
 			return 0, nil, fmt.Errorf("create request: %w", rerr)
+		}
+		if payload != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
 		resp, err = c.Do(req)
 	}
