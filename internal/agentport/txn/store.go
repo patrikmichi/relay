@@ -113,10 +113,9 @@ type Journal struct {
 }
 
 // baseDir returns ~/.config/relay/transactions, creating it if needed.
-// Backup/staged bytes under <baseDir>/<id>/{backup,staged}/* persist at
-// 0600 indefinitely until an operator runs `relay history prune` — an
-// accepted tradeoff (recovery data must outlive the process that wrote it),
-// not an oversight.
+// Backup/staged bytes under <baseDir>/<id>/{backup,staged}/* are 0600 and
+// outlive the process that wrote them (recovery needs that); finished
+// transactions are pruned by DefaultRetention on the next Begin.
 func baseDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -302,6 +301,45 @@ func Prune(id string) error {
 		return fmt.Errorf("remove journal %s: %w", path, err)
 	}
 	return nil
+}
+
+// Retention bounds how long finished transactions and their backups stay on
+// disk: anything older than MaxAge, and everything past the newest Keep.
+type Retention struct {
+	MaxAge time.Duration
+	Keep   int
+}
+
+// DefaultRetention is applied automatically when a transaction begins.
+var DefaultRetention = Retention{MaxAge: 14 * 24 * time.Hour, Keep: 50}
+
+// PruneFinished deletes committed and restored journals outside r. Pending
+// journals are never touched. It returns how many were removed.
+func PruneFinished(r Retention, now time.Time) (int, error) {
+	all, err := List()
+	if err != nil {
+		return 0, err
+	}
+	var done []Journal
+	for _, j := range all {
+		if j.State.terminal() {
+			done = append(done, j)
+		}
+	}
+	removed := 0
+	var errs []error
+	for i, j := range done {
+		newest := len(done) - i
+		if now.Sub(j.UpdatedAt) <= r.MaxAge && newest <= r.Keep {
+			continue
+		}
+		if err := Prune(j.ID); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		removed++
+	}
+	return removed, errors.Join(errs...)
 }
 
 func sha256Hex(b []byte) string {

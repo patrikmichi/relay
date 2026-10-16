@@ -271,10 +271,11 @@ func (p *Plan) Apply(ctx context.Context) error {
 		return err
 	}
 	for _, e := range p.Edits {
+		before := txn.Before{Data: e.Before, Existed: e.Existed}
 		if e.Remove {
-			err = tx.StageRemoval(e.Root, e.Rel)
+			err = tx.StageRemovalFrom(e.Root, e.Rel, before)
 		} else {
-			err = tx.Stage(e.Root, e.Rel, e.After, e.Mode)
+			err = tx.StageFrom(e.Root, e.Rel, e.After, e.Mode, before)
 		}
 		if err != nil {
 			return tx.Discard(err)

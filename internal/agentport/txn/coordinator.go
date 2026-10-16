@@ -20,6 +20,9 @@ import (
 // raced.
 var ErrPending = errors.New("a prior operation on this artifact did not finish and needs recovery")
 
+// ErrConflict means a destination changed between planning and staging.
+var ErrConflict = errors.New("file changed since it was planned; re-run to pick up the change")
+
 // Tx is one in-flight transaction: a held LockSet plus the journal
 // describing it. Callers Stage every file, Persist the journal (durable,
 // before any destination write), Apply the writes, then Commit alongside
@@ -63,6 +66,8 @@ func Begin(ctx context.Context, op string, lockKeys []string) (*Tx, error) {
 		locks.Unlock()
 		return nil, err
 	}
+
+	_, _ = PruneFinished(DefaultRetention, time.Now())
 
 	id, err := newID()
 	if err != nil {
@@ -114,6 +119,38 @@ func checkPending(keys []string) error {
 // symlink; Apply re-verifies the full path (including parent components)
 // immediately before writing, since time passes between Stage and Apply.
 func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error {
+	return t.stage(root, rel, newData, newMode, nil)
+}
+
+// Before is the destination content an edit was planned against.
+type Before struct {
+	Data    []byte
+	Existed bool
+}
+
+// StageFrom is Stage for an edit computed from before: it fails with
+// ErrConflict when the destination no longer holds those bytes, so a write
+// planned earlier never overwrites a change made since.
+func (t *Tx) StageFrom(root, rel string, newData []byte, newMode fs.FileMode, before Before) error {
+	return t.stage(root, rel, newData, newMode, &before)
+}
+
+// StageRemovalFrom is StageRemoval with the same change check as StageFrom.
+func (t *Tx) StageRemovalFrom(root, rel string, before Before) error {
+	return t.stageRemoval(root, rel, &before)
+}
+
+func (b *Before) check(dest string, old []byte, exists bool) error {
+	if b == nil {
+		return nil
+	}
+	if exists != b.Existed || (exists && sha256Hex(old) != sha256Hex(b.Data)) {
+		return fmt.Errorf("%w: %s", ErrConflict, dest)
+	}
+	return nil
+}
+
+func (t *Tx) stage(root, rel string, newData []byte, newMode fs.FileMode, before *Before) error {
 	dest := filepath.Join(root, filepath.FromSlash(rel))
 	idx := len(t.j.Files)
 	fstate := FileState{Root: root, Rel: rel, Dest: dest, NewMode: newMode, NewHash: sha256Hex(newData)}
@@ -127,6 +164,9 @@ func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error 
 		if rerr != nil {
 			return fmt.Errorf("read existing %s: %w", dest, rerr)
 		}
+		if cerr := before.check(dest, old, true); cerr != nil {
+			return cerr
+		}
 		backupRel := filepath.Join("backup", fmt.Sprintf("%04d", idx))
 		if werr := writeFileDurable(filepath.Join(t.dir, backupRel), old, 0o600); werr != nil {
 			return werr
@@ -139,6 +179,10 @@ func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error 
 		return fmt.Errorf("stage %s: existing destination is not a regular file", dest)
 	case !errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("stat %s: %w", dest, err)
+	default:
+		if cerr := before.check(dest, nil, false); cerr != nil {
+			return cerr
+		}
 	}
 
 	stagedRel := filepath.Join("staged", fmt.Sprintf("%04d", idx))
@@ -158,7 +202,9 @@ func (t *Tx) Stage(root, rel string, newData []byte, newMode fs.FileMode) error 
 // compensates exactly like a replacement's would: restore the backup.
 // A destination that doesn't exist yet is a valid no-op target — Apply
 // will find nothing to remove and mark it applied anyway.
-func (t *Tx) StageRemoval(root, rel string) error {
+func (t *Tx) StageRemoval(root, rel string) error { return t.stageRemoval(root, rel, nil) }
+
+func (t *Tx) stageRemoval(root, rel string, before *Before) error {
 	dest := filepath.Join(root, filepath.FromSlash(rel))
 	idx := len(t.j.Files)
 	fstate := FileState{Root: root, Rel: rel, Dest: dest, Remove: true}
@@ -172,6 +218,9 @@ func (t *Tx) StageRemoval(root, rel string) error {
 		if rerr != nil {
 			return fmt.Errorf("read existing %s: %w", dest, rerr)
 		}
+		if cerr := before.check(dest, old, true); cerr != nil {
+			return cerr
+		}
 		backupRel := filepath.Join("backup", fmt.Sprintf("%04d", idx))
 		if werr := writeFileDurable(filepath.Join(t.dir, backupRel), old, 0o600); werr != nil {
 			return werr
@@ -184,6 +233,10 @@ func (t *Tx) StageRemoval(root, rel string) error {
 		return fmt.Errorf("stage removal %s: existing destination is not a regular file", dest)
 	case !errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("stat %s: %w", dest, err)
+	default:
+		if cerr := before.check(dest, nil, false); cerr != nil {
+			return cerr
+		}
 	}
 
 	t.j.Files = append(t.j.Files, fstate)
@@ -505,6 +558,10 @@ func writeFileDurable(path string, data []byte, mode fs.FileMode) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", path, err)
+	}
+	if err := f.Chmod(mode); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("chmod %s: %w", path, err)
 	}
 	if _, err := f.Write(data); err != nil {
 		_ = f.Close()
