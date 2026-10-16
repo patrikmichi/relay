@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -136,7 +135,7 @@ func tokensRevokeCmd() *cobra.Command {
 				if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
+				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s (NOT revoked on gateway)\n", c.Email())
 				return nil
 			}
 
@@ -150,8 +149,8 @@ func tokensRevokeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("revoke failed: %w", err)
 			}
-			if !result.RemoteRevoked {
-				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
+			if err := remoteRevokeFailure(cmd.OutOrStdout(), result); err != nil {
+				return err
 			}
 
 			fmt.Fprintln(cmd.OutOrStdout(), "Session revoked")

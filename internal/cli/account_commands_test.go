@@ -360,14 +360,23 @@ func TestSessionRemoval_RevokesRemotelyAndDeletesLocalSession(t *testing.T) {
 
 				cmd, args := build()
 				out, err := runCommand(t, cmd, append(args, "--gateway-url", srv.URL)...)
-				if err != nil {
-					t.Fatalf("%s: %v", name, err)
-				}
 				if calls.Load() != 1 {
 					t.Errorf("expected one remote revoke, got %d", calls.Load())
 				}
-				if !strings.Contains(out, "Logged out "+email) && !strings.Contains(out, "Session revoked") {
-					t.Errorf("unexpected output %q", out)
+				if status == http.StatusOK {
+					if err != nil {
+						t.Fatalf("%s: %v", name, err)
+					}
+					if !strings.Contains(out, "Logged out "+email) && !strings.Contains(out, "Session revoked") {
+						t.Errorf("unexpected output %q", out)
+					}
+				} else {
+					if err == nil || !strings.Contains(err.Error(), "NOT revoked on gateway") || ExitCode(err) == 0 {
+						t.Fatalf("%s: a failed remote revoke = %v, want a non-zero NOT revoked error", name, err)
+					}
+					if strings.Contains(out, "Logged out") || strings.Contains(out, "Session revoked") {
+						t.Errorf("a failed revoke was reported as done: %q", out)
+					}
 				}
 				if _, err := keychain.ReadToken(origin, email); !errors.Is(err, keychain.ErrNotFound) {
 					t.Errorf("local session must be removed even when the server fails, ReadToken err = %v", err)

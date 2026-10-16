@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -52,7 +51,7 @@ func LogoutCmd() *cobra.Command {
 				if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
+				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s (NOT revoked on gateway)\n", c.Email())
 				return nil
 			}
 
@@ -66,8 +65,8 @@ func LogoutCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("logout failed: %w", err)
 			}
-			if !result.RemoteRevoked {
-				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
+			if err := remoteRevokeFailure(cmd.OutOrStdout(), result); err != nil {
+				return err
 			}
 
 			suffix := ""
@@ -82,6 +81,17 @@ func LogoutCmd() *cobra.Command {
 	cmd.Flags().StringVar(&gatewayURL, "gateway-url", "", "Gateway URL")
 	cmd.Flags().BoolVar(&legacy, "legacy", false, "Remove a pre-gateway-identity session left over from an older relay version")
 	return cmd
+}
+
+// remoteRevokeFailure turns a failed server-side revoke into an error. The
+// local session is already gone, but the token it held still works on the
+// gateway, which a script or a person must not mistake for a completed logout.
+func remoteRevokeFailure(out io.Writer, r auth.LogoutResult) error {
+	if r.RemoteRevoked {
+		return nil
+	}
+	fmt.Fprintf(out, "Removed the local session for %s\n", r.Email)
+	return &ExitError{Code: 1, Msg: fmt.Sprintf("session NOT revoked on gateway: %s. The token stays valid there until it expires; revoke it from the gateway's session list", r.RemoteWarning)}
 }
 
 // logoutLegacySession removes a pre-gateway-identity ("legacy") keychain
