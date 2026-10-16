@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/patrikmichi/relay/internal/agentport/txn"
@@ -122,8 +123,25 @@ func verifyProjectRollbackTarget(entry ManifestEntry) error {
 	if err != nil {
 		return fmt.Errorf("resolve current directory: %w", err)
 	}
-	if cwd != entry.ProjectRoot {
+	if !sameProjectRoot(runtime.GOOS, cwd, entry.ProjectRoot) {
 		return fmt.Errorf("%w: entry %s was installed from %s, current directory is %s", ErrAmbiguousProjectRollback, entry.ID, entry.ProjectRoot, cwd)
 	}
 	return nil
+}
+
+// sameProjectRoot compares two directories by what they are, not how they
+// were spelled: symlinks are resolved, and case is ignored where the
+// filesystem is case-insensitive by default (Windows, macOS).
+func sameProjectRoot(goos, a, b string) bool {
+	resolve := func(p string) string {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			p = real
+		}
+		return filepath.Clean(p)
+	}
+	a, b = resolve(a), resolve(b)
+	if goos == "windows" || goos == "darwin" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
