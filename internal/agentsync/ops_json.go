@@ -1,6 +1,7 @@
 package agentsync
 
 import (
+	"fmt"
 	"io/fs"
 	"sort"
 	"strings"
@@ -91,8 +92,15 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 		return nil, nil
 	}
 	root, indent, bad := loadRoot(data, exists, o.seed)
+	// A file with comments or trailing commas is read from a stripped copy and
+	// edited in place at the text level, so its comments survive.
+	jsonc := false
 	if root == nil {
-		return []Item{o.item("*", real, StatusSkipped, bad)}, nil
+		var ok bool
+		if root, indent, ok = loadJSONC(data); !ok {
+			return []Item{o.item("*", real, StatusSkipped, bad)}, nil
+		}
+		jsonc = true
 	}
 
 	if _, blocked := container(root, o.objPath, false); blocked {
@@ -100,6 +108,7 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 	}
 
 	var items []Item
+	var muts []jmut
 	changed := false
 	desired := map[string]bool{}
 	for _, e := range o.entries {
@@ -116,6 +125,7 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 		case cur == nil:
 			cont, _ = container(root, o.objPath, true)
 			cont.set(e.name, e.node)
+			muts = append(muts, jmut{key: e.name, val: e.node})
 			c.Ledger.set(real, id, want)
 			items = append(items, o.item(e.name, real, StatusAdded, ""))
 			changed = true
@@ -126,6 +136,7 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 			items = append(items, o.item(e.name, real, StatusUnchanged, ownership(managed)))
 		case managed && cur.hash() == prev, c.Force:
 			cont.set(e.name, e.node)
+			muts = append(muts, jmut{key: e.name, val: e.node})
 			c.Ledger.set(real, id, want)
 			items = append(items, o.item(e.name, real, StatusUpdated, ""))
 			changed = true
@@ -155,6 +166,7 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 			c.Ledger.drop(real, id)
 		case cur.hash() == led[id] || c.Force:
 			cont.del(name)
+			muts = append(muts, jmut{key: name, del: true})
 			c.Ledger.drop(real, id)
 			items = append(items, o.item(name, real, StatusRemoved, ""))
 			changed = true
@@ -164,7 +176,17 @@ func (o *jsonKeysOp) Run(c *Ctx) ([]Item, error) {
 		}
 	}
 
-	if changed {
+	switch {
+	case changed && jsonc:
+		// The user's file stays, even when relay emptied the object it keeps.
+		out, err := editJSONC(data, o.objPath, muts, indent)
+		if err != nil {
+			return nil, fmt.Errorf("edit %s without losing its comments: %w", real, err)
+		}
+		if err := c.write(real, o.mode, out); err != nil {
+			return nil, err
+		}
+	case changed:
 		pruneEmpty(root, o.objPath)
 		if err := writeRoot(c, real, o.mode, root, indent, o.seed); err != nil {
 			return nil, err

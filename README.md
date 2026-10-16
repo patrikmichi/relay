@@ -225,7 +225,9 @@ TOML or Markdown block starts and ends. A later sync updates what still matches
 the ledger and removes the ones you dropped from the source. An entry with
 the same name that you created, or one you edited after relay wrote it, is
 reported as a `conflict` and left alone; `--force` replaces it. A config file
-relay cannot parse (for example JSON with comments) is skipped and reported.
+relay cannot parse is skipped and reported. MCP server files with comments or
+trailing commas (`.vscode/mcp.json`, `opencode.jsonc`) are edited in place and
+keep them; hook files with comments are skipped.
 All files in a run are written in one transaction that restores them if any
 write fails, and `--dry-run` shows the diff without writing.
 

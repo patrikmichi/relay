@@ -25,8 +25,13 @@ project directory (the current directory when `--scope project` is used).
 
 Files are edited in place: JSON keeps key order, indentation and unrelated
 keys, and symlinked configs (dotfile managers) are written through the link.
-JSON with comments cannot be rewritten safely, so the file is skipped and
-reported.
+JSON with comments or trailing commas (JSONC) is handled per kind. MCP server
+files (`.vscode/mcp.json`, `opencode.jsonc`, and any other server file that
+has them) are edited at the text level: relay replaces, inserts or removes only
+the bytes of the members it manages, so comments, trailing commas, the BOM and
+CRLF line endings stay, and the result is re-checked before it is written. Hook
+files (`settings.json`, `hooks.json`) with comments are skipped and reported,
+because their entries are matched by content across arrays.
 
 Remote MCP entries never contain a credential. Where the agent documents
 environment-variable references in headers or token fields relay writes the

@@ -101,7 +101,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 		t.Errorf("edited entry: %+v", c)
 	}
 
-	writeTestFile(t, filepath.Join(home, ".gemini", "settings.json"), "{ // not json\n}")
+	writeTestFile(t, filepath.Join(home, ".gemini", "settings.json"), `{"mcpServers": `)
 	checks, _ = doctorChecksByName(t)
 	if c := checks["sync:user:gemini-cli:mcp"]; c.OK || !strings.Contains(c.Detail, "cannot sync") {
 		t.Errorf("broken config: %+v", c)

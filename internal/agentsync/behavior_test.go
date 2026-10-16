@@ -182,7 +182,7 @@ func TestSymlinkedConfigIsEditedInPlace(t *testing.T) {
 func TestUnparseableConfigIsSkippedNotOverwritten(t *testing.T) {
 	env := newEnv(t)
 	path := filepath.Join(env.Home, ".config", "opencode", "opencode.json")
-	jsonc := "{\n  // my theme\n  \"theme\": \"dark\"\n}\n"
+	jsonc := "{\n  \"theme\": \n}\n"
 	writeFile(t, path, jsonc)
 	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
 	if got := statusOf(plan.Items, KindMCP, "*"); got != StatusSkipped {
@@ -204,32 +204,41 @@ func TestJSONKeepsBOMAndCRLF(t *testing.T) {
 	}
 }
 
-func TestJSONCIsSkippedWithAClearReasonAndOpenCodePrefersTheJSONCFile(t *testing.T) {
+func TestOpenCodePrefersTheJSONCFileAndKeepsItsComments(t *testing.T) {
 	env := newEnv(t)
 	dir := filepath.Join(env.Home, ".config", "opencode")
-	jsonc := "{\n  // my theme\n  \"theme\": \"dark\",\n}\n"
+	jsonc := "{\n  // my theme\n  \"theme\": \"dark\", /* keep */\n}\n"
 	writeFile(t, filepath.Join(dir, "opencode.jsonc"), jsonc)
-	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
-	var detail string
-	for _, it := range plan.Items {
-		if it.Kind == KindMCP && it.Status == StatusSkipped {
-			detail = it.Detail
+	syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
+
+	got := readFile(t, filepath.Join(dir, "opencode.jsonc"))
+	for _, want := range []string{"// my theme", `"theme": "dark", /* keep */`, `"mcp": {`, `"docs": {`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("edited file lacks %q:\n%s", want, got)
 		}
-	}
-	if !strings.Contains(detail, "JSONC") {
-		t.Errorf("skip reason = %q", detail)
-	}
-	if readFile(t, filepath.Join(dir, "opencode.jsonc")) != jsonc {
-		t.Error("the JSONC file was modified")
 	}
 	if fileExists(filepath.Join(dir, "opencode.json")) {
 		t.Error("a second opencode.json was created next to the user's opencode.jsonc")
 	}
 
-	writeFile(t, filepath.Join(dir, "opencode.jsonc"), "{\n  \"theme\": \"dark\"\n}\n")
-	syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
-	if !strings.Contains(readFile(t, filepath.Join(dir, "opencode.jsonc")), "\"docs\"") || fileExists(filepath.Join(dir, "opencode.json")) {
-		t.Error("a plain-JSON opencode.jsonc was not the file edited")
+	// Removing relay's entries leaves the user's comments and settings.
+	syncAll(t, env, userBundle(Bundle{}), userOpts(OpenCode))
+	got = readFile(t, filepath.Join(dir, "opencode.jsonc"))
+	if !strings.Contains(got, "// my theme") || strings.Contains(got, `"docs"`) {
+		t.Errorf("removal broke the file:\n%s", got)
+	}
+}
+
+func TestBrokenJSONIsSkippedWithItsParseError(t *testing.T) {
+	env := newEnv(t)
+	dir := filepath.Join(env.Home, ".config", "opencode")
+	writeFile(t, filepath.Join(dir, "opencode.jsonc"), "{ \"theme\": ")
+	plan := syncAll(t, env, userBundle(fixtureBundle()), userOpts(OpenCode))
+	if got := statusOf(plan.Items, KindMCP, "*"); got != StatusSkipped {
+		t.Fatalf("status = %q, want skipped", got)
+	}
+	if readFile(t, filepath.Join(dir, "opencode.jsonc")) != "{ \"theme\": " {
+		t.Error("a broken file was modified")
 	}
 }
 
