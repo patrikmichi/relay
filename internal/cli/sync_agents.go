@@ -25,17 +25,20 @@ const (
 )
 
 type agentSyncOpts struct {
-	to         []string
-	scopes     []string
-	kinds      []string
-	from       string
-	mcpAuth    string
-	gatewayURL string
-	dryRun     bool
-	force      bool
-	yes        bool
-	acceptLoss bool
-	jsonOut    bool
+	to     []string
+	scopes []string
+	kinds  []string
+	from   string
+	// settingsFrom names the agent whose own rules, commands, hooks and MCP
+	// servers are copied, instead of the relay sync directory.
+	settingsFrom string
+	mcpAuth      string
+	gatewayURL   string
+	dryRun       bool
+	force        bool
+	yes          bool
+	acceptLoss   bool
+	jsonOut      bool
 	// mcpOverride replaces the saved MCP source for a scope, so install and
 	// remove can preview a change before persisting it.
 	mcpOverride map[agentsync.Scope]agentsync.MCPSource
@@ -303,6 +306,22 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	bundles, warns, gw, err := loadBundles(env, scopes, o.mcpAuth, o.gatewayURL, o.mcpOverride)
 	if err != nil {
 		return nil, err
+	}
+	if o.settingsFrom != "" {
+		from, err := agentsync.ParseAgents([]string{o.settingsFrom})
+		if err != nil || len(from) != 1 {
+			return nil, fmt.Errorf("unknown agent %q to copy settings from", o.settingsFrom)
+		}
+		gw = gatewayNotes{}
+		for _, scope := range scopes {
+			b, w, err := agentsync.ReadAgent(env, from[0], scope, kinds.file)
+			if err != nil {
+				return nil, err
+			}
+			b.MCP = markRelayServers(b.MCP)
+			bundles[scope] = b
+			warns = append(warns, w...)
+		}
 	}
 	run.gatewayURL = gw.changed
 	if gw.ignoredEnv != "" {

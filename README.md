@@ -250,9 +250,12 @@ relay sync --dry-run          # the plan, per route
 relay sync routes remove 1    # by number, or by kind for default targets
 ```
 
-A route with `--from` copies skills or subagents from that provider. Settings
-(`mcp`, `env`, `hooks`, `rules`, `commands`) come from the relay sync
-directory, so they have default targets instead of a source. With saved
+A route with `--from` copies skills or subagents from that provider, and
+settings (`mcp`, `hooks`, `rules`, `commands`) from that agent's own config,
+for example `relay sync routes add --from cursor --to codex --kind rules`.
+Only what you wrote there is read; relay's own blocks and entries are skipped,
+and copies are lossy between some agents (see the reference). Settings with
+no `--from` come from the relay sync directory and have default targets. With saved
 routes a plain `relay sync` syncs only what they cover; `--to`, `--from` or
 `--kind` run one ordinary sync for that invocation. `relay doctor` checks that
 the routes name installed agents. The routes live in the `sync` key of

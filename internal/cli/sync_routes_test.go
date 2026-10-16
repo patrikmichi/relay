@@ -35,8 +35,9 @@ func TestSyncRoutes_AddListRemoveAndValidation(t *testing.T) {
 
 	for name, args := range map[string][]string{
 		"skills need a source":    {"--to", "codex", "--kind", "skills"},
-		"settings are not read":   {"--from", "cursor", "--to", "codex", "--kind", "rules"},
-		"mixed kinds":             {"--from", "claude", "--to", "codex", "--kind", "skills,rules"},
+		"env is not copied":       {"--from", "cursor", "--to", "codex", "--kind", "env"},
+		"copy to itself":          {"--from", "cursor", "--to", "cursor,codex", "--kind", "rules"},
+		"unknown source agent":    {"--from", "nope", "--to", "codex", "--kind", "rules"},
 		"unknown kind":            {"--to", "codex", "--kind", "bogus"},
 		"unknown agent":           {"--to", "nope", "--kind", "rules"},
 		"unknown provider":        {"--from", "nope", "--to", "codex", "--kind", "skills"},
@@ -100,6 +101,60 @@ func TestSyncRoutes_SkillRouteCopiesFromTheNamedProvider(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".codex", "agents", "reviewer.md")); err == nil {
 		t.Error("subagents were copied although the route names only skills")
 	}
+}
+
+func TestSyncRoutes_CopySettingsBetweenAgents(t *testing.T) {
+	home := syncHome(t)
+	saveGateway(t, "https://gateway.example.com")
+	// Claude's own content; the relay-managed blocks relay itself wrote must not come back.
+	writeTestFile(t, filepath.Join(home, ".claude", "CLAUDE.md"), "Always answer in French.\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "commands", "ship.md"), "---\ndescription: Ship\n---\nShip $ARGUMENTS\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "settings.json"), `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/mine/done.sh"}]}]}}`)
+	writeTestFile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"files":{"type":"stdio","command":"npx","args":["-y","files-mcp"],"env":{"MODE":"fast"}}}}`)
+	mustRun(t, "--kind", "rules,hooks", "--to", "claude", "--yes") // relay-written entries now sit beside the user's
+
+	mustRun(t, "routes", "add", "--from", "claude", "--to", "codex,gemini", "--kind", "rules,commands,hooks,mcp")
+
+	if _, err := runCommand(t, SyncCmd()); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("copying a hook and a stdio server needs confirmation, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "prompts", "ship.md")); err == nil {
+		t.Fatal("a refused sync wrote files")
+	}
+	mustRun(t, "--yes")
+
+	rules := readTestFile(t, filepath.Join(home, ".codex", "AGENTS.md"))
+	if !strings.Contains(rules, "Always answer in French.") || strings.Contains(rules, "Be terse.") {
+		t.Errorf("codex rules should hold claude's own text only:\n%s", rules)
+	}
+	if !strings.Contains(readTestFile(t, filepath.Join(home, ".codex", "prompts", "ship.md")), "Ship $ARGUMENTS") {
+		t.Error("command not copied to codex")
+	}
+	if !strings.Contains(readTestFile(t, filepath.Join(home, ".gemini", "commands", "ship.toml")), "{{args}}") {
+		t.Error("command not translated for gemini")
+	}
+	hooks := readTestFile(t, filepath.Join(home, ".codex", "hooks.json"))
+	if !strings.Contains(hooks, "/mine/done.sh") || strings.Contains(hooks, "/opt/notify.sh") {
+		t.Errorf("codex hooks should hold claude's own hook only:\n%s", hooks)
+	}
+	if got := readTestFile(t, filepath.Join(home, ".codex", "config.toml")); !strings.Contains(got, "[mcp_servers.files]") || strings.Contains(got, "mcp_servers.relay") {
+		t.Errorf("codex MCP should carry claude's own server only:\n%s", got)
+	}
+
+	again := mustRun(t, "--yes")
+	if strings.Contains(again, " added ") || strings.Contains(again, " updated ") {
+		t.Errorf("second routed sync changed something:\n%s", again)
+	}
+}
+
+func TestSyncRoutes_CyclesAreRefused(t *testing.T) {
+	syncHome(t)
+	mustRun(t, "routes", "add", "--from", "claude", "--to", "cursor", "--kind", "rules")
+	_, err := runCommand(t, SyncCmd(), "routes", "add", "--from", "cursor", "--to", "claude", "--kind", "rules,commands")
+	if err == nil || !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("a cycle was accepted: %v", err)
+	}
+	mustRun(t, "routes", "add", "--from", "cursor", "--to", "claude", "--kind", "commands")
 }
 
 func TestSyncRoutes_TwoRoutesWritingOneFileAreRefused(t *testing.T) {

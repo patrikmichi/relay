@@ -128,23 +128,98 @@ func normalizeRoute(r config.SyncRoute) (config.SyncRoute, error) {
 		}
 	}
 	from := strings.ToLower(strings.TrimSpace(r.From))
-	switch {
-	case skill && setting:
-		return r, fmt.Errorf("a route copies either skills and subagents or settings (%s), not both; add two routes", strings.Join(settingKinds, ", "))
-	case skill:
+	if skill {
 		if from == "" {
 			return r, fmt.Errorf("a route for skills or subagents needs --from, the provider to copy them from (%s)", providerIDsOxford())
 		}
 		if _, ok := agentport.AdapterByID(agentport.ProviderID(from)); !ok {
 			return r, fmt.Errorf("unknown --from provider %q (%s)", from, providerIDsOxford())
 		}
-	default:
-		if from != "" && from != relaySource {
-			return r, fmt.Errorf("settings (%s) are written from the relay sync directory, not read from %s; leave --from out or use %q", strings.Join(settingKinds, ", "), from, relaySource)
+	}
+	if setting {
+		if from == "" || from == relaySource {
+			if !skill {
+				from = relaySource
+			}
+		} else {
+			ids, err := agentsync.ParseAgents([]string{from})
+			if err != nil || len(ids) != 1 {
+				return r, fmt.Errorf("unknown --from agent %q for settings (%s)", from, strings.Join(agentIDNames(), ", "))
+			}
+			if slices.Contains(kinds, "env") {
+				return r, fmt.Errorf("env is relay's agent profile, not something copied between agents; route it without --from")
+			}
+			if slices.Contains(to, string(ids[0])) {
+				return r, fmt.Errorf("a route cannot copy %s to itself", ids[0])
+			}
+			if !skill {
+				from = string(ids[0])
+			}
 		}
-		from = relaySource
 	}
 	return config.SyncRoute{From: from, To: to, Kinds: kinds}, nil
+}
+
+func agentIDNames() []string {
+	var out []string
+	for _, a := range agentsync.Agents() {
+		out = append(out, string(a.ID))
+	}
+	return out
+}
+
+// routeCycle reports routes that copy a kind around in a circle (a to b and b
+// back to a). Relay-written content is never read back, so a cycle would not
+// loop, but it is almost certainly a mistake: each side would push the other's
+// own files to it.
+func routeCycle(routes []config.SyncRoute) error {
+	for _, kind := range settingKinds {
+		edges := map[string][]string{}
+		for _, r := range routes {
+			if r.From == relaySource || !slices.Contains(r.Kinds, kind) {
+				continue
+			}
+			from := r.From
+			if ids, err := agentsync.ParseAgents([]string{from}); err == nil && len(ids) == 1 {
+				from = string(ids[0])
+			}
+			edges[from] = append(edges[from], r.To...)
+		}
+		state := map[string]int{}
+		var path []string
+		var visit func(string) []string
+		visit = func(n string) []string {
+			state[n] = 1
+			path = append(path, n)
+			for _, next := range edges[n] {
+				switch state[next] {
+				case 1:
+					i := slices.Index(path, next)
+					return append(slices.Clone(path[i:]), next)
+				case 0:
+					if c := visit(next); c != nil {
+						return c
+					}
+				}
+			}
+			path = path[:len(path)-1]
+			state[n] = 2
+			return nil
+		}
+		keys := make([]string, 0, len(edges))
+		for k := range edges {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if state[k] == 0 {
+				if c := visit(k); c != nil {
+					return fmt.Errorf("routes copy %s in a cycle: %s", kind, strings.Join(c, " -> "))
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func routeLabel(r config.SyncRoute) string {
@@ -163,15 +238,30 @@ func routeOptions(s config.SyncSettings, base agentSyncOpts) ([]routeOpt, []stri
 	var out []routeOpt
 	covered := map[string]bool{}
 	for _, r := range s.Routes {
-		o := base
-		o.to, o.kinds, o.from = r.To, r.Kinds, ""
-		if r.From != relaySource {
-			o.from = r.From
-		}
+		var setting, skill []string
 		for _, k := range r.Kinds {
 			covered[k] = true
+			if isSettingKind(k) {
+				setting = append(setting, k)
+			} else {
+				skill = append(skill, k)
+			}
 		}
-		out = append(out, routeOpt{routeLabel(r), o})
+		// Settings are read from an agent (or the relay sync directory),
+		// skills and subagents from a provider; one route may carry both.
+		if len(setting) > 0 {
+			o := base
+			o.to, o.kinds, o.from = r.To, setting, ""
+			if r.From != relaySource {
+				o.settingsFrom = r.From
+			}
+			out = append(out, routeOpt{routeLabel(config.SyncRoute{From: r.From, To: r.To, Kinds: setting}), o})
+		}
+		if len(skill) > 0 {
+			o := base
+			o.to, o.kinds, o.from = r.To, skill, r.From
+			out = append(out, routeOpt{routeLabel(config.SyncRoute{From: r.From, To: r.To, Kinds: skill}), o})
+		}
 	}
 
 	groups := map[string][]string{}
@@ -211,6 +301,9 @@ func routeOptions(s config.SyncSettings, base agentSyncOpts) ([]routeOpt, []stri
 // routes may not write the same file: each plan is computed from the file as
 // it is now, so the second write would be refused as a conflict.
 func planRoutedSync(base agentSyncOpts, s config.SyncSettings) (*agentSyncRun, error) {
+	if err := routeCycle(s.Routes); err != nil {
+		return nil, err
+	}
 	opts, uncovered := routeOptions(s, base)
 	merged := &agentSyncRun{stdio: map[string]bool{}, projectRemote: map[string]bool{}}
 	writer := map[string]string{}
@@ -272,10 +365,11 @@ func SyncRoutesCmd() *cobra.Command {
   relay sync routes list
   relay sync routes remove 1
 
-A route with --from copies skills or subagents from that provider. Without
---from, --kind names settings (mcp, env, hooks, rules, commands) and --to the
-default agents that receive them when no route covers the kind; their source
-is the relay sync directory. With saved routes, a plain 'relay sync' follows
+A route with --from copies from that source: skills and subagents from a
+provider, and settings (mcp, hooks, rules, commands) from an agent's own
+config, reading only what you wrote there. Without --from, --kind names
+settings and --to the default agents that receive them when no route covers
+the kind; their source is the relay sync directory. With saved routes, a plain 'relay sync' follows
 them and syncs nothing else; --to, --from or --kind run one ordinary sync
 instead. 'relay sync --dry-run' shows the plan per route.`,
 	}
@@ -351,7 +445,7 @@ func syncRoutesAddCmd() *cobra.Command {
 					}
 				}
 				s.Routes = append(s.Routes, r)
-				return nil
+				return routeCycle(s.Routes)
 			})
 			if err != nil {
 				return err
@@ -365,7 +459,7 @@ func syncRoutesAddCmd() *cobra.Command {
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&from, "from", "", "Provider to copy skills or subagents from (omit for settings kinds)")
+	fl.StringVar(&from, "from", "", "Provider (skills, subagents) or agent (settings) to copy from; omit for settings from the relay sync directory")
 	fl.StringSliceVar(&to, "to", nil, "Agents that receive the kinds")
 	fl.StringSliceVar(&kinds, "kind", nil, "mcp, env, hooks, rules, commands, skills, subagents")
 	return cmd
