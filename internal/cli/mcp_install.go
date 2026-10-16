@@ -23,6 +23,7 @@ type mcpInstallFlags struct {
 	dryRun     bool
 	force      bool
 	yes        bool
+	jsonOut    bool
 }
 
 func McpInstallCmd() *cobra.Command {
@@ -73,9 +74,13 @@ func McpRemoveCmd() *cobra.Command {
 		Use:   "remove <name>",
 		Short: "Remove an MCP server relay registered in your coding agents' config",
 		Long: `Remove a server added with 'relay mcp install' from every agent config relay
-wrote it to. Entries you edited or created yourself are left in place.
+wrote it to, and from relay's own list so a later 'relay sync' does not add it
+back. Entries you edited or created yourself are left in place; --force
+removes them too. Use --scope project for a server installed at the project
+scope, and --dry-run to see the diff first.
 
-'relay mcp remove relay' stops syncing the gateway's own MCP server.`,
+'relay mcp remove relay' stops syncing the gateway's own MCP server (user
+scope).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMcpRemove(cmd, args[0], f)
@@ -90,6 +95,7 @@ func addMcpSyncFlags(cmd *cobra.Command, f *mcpInstallFlags) {
 	fl.StringSliceVar(&f.to, "to", nil, "Agents to update (default: detected agents; all for every supported agent)")
 	fl.StringVar(&f.scope, "scope", "user", "user or project")
 	fl.BoolVar(&f.dryRun, "dry-run", false, "Show the diff and write nothing")
+	fl.BoolVar(&f.jsonOut, "json", false, "Print the report as JSON")
 	fl.BoolVar(&f.force, "force", false, "Replace same-named entries relay does not manage")
 	fl.BoolVar(&f.yes, "yes", false, "Write without asking when a local command is added (review with --dry-run first; refused when RELAY_AGENT is set)")
 	fl.StringVar(&f.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
@@ -138,7 +144,11 @@ func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 	if err != nil {
 		return err
 	}
+	// With --json stdout carries the report alone, so notes go to stderr.
 	out := cmd.OutOrStdout()
+	if f.jsonOut {
+		out = cmd.ErrOrStderr()
+	}
 
 	switch {
 	case f.url == "" && f.command == "":
@@ -227,7 +237,7 @@ func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope,
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if err := printSyncReport(out, run, f.dryRun, false); err != nil {
+	if err := printSyncReport(out, run, f.dryRun, f.jsonOut); err != nil {
 		return err
 	}
 	if f.dryRun {

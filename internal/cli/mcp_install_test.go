@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/agentsync"
 )
@@ -48,6 +52,43 @@ func TestMcpInstallDirectServerThenRemove(t *testing.T) {
 	src, err := agentsync.LoadMCPSource(agentsync.Env{Home: home}, agentsync.ScopeUser)
 	if err != nil || len(src.Servers) != 0 {
 		t.Errorf("source still lists servers: %+v %v", src, err)
+	}
+}
+
+func TestMcpInstallAndRemoveEmitOneJSONDocument(t *testing.T) {
+	syncHome(t)
+	run := func(cmd *cobra.Command, args ...string) (stdout, stderr string) {
+		t.Helper()
+		var out, errBuf bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errBuf)
+		cmd.SetArgs(args)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%s: %v\n%s", cmd.Name(), err, errBuf.String())
+		}
+		return out.String(), errBuf.String()
+	}
+	for name, cmd := range map[string]*cobra.Command{
+		"install": McpInstallCmd(),
+	} {
+		stdout, stderr := run(cmd, "files", "--command", "npx", "--env", "ROOT=/srv", "--to", "claude", "--yes", "--json")
+		var doc struct {
+			Items []agentsync.Item `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &doc); err != nil || len(doc.Items) == 0 {
+			t.Fatalf("%s: stdout is not one JSON report: %v\n%s", name, err, stdout)
+		}
+		if !strings.Contains(stderr, "warning: ROOT") {
+			t.Errorf("%s: the literal-value note should go to stderr, got %q", name, stderr)
+		}
+	}
+	stdout, _ := run(McpRemoveCmd(), "files", "--to", "claude", "--json")
+	var doc struct {
+		Items []agentsync.Item `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil || len(doc.Items) == 0 {
+		t.Fatalf("remove: stdout is not one JSON report: %v\n%s", err, stdout)
 	}
 }
 
