@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.x"
   GOVULNCHECK_VERSION: "v1.8.0"
+  GOLANGCI_LINT_VERSION: "v2.13.1"
   GORELEASER_VERSION: "v2.18.2"
   MODULE: github.com/patrikmichi/relay
 
@@ -64,12 +64,43 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
 
+      # The same gates as ci.yml, so a tag cannot ship what a pull request
+      # would have been refused.
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "gofmt needs to be run on:"; echo "$out"; exit 1
+          fi
+
+      - name: Internal labels
+        run: |
+          bash scripts/check-internal-labels.test.sh
+          bash scripts/check-internal-labels.sh
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Vet (Windows build tags)
+        run: GOOS=windows go vet ./...
+
+      - name: Lint
+        run: go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run ./...
+
       - name: Test
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Coverage
+        run: |
+          bash scripts/check-coverage.test.sh
+          bash scripts/check-coverage.sh coverage.out
 
       - name: Vulnerability scan
         run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
@@ -105,7 +136,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
 
