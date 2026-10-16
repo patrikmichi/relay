@@ -331,8 +331,15 @@ func (c *Client) refreshLocked(ctx context.Context) error {
 	// else already spent it and rotated — adopt their result instead of
 	// submitting our now-stale copy, which the gateway would reject as
 	// reuse and revoke the whole token family for.
-	if current, readErr := c.store.Read(c.gatewayOrigin, c.email); readErr == nil &&
-		current.RefreshToken != "" && current.RefreshToken != c.refreshToken {
+	//
+	// A store that cannot be read fails the refresh: spending a token that
+	// may already be spent would revoke the family, and a missing entry means
+	// the session was removed (logged out) and must not be revived.
+	current, readErr := c.store.Read(c.gatewayOrigin, c.email)
+	if readErr != nil {
+		return fmt.Errorf("read the stored session before refreshing it (not refreshing, to avoid reusing a spent token): %w", readErr)
+	}
+	if current.RefreshToken != "" && current.RefreshToken != c.refreshToken {
 		c.AccessToken = current.AccessToken
 		c.refreshToken = current.RefreshToken
 		if current.ExpiresAt > 0 {
@@ -352,20 +359,26 @@ func (c *Client) refreshLocked(ctx context.Context) error {
 	}
 	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
 
+	// The gateway has already invalidated the old refresh token, so the new
+	// pair is the only working one: keep it in memory whatever the keychain says.
+	c.AccessToken = result.AccessToken
+	c.refreshToken = result.RefreshToken
+	c.expiresAt = expiresAt
+
 	if err := c.store.Write(c.gatewayOrigin, c.email, keychain.TokenData{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		ExpiresIn:    expiresIn,
 		ExpiresAt:    expiresAt.Unix(),
 	}); err != nil {
-		return fmt.Errorf("refresh succeeded but persisting the rotated token to the OS keychain failed (reauthentication via `relay login` may be required): %w", err)
+		fmt.Fprintf(persistWarning, "relay: WARNING: the session was refreshed but could not be saved to the OS keychain (%v). This process keeps working, but the next relay command will find a revoked token and ask you to run `relay login` again.\n", err)
 	}
-
-	c.AccessToken = result.AccessToken
-	c.refreshToken = result.RefreshToken
-	c.expiresAt = expiresAt
 	return nil
 }
+
+// persistWarning receives the warning printed when a rotated session cannot
+// be saved.
+var persistWarning io.Writer = os.Stderr
 
 // maybeProactiveRefresh refreshes ahead of a known expiry, bounded by ctx.
 // Best-effort: a failure here is NOT fatal — the request proceeds with the

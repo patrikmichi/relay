@@ -118,7 +118,9 @@ func TestDo_RefreshLockFailureReports401WithoutSpendingRefreshToken(t *testing.T
 	}
 }
 
-func TestDo_PersistFailureKeepsCurrentTokenAndDoesNotRetry(t *testing.T) {
+// The gateway invalidates the old refresh token when it rotates, so a pair
+// that could not be saved is still the only working one and is kept in memory.
+func TestDo_PersistFailureKeepsUsingTheRotatedPairInMemory(t *testing.T) {
 	g := newExpiredSessionGateway(t, rotatedPair)
 	store := &memoryStore{
 		data:     keychain.TokenData{AccessToken: "stale-access", RefreshToken: "stale-refresh"},
@@ -131,14 +133,14 @@ func TestDo_PersistFailureKeepsCurrentTokenAndDoesNotRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status %d, want 401", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status %d, want 200 with the in-memory pair", resp.StatusCode)
 	}
-	if g.refreshes.Load() != 1 || g.requests.Load() != 1 {
-		t.Errorf("refreshes=%d requests=%d, want 1 and 1", g.refreshes.Load(), g.requests.Load())
+	if g.refreshes.Load() != 1 || g.requests.Load() != 2 {
+		t.Errorf("refreshes=%d requests=%d, want 1 and 2", g.refreshes.Load(), g.requests.Load())
 	}
-	if c.AccessToken != "stale-access" {
-		t.Errorf("unpersisted token adopted: %q", c.AccessToken)
+	if c.AccessToken != "rotated-access" {
+		t.Errorf("rotated token dropped: %q", c.AccessToken)
 	}
 }
 
