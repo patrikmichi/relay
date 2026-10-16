@@ -220,7 +220,7 @@ type gatewayNotes struct{ changed, ignoredEnv string }
 func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayURL string, override map[agentsync.Scope]agentsync.MCPSource) (bundles map[agentsync.Scope]agentsync.Bundle, warns []string, notes gatewayNotes, err error) {
 	bundles = map[agentsync.Scope]agentsync.Bundle{}
 	for _, scope := range scopes {
-		b, w, err := agentsync.LoadBundle(agentsync.SourceDir(env, scope))
+		b, w, err := agentsync.LoadBundle(agentsync.SourceDir(env, scope), agentsync.SourceCheck(env, scope))
 		if err != nil {
 			return nil, nil, notes, err
 		}

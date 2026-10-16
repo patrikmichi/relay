@@ -75,7 +75,7 @@ func TestLoadBundleParsesSourcesAndWarns(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "commands", "review.md"), "---\ndescription: Review\nargument-hint: \"[path]\"\n---\nReview $ARGUMENTS\n")
 	writeFile(t, filepath.Join(dir, "hooks.json"), `{"hooks":[{"event":"stop","command":"/a.sh"},{"event":"nope","command":"/b.sh"},{"event":"stop","command":""}]}`)
 
-	b, warns, err := LoadBundle(dir)
+	b, warns, err := LoadBundle(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestLoadBundleParsesSourcesAndWarns(t *testing.T) {
 }
 
 func TestLoadBundleMissingDirIsEmpty(t *testing.T) {
-	b, warns, err := LoadBundle(filepath.Join(t.TempDir(), "absent"))
+	b, warns, err := LoadBundle(filepath.Join(t.TempDir(), "absent"), nil)
 	if err != nil || len(warns) != 0 || b.count(KindMCP)+b.count(KindRules)+b.count(KindCommands)+b.count(KindHooks) != 0 {
 		t.Fatalf("%+v %v %v", b, warns, err)
 	}

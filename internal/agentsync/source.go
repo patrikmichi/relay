@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
 // SourceDir is where relay reads what to sync: ~/.config/relay/sync for the
@@ -38,8 +40,54 @@ func MCPSourcePath(env Env, scope Scope) string {
 	return filepath.Join(SourceDir(env, scope), "mcp.json")
 }
 
+// PathCheck vets a source path before it is read; nil allows everything.
+type PathCheck func(path string) error
+
+// SourceCheck refuses source files that a symlink would redirect. A project's
+// .relay directory is untrusted: a link inside it could point at ~/.ssh or
+// ~/.aws and have the file copied into agent configs, so no symlink is
+// followed below the project. The user's own source directory may be linked
+// by a dotfile manager, but only to somewhere under $HOME.
+func SourceCheck(env Env, scope Scope) PathCheck {
+	return func(path string) error {
+		path = filepath.Clean(path)
+		if scope == ScopeProject {
+			root, err := filepath.EvalSymlinks(env.Project)
+			if err != nil {
+				return nil
+			}
+			rel, err := filepath.Rel(filepath.Clean(env.Project), path)
+			if err != nil || escapes(rel) {
+				return fmt.Errorf("%s is outside the project", path)
+			}
+			if err := txn.VerifyNoSymlinks(root, rel); err != nil {
+				return fmt.Errorf("%s: a symlink below the project is not followed", path)
+			}
+			return nil
+		}
+		home, err := filepath.EvalSymlinks(env.Home)
+		if err != nil {
+			return nil
+		}
+		if rel, err := filepath.Rel(home, resolvePath(path)); err != nil || escapes(rel) {
+			return fmt.Errorf("%s: symlink resolves outside the home directory", path)
+		}
+		return nil
+	}
+}
+
+func (c PathCheck) allow(path string) error {
+	if c == nil {
+		return nil
+	}
+	return c(path)
+}
+
 func LoadMCPSource(env Env, scope Scope) (MCPSource, error) {
 	var src MCPSource
+	if err := SourceCheck(env, scope).allow(MCPSourcePath(env, scope)); err != nil {
+		return src, err
+	}
 	raw, err := os.ReadFile(MCPSourcePath(env, scope))
 	if errors.Is(err, fs.ErrNotExist) {
 		return src, nil
@@ -108,11 +156,11 @@ func checkRemoteURL(raw string) error {
 
 // LoadBundle reads rules, commands and hooks from dir. Problems with one
 // file are returned as warnings so the rest still syncs.
-func LoadBundle(dir string) (Bundle, []string, error) {
+func LoadBundle(dir string, check PathCheck) (Bundle, []string, error) {
 	var b Bundle
 	var warns []string
 
-	rules, w, err := loadMarkdown(filepath.Join(dir, "rules"))
+	rules, w, err := loadMarkdown(filepath.Join(dir, "rules"), check)
 	if err != nil {
 		return b, nil, err
 	}
@@ -123,7 +171,7 @@ func LoadBundle(dir string) (Bundle, []string, error) {
 		b.Rules = append(b.Rules, r)
 	}
 
-	cmds, w, err := loadMarkdown(filepath.Join(dir, "commands"))
+	cmds, w, err := loadMarkdown(filepath.Join(dir, "commands"), check)
 	if err != nil {
 		return b, nil, err
 	}
@@ -132,7 +180,7 @@ func LoadBundle(dir string) (Bundle, []string, error) {
 		b.Commands = append(b.Commands, Command{Name: f.name, Description: f.fm.Description, ArgumentHint: f.fm.ArgumentHint, Body: f.body})
 	}
 
-	hooks, w, err := loadHooks(filepath.Join(dir, "hooks.json"))
+	hooks, w, err := loadHooks(filepath.Join(dir, "hooks.json"), check)
 	if err != nil {
 		return b, nil, err
 	}
@@ -176,7 +224,10 @@ type mdFile struct {
 	body string
 }
 
-func loadMarkdown(dir string) ([]mdFile, []string, error) {
+func loadMarkdown(dir string, check PathCheck) ([]mdFile, []string, error) {
+	if err := check.allow(dir); err != nil {
+		return nil, []string{err.Error() + "; skipped"}, nil
+	}
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
@@ -193,6 +244,10 @@ func loadMarkdown(dir string) ([]mdFile, []string, error) {
 		name := strings.TrimSuffix(e.Name(), ".md")
 		if !safeName.MatchString(name) {
 			warns = append(warns, fmt.Sprintf("%s: skipped, name must match %s", filepath.Join(dir, e.Name()), safeName))
+			continue
+		}
+		if err := check.allow(filepath.Join(dir, e.Name())); err != nil {
+			warns = append(warns, err.Error()+"; skipped")
 			continue
 		}
 		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -232,7 +287,10 @@ func splitFrontmatter(s string) (frontmatter, string, error) {
 	return fm, body, nil
 }
 
-func loadHooks(path string) ([]Hook, []string, error) {
+func loadHooks(path string, check PathCheck) ([]Hook, []string, error) {
+	if err := check.allow(path); err != nil {
+		return nil, []string{err.Error() + "; skipped"}, nil
+	}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
