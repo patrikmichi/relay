@@ -284,6 +284,9 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	if held != nil {
 		return held, nil
 	}
+	if refusal := policyRefusal(respBody, env); refusal != nil {
+		return nil, refusal
+	}
 
 	if envErr != nil {
 		if resp.StatusCode != http.StatusOK {

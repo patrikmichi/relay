@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/keychain"
 )
 
 const pendingApprovalStatus = "pending_approval"
@@ -95,8 +96,11 @@ func handlePending(parent context.Context, c *client.Client, p *pendingApproval,
 	if !o.wait {
 		if !jsonOut {
 			fmt.Fprintln(out, "Approval required: this call is held until a human decides it.")
+			if c.Profile() == keychain.ProfileHuman {
+				fmt.Fprintln(out, "Personal CLI sessions follow the same approvals as agents; only a browser session runs writes unasked.")
+			}
 			fmt.Fprintf(out, "  approval: %s\n  call:     %s %s\n  risk:     %s\n  expires:  %s\n", p.ApprovalID, p.Service, p.Tool, p.Risk, p.ExpiresAt)
-			fmt.Fprintf(out, "Collect the result with `relay approvals wait %s`, or repeat the call with --wait.\n", p.ApprovalID)
+			fmt.Fprintf(out, "Decide it with `relay approvals approve %s` (opens the approval page), then collect the result with `relay approvals wait %s`, or repeat the call with --wait.\n", p.ApprovalID, p.ApprovalID)
 		}
 		return &ExitError{Code: exitPending}
 	}

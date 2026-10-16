@@ -76,10 +76,19 @@ Approval required: this call is held until a human decides it.
   call:     stripe create_refund
   risk:     destructive
   expires:  2026-10-16T12:15:00.000Z
-Collect the result with `relay approvals wait apr_3f9c4e`, or repeat the call with --wait.
+Personal CLI sessions follow the same approvals as agents; only a browser session runs writes unasked.
+Decide it with `relay approvals approve apr_3f9c4e` (opens the approval page), then collect the result with `relay approvals wait apr_3f9c4e`, or repeat the call with --wait.
 ```
 
-With `--json` the raw response is printed instead and the status is the same.
+The second line is printed for a personal session only. With `--json` the raw
+response is printed instead and the status is the same.
+
+A call the organisation's risk policy turned off is not held: the gateway
+answers with `reason: "policy_off"` and a sentence naming the policy source and
+who can change it (`Blocked by org policy: stripe.create_refund (destructive)
+is Off ... Can be changed by: org admins.`). relay prints that sentence and
+exits with status 10, the status of a denial. The reason is read from a JSON
+body or from the `structuredContent` of an MCP tool error.
 
 `--wait[=SECONDS]` (a bare `--wait` waits 300 seconds; a duration such as
 `90s` also works) waits for the decision, runs the approved call once and
@@ -92,12 +101,17 @@ prints its result. With `--json` only the final response is printed.
 | 0 | approved and the call ran |
 | 1 | the call failed after approval, the approval is unknown to this session, or an error such as a failed request |
 | 4 | a request hit relay's time limit |
-| 10 | denied |
+| 10 | denied, or turned off by policy (`reason: "policy_off"`) |
 | 11 | expired (nobody decided in 15 minutes) |
 | 12 | still pending: the call was held and not waited for, or the timeout ended first |
+| 13 | a metered quota is used up (`429` with `error: "quota_exceeded"`) |
+| 14 | a passkey step-up is needed and nobody could give it; see [step-up.md](step-up.md) |
+| 30 to 33 | the plan does not allow it; see [billing.md](billing.md#exit-statuses) |
 
-These apply to `relay approvals wait`, to a held `relay call` and to a call run
-with `--wait`. An outcome that was printed adds no error message of its own.
+Statuses 10 to 12 apply to `relay approvals wait`, to a held `relay call` and
+to a call run with `--wait`. 13, 14 and 30 to 33 apply to every command that
+talks to the gateway. An outcome that was printed adds no error message of its
+own.
 
 ## relay approvals
 
