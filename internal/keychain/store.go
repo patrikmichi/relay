@@ -67,6 +67,9 @@ type Profile string
 const (
 	ProfileHuman Profile = "human"
 	ProfileAgent Profile = "agent"
+	// ProfileFeed holds the short-lived token that reads the gateway's plugin
+	// feeds, kept apart from the session that mints it.
+	ProfileFeed Profile = "feed"
 )
 
 // WriteProfileToken is WriteToken for an explicit profile.
@@ -143,8 +146,11 @@ func DeleteProfileToken(profile Profile, gatewayOrigin, email string) error {
 // sessions stay valid; a gateway origin always starts with a scheme, so the
 // "agent:" prefix cannot collide with it.
 func accountKey(profile Profile, gatewayOrigin, email string) string {
-	if profile == ProfileAgent {
+	switch profile {
+	case ProfileAgent:
 		return "oauth-refresh-token:agent:" + gatewayOrigin + ":" + email
+	case ProfileFeed:
+		return "oauth-refresh-token:feed:" + gatewayOrigin + ":" + email
 	}
 	return "oauth-refresh-token:" + gatewayOrigin + ":" + email
 }
