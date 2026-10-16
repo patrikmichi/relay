@@ -343,7 +343,14 @@ func pruneEmptyDirs(dir string) {
 
 // ---- OpenCode: an npm package from the feed's registry ----
 
-func opencodeConfigDir(home string) string { return filepath.Join(home, ".config", "opencode") }
+// opencodeConfigDir is OpenCode's configuration directory, which follows
+// XDG_CONFIG_HOME like the sync writers do.
+func opencodeConfigDir(home string) string {
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+		return filepath.Join(x, "opencode")
+	}
+	return filepath.Join(home, ".config", "opencode")
+}
 
 func installOpencode(s *pluginSession, a *pluginAgent, t *pluginTarget) (plugins.Install, error) {
 	if s.feed.NPMScope == "" {

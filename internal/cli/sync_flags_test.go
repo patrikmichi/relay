@@ -18,6 +18,7 @@ func TestSyncCmd_RejectsArgsAndTheRemovedMarketplaceFlags(t *testing.T) {
 		t.Errorf("--dir = %v, want an unknown flag error", err)
 	}
 	withNoGateway(t)
+	t.Chdir(t.TempDir()) // the project scope looks at the working directory too
 	if _, err := runCommand(t, SyncCmd()); err == nil || !strings.Contains(err.Error(), "no supported coding agent detected") {
 		t.Errorf("expected the no-agent error, got %v", err)
 	}

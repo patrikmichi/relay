@@ -40,7 +40,18 @@ func withLoggedInSession(t *testing.T, gatewayURL string) (email, origin string)
 func withNoGateway(t *testing.T) {
 	t.Helper()
 	t.Setenv("ZUANO_URL", "")
-	t.Setenv("HOME", t.TempDir())
+	isolateAgentEnv(t, t.TempDir())
+}
+
+// isolateAgentEnv points every place agent detection looks at an empty home, so
+// a test never sees the agents installed on the machine or runner it runs on.
+func isolateAgentEnv(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, k := range []string{"XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "OPENCODE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR"} {
+		t.Setenv(k, "")
+	}
 }
 
 func TestResolveGatewayURLOrFailClosed_EmptyDefault_FailsClosed(t *testing.T) {

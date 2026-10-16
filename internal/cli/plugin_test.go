@@ -71,6 +71,7 @@ func newPluginGW(t *testing.T) *pluginGW {
 	g.srv = httptest.NewServer(http.HandlerFunc(g.serve))
 	t.Cleanup(g.srv.Close)
 	withAPIKeyGateway(t, g.srv)
+	isolateAgentEnv(t, os.Getenv("HOME"))
 	t.Setenv("ZUANO_AGENT", "")
 	origin, err := config.NormalizeGatewayURL(g.srv.URL)
 	if err != nil {

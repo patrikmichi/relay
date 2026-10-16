@@ -43,7 +43,7 @@ func saveGateway(t *testing.T, url string) {
 func syncHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateAgentEnv(t, home)
 	t.Setenv("ZUANO_URL", "")
 	t.Setenv("ZUANO_API_KEY", "")
 	t.Setenv("ZUANO_EMAIL", "")
