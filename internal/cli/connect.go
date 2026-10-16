@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 var errTokenRevoked = errors.New("token expired or revoked — run `relay login` to re-authenticate")
@@ -179,7 +180,11 @@ func runConnect(cmd *cobra.Command, slug string, f connectFlags) error {
 		if entry.OAuth.State == "needs_app" {
 			return fmt.Errorf("%s has no OAuth app registered on this gateway; an admin must set one up first", slug)
 		}
-		return connectInBrowser(ctx, cmd, c, *svc, gw+entry.OAuth.ConnectURL, true, f, deadline)
+		target, err := gatewayLink(gw, entry.OAuth.ConnectURL)
+		if err != nil {
+			return err
+		}
+		return connectInBrowser(ctx, cmd, c, *svc, target, true, f, deadline)
 	case sessionAPI && entry != nil && len(entry.Fields) > 0:
 		return connectWithKey(ctx, cmd, c, *entry, f)
 	case slug == googleWorkspaceID:
@@ -189,6 +194,24 @@ func runConnect(cmd *cobra.Command, slug string, f connectFlags) error {
 	}
 	fmt.Fprintf(out, "%s is linked from the gateway's connection page.\n", slug)
 	return connectInBrowser(ctx, cmd, c, *svc, gw+"/settings/connections", false, f, deadline)
+}
+
+// gatewayLink joins a path the gateway returned onto the gateway's own
+// origin. A value that is not a plain absolute path ("//host", "https://...")
+// could send the browser, and the credentials entered there, to another host.
+func gatewayLink(gw, p string) (string, error) {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.Contains(p, `\`) {
+		return "", fmt.Errorf("the gateway returned a connect link that is not a path on %s: %q", gw, textsafe.Clean(p))
+	}
+	base, err := url.Parse(gw)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(gw + p)
+	if err != nil || u.Scheme != base.Scheme || u.Host != base.Host || u.User != nil {
+		return "", fmt.Errorf("the gateway returned a connect link outside %s: %q", gw, textsafe.Clean(p))
+	}
+	return u.String(), nil
 }
 
 // connectInBrowser sends the user to target and waits until the gateway

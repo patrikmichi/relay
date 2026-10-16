@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
 	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 const maxAuthResponseBytes = 1 << 20 // 1 MiB
@@ -39,6 +41,34 @@ func (dc DeviceCodeResponse) validate() error {
 		return fmt.Errorf("device code response missing required field(s)")
 	}
 	return nil
+}
+
+func parseVerificationURI(uri string) (*url.URL, error) {
+	u, err := url.Parse(uri)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, fmt.Errorf("the gateway returned a verification URL that is not a web address: %q", textsafe.Clean(uri))
+	}
+	return u, nil
+}
+
+func checkVerificationScheme(uri string) error {
+	_, err := parseVerificationURI(uri)
+	return err
+}
+
+// verificationHostWarning is non-empty when the page the user is told to open
+// is not on the gateway they are logging in to: typing the one-time code
+// there would hand the login to whoever runs that host.
+func verificationHostWarning(origin, uri string) string {
+	u, err := parseVerificationURI(uri)
+	gw, gerr := url.Parse(origin)
+	if err != nil || gerr != nil {
+		return ""
+	}
+	if u.Scheme == gw.Scheme && u.Host == gw.Host {
+		return ""
+	}
+	return fmt.Sprintf("WARNING: this address is on %s, not on your gateway (%s).\nDo not enter the code unless you recognise that host.", textsafe.Clean(u.Host), gw.Host)
 }
 
 type deviceTokenResponse struct {
@@ -118,8 +148,14 @@ func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profil
 
 	// 2. Prompt user
 	fmt.Fprintf(out, "\n%s\n", sessionKindNotice(profile))
-	fmt.Fprintf(out, "\nOpen this URL in your browser:\n  %s\n\n", dc.VerificationURI)
-	fmt.Fprintf(out, "Enter this code when prompted: %s\n\n", dc.UserCode)
+	if err := checkVerificationScheme(dc.VerificationURI); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(out, "\nOpen this URL in your browser:\n  %s\n\n", textsafe.Clean(dc.VerificationURI))
+	if warning := verificationHostWarning(origin, dc.VerificationURI); warning != "" {
+		fmt.Fprintf(out, "%s\n\n", warning)
+	}
+	fmt.Fprintf(out, "Enter this code when prompted: %s\n\n", textsafe.Clean(dc.UserCode))
 	fmt.Fprintln(out, "Waiting for authorization...")
 
 	deviceExpiry := time.Duration(dc.ExpiresIn) * time.Second
