@@ -29,6 +29,7 @@ type agentSyncOpts struct {
 	kinds      []string
 	from       string
 	mcpAuth    string
+	gatewayURL string
 	dryRun     bool
 	force      bool
 	yes        bool
@@ -118,15 +119,41 @@ func syncEnv() (agentsync.Env, error) {
 // gatewayMCPServer is the aggregate MCP server the gateway exposes. With
 // an API key in the environment the agents read it by name; otherwise the
 // entry carries no credentials and the agent signs in with OAuth.
-func gatewayMCPServer(mode string) (*agentsync.MCPServer, error) {
-	gw, err := config.GatewayURL()
+//
+// Its URL is the gateway saved in the config file, never $GATEWAY_URL: an
+// environment variable must not decide where every agent sends its traffic.
+// override (an explicit --gateway-url) replaces it and is returned as changed
+// when it differs from the saved one, so the caller can ask first. ignored
+// is a $GATEWAY_URL that was left out.
+func gatewayMCPServer(mode, override string) (s *agentsync.MCPServer, changed, ignored string, err error) {
+	cfg, err := config.Load()
 	if err != nil {
-		return nil, err
+		return nil, "", "", fmt.Errorf("load config: %w", err)
+	}
+	var saved string
+	if cfg.GatewayURL != "" {
+		if saved, err = config.NormalizeGatewayURL(cfg.GatewayURL); err != nil {
+			return nil, "", "", err
+		}
+	}
+	gw := saved
+	if override != "" {
+		if gw, err = config.NormalizeGatewayURL(override); err != nil {
+			return nil, "", "", err
+		}
+		if gw != saved {
+			changed = gw
+		}
+	}
+	if env := os.Getenv("GATEWAY_URL"); env != "" && override == "" {
+		if n, nerr := config.NormalizeGatewayURL(env); nerr != nil || n != gw {
+			ignored = env
+		}
 	}
 	if gw == "" {
-		return nil, nil
+		return nil, "", ignored, nil
 	}
-	s := &agentsync.MCPServer{Name: gatewayServerName, URL: strings.TrimRight(gw, "/") + "/api/mcp"}
+	s = &agentsync.MCPServer{Name: gatewayServerName, URL: strings.TrimRight(gw, "/") + "/api/mcp"}
 	switch mode {
 	case "", "auto", "oauth":
 		// The gateway marks every OAuth session as an agent's, so its writes
@@ -134,9 +161,9 @@ func gatewayMCPServer(mode string) (*agentsync.MCPServer, error) {
 	case "api-key", "apikey":
 		s.BearerEnv = gatewayAPIKeyEnv
 	default:
-		return nil, fmt.Errorf("invalid --mcp-auth %q: use auto, oauth or api-key", mode)
+		return nil, "", "", fmt.Errorf("invalid --mcp-auth %q: use auto, oauth or api-key", mode)
 	}
-	return s, nil
+	return s, changed, ignored, nil
 }
 
 // agentEnvVar selects the agent profile in relay itself: the CLI session
@@ -184,26 +211,31 @@ func agentProfileWarnings(user agentsync.Bundle, kinds syncKinds) []string {
 	return warns
 }
 
-func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth string, override map[agentsync.Scope]agentsync.MCPSource) (map[agentsync.Scope]agentsync.Bundle, []string, error) {
-	bundles := map[agentsync.Scope]agentsync.Bundle{}
-	var warns []string
+// gatewayNotes reports how the gateway entry's URL was chosen: changed is a
+// gateway other than the saved one, which needs the person's confirmation;
+// ignoredEnv is a $GATEWAY_URL that was left out.
+type gatewayNotes struct{ changed, ignoredEnv string }
+
+func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth, gatewayURL string, override map[agentsync.Scope]agentsync.MCPSource) (bundles map[agentsync.Scope]agentsync.Bundle, warns []string, notes gatewayNotes, err error) {
+	bundles = map[agentsync.Scope]agentsync.Bundle{}
 	for _, scope := range scopes {
 		b, w, err := agentsync.LoadBundle(agentsync.SourceDir(env, scope))
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, notes, err
 		}
 		warns = append(warns, w...)
 		src, ok := override[scope]
 		if !ok {
 			if src, err = agentsync.LoadMCPSource(env, scope); err != nil {
-				return nil, nil, err
+				return nil, nil, notes, err
 			}
 		}
 		if scope == agentsync.ScopeUser && !src.GatewayDisabled {
-			gw, err := gatewayMCPServer(mcpAuth)
+			gw, changed, ignored, err := gatewayMCPServer(mcpAuth, gatewayURL)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, notes, err
 			}
+			notes = gatewayNotes{changed, ignored}
 			if gw != nil {
 				b.MCP = append(b.MCP, *gw)
 			}
@@ -214,7 +246,7 @@ func loadBundles(env agentsync.Env, scopes []agentsync.Scope, mcpAuth string, ov
 		}
 		bundles[scope] = b
 	}
-	return bundles, warns, nil
+	return bundles, warns, notes, nil
 }
 
 // agentSyncRun is a computed sync: file edits plus skill and subagent
@@ -227,6 +259,9 @@ type agentSyncRun struct {
 	agents []agentsync.AgentID
 	// stdio names the servers that run a local command.
 	stdio map[string]bool
+	// gatewayURL is set when the gateway entry would point somewhere other
+	// than the gateway saved in the config file.
+	gatewayURL string
 }
 
 func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
@@ -257,9 +292,13 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 		return nil, errors.New("no supported coding agent detected on this machine; name one with --to (claude, codex, cursor, opencode, gemini-cli, windsurf, cline, copilot) or --to all")
 	}
 
-	bundles, warns, err := loadBundles(env, scopes, o.mcpAuth, o.mcpOverride)
+	bundles, warns, gw, err := loadBundles(env, scopes, o.mcpAuth, o.gatewayURL, o.mcpOverride)
 	if err != nil {
 		return nil, err
+	}
+	run.gatewayURL = gw.changed
+	if gw.ignoredEnv != "" {
+		warns = append(warns, fmt.Sprintf("ignoring $GATEWAY_URL (%s): agent configs use the gateway saved in the config file; pass --gateway-url to write another", cleanText(gw.ignoredEnv)))
 	}
 	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns

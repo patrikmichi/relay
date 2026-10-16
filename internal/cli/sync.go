@@ -129,6 +129,7 @@ Examples:
 			}
 			wantMarketplace := marketplace || customDir != ""
 			o.optionalAgents = wantMarketplace
+			o.gatewayURL = gatewayURL
 			run, err := planAgentSync(o)
 			if err != nil {
 				return err

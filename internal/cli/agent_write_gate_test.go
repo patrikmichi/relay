@@ -118,6 +118,67 @@ func TestRemoteServerAndRulesNeedNoConfirmation(t *testing.T) {
 	}
 }
 
+func TestGatewayEnvIsNeverWrittenIntoAgentConfigs(t *testing.T) {
+	home := syncHome(t)
+	saveGateway(t, "https://saved.example.com")
+	t.Setenv("GATEWAY_URL", "https://env.example.net")
+
+	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp")
+	if err != nil {
+		t.Fatalf("sync: %v\n%s", err, out)
+	}
+	written := readTestFile(t, filepath.Join(home, ".claude.json"))
+	if !strings.Contains(written, "https://saved.example.com/api/mcp") || strings.Contains(written, "env.example.net") {
+		t.Errorf("agent config should use the saved gateway only:\n%s", written)
+	}
+	if !strings.Contains(out, "ignoring $GATEWAY_URL") {
+		t.Errorf("no warning about the ignored variable:\n%s", out)
+	}
+}
+
+func TestGatewayNeverComesFromEnvWhenNoneIsSaved(t *testing.T) {
+	home := syncHome(t)
+	t.Setenv("GATEWAY_URL", "https://env.example.net")
+
+	if out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp"); err != nil {
+		t.Fatalf("sync: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude.json")); err == nil {
+		t.Errorf("the environment's gateway was written:\n%s", readTestFile(t, filepath.Join(home, ".claude.json")))
+	}
+}
+
+func TestChangingTheGatewayNeedsFlagAndConfirmation(t *testing.T) {
+	home := syncHome(t)
+	saveGateway(t, "https://saved.example.com")
+	claude := filepath.Join(home, ".claude.json")
+
+	_, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--gateway-url", "https://other.example.com")
+	if err == nil || !strings.Contains(err.Error(), "gateway URL") {
+		t.Fatalf("unattended gateway change = %v, want a refusal", err)
+	}
+	out, err := runWithInput(t, SyncCmd(), "n\n", "--to", "claude", "--kind", "mcp", "--gateway-url", "https://other.example.com")
+	if err == nil || !strings.Contains(out, "https://other.example.com/api/mcp") {
+		t.Fatalf("declined change = %v\n%s", err, out)
+	}
+	if _, statErr := os.Stat(claude); statErr == nil {
+		t.Fatal("a refused gateway change wrote the config")
+	}
+	if out, err = runWithInput(t, SyncCmd(), "y\n", "--to", "claude", "--kind", "mcp", "--gateway-url", "https://other.example.com"); err != nil {
+		t.Fatalf("confirmed change: %v\n%s", err, out)
+	}
+	if !strings.Contains(readTestFile(t, claude), "https://other.example.com/api/mcp") {
+		t.Error("confirmed gateway was not written")
+	}
+	// Naming the saved gateway is not a change, so it needs no confirmation.
+	if out, err = runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--gateway-url", "https://saved.example.com"); err != nil {
+		t.Fatalf("saved gateway via flag: %v\n%s", err, out)
+	}
+	if !strings.Contains(readTestFile(t, claude), "https://saved.example.com/api/mcp") {
+		t.Error("the saved gateway was not restored")
+	}
+}
+
 func TestMCPServerURLsMustBeHTTPS(t *testing.T) {
 	for url, ok := range map[string]bool{
 		"https://docs.example.com/mcp": true,

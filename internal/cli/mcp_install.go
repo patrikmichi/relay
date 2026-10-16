@@ -216,7 +216,7 @@ func runMcpRemove(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 // source only when files are actually written.
 func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope, src agentsync.MCPSource, f mcpInstallFlags) error {
 	run, err := planAgentSync(agentSyncOpts{
-		to: f.to, scopes: []string{string(scope)}, kinds: []string{"mcp"}, mcpAuth: f.mcpAuth,
+		to: f.to, scopes: []string{string(scope)}, kinds: []string{"mcp"}, mcpAuth: f.mcpAuth, gatewayURL: f.gatewayURL,
 		dryRun: f.dryRun, force: f.force, mcpOverride: map[agentsync.Scope]agentsync.MCPSource{scope: src},
 	})
 	if err != nil {

@@ -112,7 +112,7 @@ func doctorSyncChecks(add func(name string, ok bool, detail string)) {
 		add("sync-ledger", false, "sync ledger cannot be read: "+err.Error())
 		return
 	}
-	bundles, warns, err := loadBundles(env, scopes, "auto", nil)
+	bundles, warns, _, err := loadBundles(env, scopes, "auto", "", nil)
 	if err != nil {
 		add("sync-source", false, err.Error())
 		return

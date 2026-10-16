@@ -110,6 +110,7 @@ func catalogServer(t *testing.T) *httptest.Server {
 func TestMcpInstallCatalogServiceEnablesGatewayServer(t *testing.T) {
 	srv := catalogServer(t)
 	withAPIKeyGateway(t, srv)
+	saveGateway(t, srv.URL)
 	home := os.Getenv("HOME")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
@@ -138,6 +139,7 @@ func TestMcpInstallCatalogServiceEnablesGatewayServer(t *testing.T) {
 func TestMcpRemoveGatewayStopsSyncingIt(t *testing.T) {
 	srv := catalogServer(t)
 	withAPIKeyGateway(t, srv)
+	saveGateway(t, srv.URL)
 	home := os.Getenv("HOME")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)

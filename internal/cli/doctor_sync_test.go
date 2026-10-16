@@ -77,7 +77,7 @@ func TestDoctorReportsEveryArtifactKindPerAgent(t *testing.T) {
 
 func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 	home := doctorSyncSetup(t)
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
@@ -110,7 +110,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 
 func TestDoctorChecksBearerEnvironmentOfSyncedMCPServers(t *testing.T) {
 	doctorSyncSetup(t)
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "x")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })

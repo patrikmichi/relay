@@ -124,7 +124,7 @@ func TestMarkRelayServers(t *testing.T) {
 
 func TestSync_WarnsWhenTheGatewayEntryUsesAnAPIKey(t *testing.T) {
 	syncHome(t)
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
 
 	out, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp", "--mcp-auth", "api-key")
@@ -157,7 +157,7 @@ func TestSync_AgentsWithoutOAuthGetNoCredentialAndAHowTo(t *testing.T) {
 		}
 	}
 	writeTestFile(t, filepath.Join(home, "proj", ".vscode", "mcp.json"), "{}")
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
 
 	out, err := runCommand(t, SyncCmd(), "--to", "cline,copilot", "--kind", "mcp", "--scope", "user,project")

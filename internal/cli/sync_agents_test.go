@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/patrikmichi/relay/internal/agentport"
+	"github.com/patrikmichi/relay/internal/config"
 )
 
 func writeTestFile(t *testing.T, path, content string) {
@@ -27,6 +28,15 @@ func readTestFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// saveGateway stores the gateway in the config file, the only place the
+// gateway MCP entry takes its URL from.
+func saveGateway(t *testing.T, url string) {
+	t.Helper()
+	if err := config.Save(config.Config{GatewayURL: url}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // syncHome isolates HOME, installs fake agent homes and relay sync sources.
@@ -51,7 +61,7 @@ func syncHome(t *testing.T) string {
 
 func TestSyncDetectsAgentsWritesAndIsIdempotent(t *testing.T) {
 	home := syncHome(t)
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 
 	out, err := runCommand(t, SyncCmd(), "--yes")
 	if err != nil {
@@ -85,7 +95,7 @@ func TestSyncDetectsAgentsWritesAndIsIdempotent(t *testing.T) {
 
 func TestSyncReferencesTheAPIKeyOnlyWhenAsked(t *testing.T) {
 	home := syncHome(t)
-	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+	saveGateway(t, "https://gateway.example.com")
 	t.Setenv("GATEWAY_API_KEY", "gw-secret-value")
 	if _, err := runCommand(t, SyncCmd(), "--to", "claude", "--kind", "mcp"); err != nil {
 		t.Fatal(err)
@@ -149,7 +159,7 @@ func TestSyncValidatesFlags(t *testing.T) {
 		"--mcp-auth magic":                     "invalid --mcp-auth",
 		"--from nope --kind skills --to codex": "unknown --from provider",
 	} {
-		t.Setenv("GATEWAY_URL", "https://gateway.example.com")
+		saveGateway(t, "https://gateway.example.com")
 		_, err := runCommand(t, SyncCmd(), strings.Fields(args)...)
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: err = %v, want %q", args, err, want)

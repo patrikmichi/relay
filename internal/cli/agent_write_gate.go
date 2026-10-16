@@ -47,15 +47,16 @@ func (r *agentSyncRun) execItems() []agentsync.Item {
 }
 
 // confirmAgentWrite gates a write to agent configuration. It refuses in agent
-// mode. When the write adds or changes hooks or stdio MCP commands, a person
-// must approve the full diff in a terminal, or pass --yes after reviewing it
-// with --dry-run.
+// mode. When the write adds or changes hooks or stdio MCP commands, or points
+// the gateway entry at a gateway other than the saved one, a person must
+// approve the full diff in a terminal, or pass --yes after reviewing it with
+// --dry-run.
 func confirmAgentWrite(cmd *cobra.Command, run *agentSyncRun, what string, yes bool) error {
 	if err := refuseInAgentMode(what); err != nil {
 		return err
 	}
 	risky := run.execItems()
-	if len(risky) == 0 {
+	if len(risky) == 0 && run.gatewayURL == "" {
 		return nil
 	}
 	if yes {
@@ -63,13 +64,16 @@ func confirmAgentWrite(cmd *cobra.Command, run *agentSyncRun, what string, yes b
 	}
 	in := cmd.InOrStdin()
 	if !canPrompt(in) {
-		return fmt.Errorf("%s adds or changes hooks or local commands in agent configuration. Review it with --dry-run, then re-run in a terminal to approve it, or pass --yes", what)
+		return fmt.Errorf("%s adds or changes hooks, local commands or the gateway URL in agent configuration. Review it with --dry-run, then re-run in a terminal to approve it, or pass --yes", what)
 	}
 
 	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out, "\n%s will change what your coding agents run:\n", what)
 	for _, it := range risky {
 		fmt.Fprintf(out, "  %s %s (%s, %s): %s\n", it.Status, it.Kind, it.Agent, it.Scope, revealControls(it.Name))
+	}
+	if run.gatewayURL != "" {
+		fmt.Fprintf(out, "  the gateway MCP entry will point at %s, not the gateway saved in your config\n", run.gatewayURL)
 	}
 	if run.plan != nil {
 		for _, e := range run.plan.Edits {
