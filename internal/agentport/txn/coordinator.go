@@ -4,11 +4,13 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -310,22 +312,98 @@ func (t *Tx) Apply(verify func(root, rel string) error) error {
 // ledger failure never leaves committed-looking files with no record of
 // them.
 func (t *Tx) Commit(ledgerFn func() error) error {
+	return t.commit(nil, ledgerFn)
+}
+
+// Finalizer is the ledger update a transaction owes once its files are
+// written, in a form that can be replayed after a crash: Kind names a
+// function registered with RegisterFinalizer and Data is its argument.
+type Finalizer struct {
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+var (
+	finalizersMu sync.Mutex
+	finalizers   = map[string]func(json.RawMessage) error{}
+)
+
+// RegisterFinalizer registers a replayable ledger update under kind. The
+// function must be idempotent: recovery runs it again when the original run
+// died after performing it but before the journal said so.
+func RegisterFinalizer(kind string, f func(json.RawMessage) error) {
+	finalizersMu.Lock()
+	defer finalizersMu.Unlock()
+	finalizers[kind] = f
+}
+
+// CommitWith is Commit for a ledger update that can be replayed. The update
+// is written into the journal and the journal is marked committing before
+// apply runs, so a crash anywhere after that point is finished forward by
+// Recover instead of undone: the files stay and the ledger catches up.
+func (t *Tx) CommitWith(kind string, data any, apply func() error) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		t.locks.Unlock()
+		return fmt.Errorf("encode ledger update: %w", err)
+	}
+	return t.commit(&Finalizer{Kind: kind, Data: raw}, apply)
+}
+
+// commitHook lets tests stop a commit at a named point ("committing" before
+// the ledger update, "applied" after it), as a crash would: no compensation,
+// no further journal writes.
+var commitHook func(stage string) error
+
+// SetCommitHook installs a crash-injection hook for tests and returns a
+// function that removes it.
+func SetCommitHook(f func(stage string) error) (restore func()) {
+	prev := commitHook
+	commitHook = f
+	return func() { commitHook = prev }
+}
+
+func (t *Tx) commit(fin *Finalizer, ledgerFn func() error) error {
 	defer t.locks.Unlock()
 
-	if err := ledgerFn(); err != nil {
-		if cerr := t.compensate(); cerr != nil {
-			t.j.State = StateRecovery
-			t.j.Err = fmt.Sprintf("ledger update failed (%v) and compensation also failed (%v)", err, cerr)
-			_ = t.j.save()
-			return fmt.Errorf("ledger update failed and files could not be fully restored — run `relay recover %s`: %w", t.j.ID, err)
+	if fin != nil {
+		t.j.Finalize = fin
+		t.j.State = StateCommitting
+		if err := t.j.save(); err != nil {
+			return t.abortCommit(fmt.Errorf("record the pending ledger update: %w", err))
 		}
-		t.j.State = StateRestored
-		_ = t.j.save()
-		return fmt.Errorf("ledger update failed, all files restored to their prior state: %w", err)
+		if commitHook != nil {
+			if err := commitHook("committing"); err != nil {
+				return err
+			}
+		}
+	}
+	if err := ledgerFn(); err != nil {
+		return t.abortCommit(err)
+	}
+	if fin != nil && commitHook != nil {
+		if err := commitHook("applied"); err != nil {
+			return err
+		}
 	}
 
 	t.j.State = StateCommitted
 	return t.j.save()
+}
+
+// abortCommit undoes the written files after a ledger update that did not
+// happen (a failed write is atomic, so the ledger is unchanged).
+func (t *Tx) abortCommit(err error) error {
+	t.j.Finalize = nil
+	if cerr := t.compensate(); cerr != nil {
+		t.j.State = StateRecovery
+		t.j.Err = fmt.Sprintf("ledger update failed (%v) and compensation also failed (%v)", err, cerr)
+		_ = t.j.save()
+		return fmt.Errorf("ledger update failed and files could not be fully restored — run `relay recover %s`: %w", t.j.ID, err)
+	}
+	t.j.State = StateRestored
+	_ = t.j.save()
+	return fmt.Errorf("ledger update failed, all files restored to their prior state: %w", err)
 }
 
 // Discard compensates whatever Apply managed to write (if anything — a
@@ -481,6 +559,13 @@ func Recover(ctx context.Context, id string) (Journal, error) {
 		return *j, nil
 	}
 
+	// A committing journal had written every file and recorded the ledger
+	// update it owed. Undoing the files could contradict a ledger that did
+	// get written, so recovery goes forward: replay the update.
+	if j.State == StateCommitting {
+		return finishCommit(j)
+	}
+
 	// VerifyNoSymlinks is the same containment algorithm every caller's own
 	// verify function (e.g. agentport.verifyPathHasNoSymlinks) implements —
 	// Recover has no caller-supplied verify to thread through, so it uses
@@ -493,6 +578,34 @@ func Recover(ctx context.Context, id string) (Journal, error) {
 		return *j, fmt.Errorf("recover %s: %w", id, err)
 	}
 	j.State = StateRestored
+	if err := j.save(); err != nil {
+		return *j, err
+	}
+	return *j, nil
+}
+
+// finishCommit replays the ledger update of a committing journal and marks it
+// committed. If it cannot (no finalizer of that kind in this build, or the
+// update fails) the journal stays committing for another attempt; the files
+// are never rolled back.
+func finishCommit(j *Journal) (Journal, error) {
+	if j.Finalize == nil {
+		j.State, j.Err = StateRecovery, "committing journal records no ledger update to replay"
+		_ = j.save()
+		return *j, fmt.Errorf("recover %s: %s", j.ID, j.Err)
+	}
+	finalizersMu.Lock()
+	f := finalizers[j.Finalize.Kind]
+	finalizersMu.Unlock()
+	if f == nil {
+		return *j, fmt.Errorf("recover %s: this build cannot replay the %q ledger update; use the relay version that wrote it", j.ID, j.Finalize.Kind)
+	}
+	if err := f(j.Finalize.Data); err != nil {
+		j.Err = err.Error()
+		_ = j.save()
+		return *j, fmt.Errorf("recover %s: replay the ledger update: %w", j.ID, err)
+	}
+	j.State, j.Err = StateCommitted, ""
 	if err := j.save(); err != nil {
 		return *j, err
 	}

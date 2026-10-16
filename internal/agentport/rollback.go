@@ -132,7 +132,7 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return tx.Discard(err)
 	}
 
-	if err := tx.Commit(func() error { return RemoveEntry(entry.ID) }); err != nil {
+	if err := tx.CommitWith(removeFinalizer, entry.ID, func() error { return RemoveEntry(entry.ID) }); err != nil {
 		return err
 	}
 	// Only skills get their per-artifact subdirectory pruned when empty

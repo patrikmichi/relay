@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/agentport/txn"
 )
 
 // ArtifactKind discriminates which canonical IR a ManifestEntry records —
@@ -260,6 +262,54 @@ func RecordEntry(entry ManifestEntry) error {
 	})
 }
 
+// Manifest updates a transaction owes are recorded in its journal, so a crash
+// between the files and the manifest is finished forward by `relay recover`.
+// Replaying one must change nothing the second time.
+const (
+	recordFinalizer = "agentport-record"
+	removeFinalizer = "agentport-remove"
+)
+
+func init() {
+	txn.RegisterFinalizer(recordFinalizer, func(raw json.RawMessage) error {
+		var entry ManifestEntry
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			return fmt.Errorf("decode the pending manifest entry: %w", err)
+		}
+		return recordEntryOnce(entry)
+	})
+	txn.RegisterFinalizer(removeFinalizer, func(raw json.RawMessage) error {
+		var id string
+		if err := json.Unmarshal(raw, &id); err != nil {
+			return fmt.Errorf("decode the pending manifest removal: %w", err)
+		}
+		if err := RemoveEntry(id); err != nil && !errors.Is(err, ErrNoSuchEntry) {
+			return err
+		}
+		return nil
+	})
+}
+
+// ErrNoSuchEntry means no manifest entry has the given id.
+var ErrNoSuchEntry = errors.New("no such manifest entry")
+
+// recordEntryOnce records entry unless an entry with its id is already there.
+func recordEntryOnce(entry ManifestEntry) error {
+	return withManifestLock(func() error {
+		m, err := LoadManifest()
+		if err != nil {
+			return err
+		}
+		for _, e := range m.Entries {
+			if e.ID == entry.ID {
+				return nil
+			}
+		}
+		m.Entries = append(m.Entries, entry)
+		return SaveManifest(m)
+	})
+}
+
 // newEntryID returns a unique manifest entry id: a nanosecond timestamp
 // plus 4 random bytes (collision-proof enough for a local, single-machine,
 // append-only ledger; no need for a full UUID dependency).
@@ -338,7 +388,7 @@ func RemoveEntry(id string) error {
 			out = append(out, e)
 		}
 		if !found {
-			return fmt.Errorf("no manifest entry with id %q", id)
+			return fmt.Errorf("%w with id %q", ErrNoSuchEntry, id)
 		}
 		m.Entries = out
 		return SaveManifest(m)

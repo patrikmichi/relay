@@ -2,8 +2,11 @@ package txn
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +44,107 @@ func TestRecover_RestoresARemovalWhoseAppliedFlagWasNeverSaved(t *testing.T) {
 	}
 	if got := mustRead(t, dest); string(got) != "original" {
 		t.Fatalf("interrupted removal not restored: %q", got)
+	}
+}
+
+var errCrash = errors.New("injected crash")
+
+func TestCommitCrashIsFinishedForwardNeverBackward(t *testing.T) {
+	for _, stage := range []string{"committing", "applied"} {
+		t.Run(stage, func(t *testing.T) {
+			isolate(t)
+			var applied []string
+			RegisterFinalizer("test-ledger", func(raw json.RawMessage) error {
+				var v string
+				if err := json.Unmarshal(raw, &v); err != nil {
+					return err
+				}
+				if !slices.Contains(applied, v) { // idempotent, like a real ledger update
+					applied = append(applied, v)
+				}
+				return nil
+			})
+			root := t.TempDir()
+			tx, err := Begin(context.Background(), "write", []string{"k:commit-" + stage})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Stage(root, "f.txt", []byte("new"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Persist(); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Apply(noopVerify); err != nil {
+				t.Fatal(err)
+			}
+
+			restore := SetCommitHook(func(s string) error {
+				if s == stage {
+					return errCrash
+				}
+				return nil
+			})
+			err = tx.CommitWith("test-ledger", "entry-1", func() error {
+				applied = append(applied, "entry-1")
+				return nil
+			})
+			restore()
+			if !errors.Is(err, errCrash) {
+				t.Fatalf("CommitWith = %v, want the injected crash", err)
+			}
+			if j, _ := Load(tx.ID()); j.State != StateCommitting {
+				t.Fatalf("journal state = %q, want committing", j.State)
+			}
+			if got := mustRead(t, filepath.Join(root, "f.txt")); string(got) != "new" {
+				t.Fatalf("a crash during commit changed the file: %q", got)
+			}
+			if _, err := Begin(context.Background(), "next", []string{"k:commit-" + stage}); !errors.Is(err, ErrPending) {
+				t.Fatalf("a committing journal must block a new run, got %v", err)
+			}
+
+			j, err := Recover(context.Background(), tx.ID())
+			if err != nil || j.State != StateCommitted {
+				t.Fatalf("Recover = %+v, %v; want committed", j, err)
+			}
+			if got := mustRead(t, filepath.Join(root, "f.txt")); string(got) != "new" {
+				t.Errorf("recovery rolled the file back: %q", got)
+			}
+			if len(applied) != 1 || applied[0] != "entry-1" {
+				t.Errorf("ledger updates = %v, want exactly one entry-1", applied)
+			}
+		})
+	}
+}
+
+func TestRecoverKeepsACommittingJournalWhoseFinalizerIsMissing(t *testing.T) {
+	isolate(t)
+	root := t.TempDir()
+	tx, err := Begin(context.Background(), "write", []string{"k:nofinalizer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Stage(root, "f.txt", []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Persist(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Apply(noopVerify); err != nil {
+		t.Fatal(err)
+	}
+	restore := SetCommitHook(func(string) error { return errCrash })
+	_ = tx.CommitWith("unknown-kind", "x", func() error { return nil })
+	restore()
+
+	if _, err := Recover(context.Background(), tx.ID()); err == nil {
+		t.Fatal("recovery without a finalizer must not claim success")
+	}
+	if got := mustRead(t, filepath.Join(root, "f.txt")); string(got) != "new" {
+		t.Errorf("the file was rolled back although the ledger may have recorded it: %q", got)
+	}
+	if j, _ := Load(tx.ID()); j.State != StateCommitting {
+		t.Errorf("state = %q, want committing so a build that has the finalizer can finish it", j.State)
 	}
 }
 

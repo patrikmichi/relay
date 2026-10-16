@@ -315,7 +315,7 @@ func (p *Plan) Apply(ctx context.Context) error {
 	if err := tx.Apply(txn.VerifyNoSymlinks); err != nil {
 		return tx.Discard(err)
 	}
-	return tx.Commit(p.ledger.Save)
+	return tx.CommitWith(ledgerFinalizer, p.ledger.ops, p.ledger.Save)
 }
 
 // Ledger records the content hash of every JSON entry relay wrote, keyed by
@@ -333,8 +333,30 @@ type Ledger struct {
 }
 
 type ledgerOp struct {
-	file, id, hash string
-	drop           bool
+	File string `json:"file"`
+	ID   string `json:"id"`
+	Hash string `json:"hash,omitempty"`
+	Drop bool   `json:"drop,omitempty"`
+}
+
+// ledgerFinalizer names the ledger update a sync transaction owes, so
+// recovery can replay it after a crash. Replaying is safe: every operation
+// sets or drops an absolute value.
+const ledgerFinalizer = "agentsync-ledger"
+
+func init() {
+	txn.RegisterFinalizer(ledgerFinalizer, func(raw json.RawMessage) error {
+		var ops []ledgerOp
+		if err := json.Unmarshal(raw, &ops); err != nil {
+			return fmt.Errorf("decode the pending ledger update: %w", err)
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		l := &Ledger{Version: 1, Files: map[string]map[string]string{}, path: LedgerPath(home), ops: ops, dirty: len(ops) > 0}
+		return l.Save()
+	})
 }
 
 func LedgerPath(home string) string {
@@ -375,7 +397,7 @@ func (l *Ledger) set(file, id, hash string) {
 	if m[id] != hash {
 		m[id] = hash
 		l.dirty = true
-		l.ops = append(l.ops, ledgerOp{file: file, id: id, hash: hash})
+		l.ops = append(l.ops, ledgerOp{File: file, ID: id, Hash: hash})
 	}
 }
 
@@ -384,7 +406,7 @@ func (l *Ledger) drop(file, id string) {
 	if _, ok := m[id]; ok {
 		delete(m, id)
 		l.dirty = true
-		l.ops = append(l.ops, ledgerOp{file: file, id: id, drop: true})
+		l.ops = append(l.ops, ledgerOp{File: file, ID: id, Drop: true})
 	}
 	if len(m) == 0 {
 		delete(l.Files, file)
@@ -392,16 +414,16 @@ func (l *Ledger) drop(file, id string) {
 }
 
 func (l *Ledger) apply(op ledgerOp) {
-	if op.drop {
-		delete(l.Files[op.file], op.id)
+	if op.Drop {
+		delete(l.Files[op.File], op.ID)
 	} else {
-		if l.Files[op.file] == nil {
-			l.Files[op.file] = map[string]string{}
+		if l.Files[op.File] == nil {
+			l.Files[op.File] = map[string]string{}
 		}
-		l.Files[op.file][op.id] = op.hash
+		l.Files[op.File][op.ID] = op.Hash
 	}
-	if len(l.Files[op.file]) == 0 {
-		delete(l.Files, op.file)
+	if len(l.Files[op.File]) == 0 {
+		delete(l.Files, op.File)
 	}
 }
 

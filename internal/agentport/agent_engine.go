@@ -174,6 +174,7 @@ func WriteAgent(plan *AgentPlan) error {
 		Provenance:     plan.Agent.Provenance,
 		ProjectRoot:    projectRoot,
 		TransactionID:  tx.ID(),
+		ID:             newEntryID(),
 	}
-	return tx.Commit(func() error { return RecordEntry(entry) })
+	return tx.CommitWith(recordFinalizer, entry, func() error { return recordEntryOnce(entry) })
 }

@@ -237,8 +237,9 @@ func Write(plan *Plan) error {
 		Provenance:     plan.Skill.Provenance,
 		ProjectRoot:    projectRoot,
 		TransactionID:  tx.ID(),
+		ID:             newEntryID(),
 	}
-	return tx.Commit(func() error { return RecordEntry(entry) })
+	return tx.CommitWith(recordFinalizer, entry, func() error { return recordEntryOnce(entry) })
 }
 
 // fileModes projects each written file's resolved mode (0644 default,

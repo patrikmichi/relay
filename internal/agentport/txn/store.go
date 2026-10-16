@@ -27,11 +27,12 @@ import (
 type State string
 
 const (
-	StatePrepared  State = "prepared"  // journal durably written; no destination touched yet
-	StateApplying  State = "applying"  // at least one destination write has been attempted
-	StateCommitted State = "committed" // every destination write and the ledger update finished
-	StateRecovery  State = "recovery"  // interrupted mid-apply and compensation did not (yet) succeed
-	StateRestored  State = "restored"  // interrupted, then successfully compensated back to prior state
+	StatePrepared   State = "prepared"   // journal durably written; no destination touched yet
+	StateApplying   State = "applying"   // at least one destination write has been attempted
+	StateCommitted  State = "committed"  // every destination write and the ledger update finished
+	StateCommitting State = "committing" // every file written; the ledger update is recorded and may or may not have run
+	StateRecovery   State = "recovery"   // interrupted mid-apply and compensation did not (yet) succeed
+	StateRestored   State = "restored"   // interrupted, then successfully compensated back to prior state
 )
 
 // terminal reports whether state needs no further action from `relay
@@ -114,6 +115,8 @@ type Journal struct {
 	// `relay recover`/`relay history` can explain why an operation needed
 	// manual attention without re-deriving it.
 	Err string `json:"err,omitempty"`
+	// Finalize is the replayable ledger update a committing journal owes.
+	Finalize *Finalizer `json:"finalize,omitempty"`
 }
 
 // baseDir returns ~/.config/relay/transactions, creating it if needed.
