@@ -318,6 +318,7 @@ func SkillCmd() *cobra.Command {
 	skill.AddCommand(SkillScoreCmd())
 	skill.AddCommand(SkillUninstallCmd())
 	skill.AddCommand(SkillRollbackCmd())
+	skill.AddCommand(skillFromSessionCmd())
 	return skill
 }
 

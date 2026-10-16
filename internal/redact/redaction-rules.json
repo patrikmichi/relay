@@ -1,0 +1,29 @@
+{
+  "format": "zuano.redaction/v1",
+  "version": "1",
+  "secrets": [
+    { "name": "model-provider-key", "pattern": "\\bsk-[A-Za-z0-9_-]{20,}" },
+    { "name": "payment-live-key", "pattern": "\\b[rs]k_live_[A-Za-z0-9]{16,}" },
+    { "name": "payment-test-key", "pattern": "\\b[rs]k_test_[A-Za-z0-9]{16,}" },
+    { "name": "payment-webhook-secret", "pattern": "\\bwhsec_[A-Za-z0-9+/=]{16,}" },
+    { "name": "source-host-token", "pattern": "\\bgh[pousr]_[A-Za-z0-9]{30,}" },
+    { "name": "source-host-fine-grained-token", "pattern": "\\bgithub_pat_[A-Za-z0-9_]{40,}" },
+    { "name": "chat-platform-token", "pattern": "\\bxox[abprs]-[A-Za-z0-9-]{10,}" },
+    { "name": "cloud-access-key-id", "pattern": "\\b(?:AKIA|ASIA)[A-Z0-9]{16}\\b" },
+    { "name": "cloud-api-key", "pattern": "\\bAIza[0-9A-Za-z_-]{35}" },
+    { "name": "jwt", "pattern": "\\beyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}" },
+    { "name": "private-key", "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----" },
+    { "name": "bearer-header", "pattern": "(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{16,}" },
+    { "name": "gateway-key", "pattern": "\\bmcp_[0-9a-f]{64}\\b" }
+  ],
+  "assignment": "(?i)([A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*[\"']?\\s*[:=]\\s*[\"']?)([^\\s\"',;&}]{4,})",
+  "secretKey": "(?i)(password|passwd|secret|token|api[_-]?key|private[_-]?key|authorization|credential)",
+  "entropy": { "minLength": 24, "minBits": 4.0, "window": 60 },
+  "urlCredential": "([A-Za-z][A-Za-z0-9+.-]*://)([^/\\s:@]+):([^/\\s@]+)@",
+  "urlParam": "(?i)([?&](?:token|key|sig|signature|access_token|apikey|api_key|auth)=)([^&\\s\"'#]+)",
+  "pathUser": [
+    "/home/[^/\\s\"']+",
+    "/Users/[^/\\s\"']+",
+    "(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s\"']+"
+  ]
+}

@@ -455,6 +455,40 @@ by version) and the signature headers are this client's decisions. The plan
 asks for exit 20 on `plan_stale`; 20 is taken by a failed eval, so a stale
 plan exits 15 with the message to run `zuano pack plan` again.
 
+## Skills from sessions
+
+Routes under `/api/skills/from-session` (Bearer, personal session).
+
+| Route | Request and response |
+|---|---|
+| `GET /consent` | `{"statementVersion", "text"}`: the words a person accepts before an upload |
+| `POST /captures` | one of `{"source": "agent_run", "runId"}`, `{"source": "mcp_session", "sessionRef", "goal"}`, or `{"source": FORMAT, "session": SESSION, "clientRedacted": true, "turnRange": {"from", "to"}}`; each with `"consent": {"statementVersion"}` and optional `"redactTerms"`. Answers `201` `{"captureId", "turns", "toolCalls", "expiresAt", "redaction": {"counts", "placeholders"}}`; `413` too large (exit 22); `422` unparseable with a message (exit 2) |
+| `POST /captures/{id}/extract` | `{"mode": "new_skill\|eval_cases", "targetResourceId"?, "setId"?}` answers `{"extractionId", "jobId"}` |
+| `GET /extractions/{id}` | `{"extraction": {"id", "status": "queued\|running\|ready\|failed\|superseded", "error"?, "injectionFlag", "proposal": {"name", "description", "instructions", "connectors": [slug], "cases": [], "warnings": []}}}` |
+| `POST /extractions/{id}/accept` | `{"proposal", "mode", "targetResourceId"?, "setId"?, "then"?: "evals\|evals_optimize"}` answers `{"resourceId", "versionId", "setId", "catalogUrl"}` |
+| `GET /captures`, `GET /captures/{id}`, `DELETE /captures/{id}` | `{"captures": [{"id", "source", "status", "createdAt", "expiresAt", "skill"?: {"id", "name"}}]}`; `{"capture": {...row, "turns", "toolCalls", "redaction": {"counts"}}}` |
+
+`SESSION` is `zuano.session/v1`: `{"format", "source", "agent"?, "title"?,
+"startedAt"?, "endedAt"?, "cwdHint"?, "turns": [{"i", "role": "user\|assistant\|tool",
+"text", "toolCalls"?: [{"id"?, "name", "service"?, "tool"?, "kind":
+"gateway\|mcp_other\|builtin", "argsPreview", "resultPreview"?, "outcome"?}],
+"sidechain"?}], "stats", "redaction": {"rulesVersion", "clientRedacted",
+"counts", "placeholders"}}`. The CLI sends it already redacted; the gateway
+redacts again and its report is the one shown. A turn is at most 8,000
+characters, arguments 1,000 and results 1,500, and a session at most 400 turns.
+
+The redaction rules are the file `internal/redact/redaction-rules.json`
+(`zuano.redaction/v1`). The gateway's copy must be byte-identical; with
+`ZUANO_CONTRACT_FIXTURES` set to the gateway's fixtures, a test fails when
+`redaction-rules.json` there differs.
+
+Source: session-to-skill plan (normalized session, privacy, surfaces and CLI
+sections). The plan names the capture, extract, accept and list routes and the
+session shape; the `consent` route, the response wrappers, `turnRange` and the
+extraction document are this client's decisions. The shape of each agent's
+session file is read from the formats as currently documented and may need
+adjusting against real files from newer agent versions.
+
 ## Automations
 
 | Route | Request and response |

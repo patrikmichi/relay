@@ -112,6 +112,7 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		add("recovery", pending == 0, fmt.Sprintf("%d transactions need recovery", pending))
 	}
 	doctorSyncChecks(add)
+	doctorTranscripts(add)
 	pluginLedger := doctorPlugins(add)
 	if email, err := config.ResolveEmail(); err == nil && keychain.HasUnboundToken(email) {
 		add("stray-session", false, "an email-only keychain entry exists that no gateway session can use; `"+brand.Cmd("login")+"` removes it")
