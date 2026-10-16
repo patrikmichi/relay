@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -311,17 +312,18 @@ func connectWithKey(ctx context.Context, cmd *cobra.Command, c *client.Client, e
 		given[k] = resolved
 	}
 	values := map[string]string{}
+	prompts := bufio.NewReader(cmd.InOrStdin())
 	for _, field := range entry.Fields {
 		v, ok := given[field.Key]
 		if !ok {
 			v, ok = os.LookupEnv("RELAY_CONNECT_" + field.Key)
 		}
-		if !ok && field.Optional && !isInteractiveTerminal(os.Stdin) {
+		if !ok && field.Optional && !canPrompt(cmd.InOrStdin()) {
 			continue
 		}
 		if !ok {
 			var err error
-			if v, err = promptField(cmd, field); err != nil {
+			if v, err = promptField(cmd, prompts, field); err != nil {
 				return err
 			}
 		}
@@ -389,10 +391,12 @@ func resolveFieldValue(v string, stdin io.Reader, stdinUsed *bool) (value string
 	return strings.TrimRight(string(raw), "\r\n"), false, nil
 }
 
-// promptField asks for one credential on the terminal; secrets are read
-// without echo. Without a terminal it fails rather than hang.
-func promptField(cmd *cobra.Command, field connectionField) (string, error) {
-	if !isInteractiveTerminal(os.Stdin) {
+// promptField asks for one credential through the command's input: the
+// terminal when that is the process's stdin (secrets are then read without
+// echo), or whatever reader the command was given. A process stdin that is
+// not a terminal fails rather than hang.
+func promptField(cmd *cobra.Command, in *bufio.Reader, field connectionField) (string, error) {
+	if !canPrompt(cmd.InOrStdin()) {
 		key := textsafe.Clean(field.Key)
 		return "", fmt.Errorf("%s needs a value but there is no terminal; pass --field %s=@file or --field %s=- (stdin), or set RELAY_CONNECT_%s", key, key, key, key)
 	}
@@ -400,17 +404,16 @@ func promptField(cmd *cobra.Command, field connectionField) (string, error) {
 	if label == "" {
 		label = textsafe.Clean(field.Key)
 	}
-	out := cmd.OutOrStdout()
+	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out, "%s: ", label)
-	if field.Secret {
-		v, err := readSecret(os.Stdin)
+	if f, isFile := cmd.InOrStdin().(*os.File); isFile && f == os.Stdin && field.Secret {
+		v, err := readSecret(f)
 		fmt.Fprintln(out)
 		return v, err
 	}
-	var v string
-	_, err := fmt.Fscanln(os.Stdin, &v)
-	if err != nil && v == "" && !field.Optional {
-		return "", err
+	line, err := in.ReadString('\n')
+	if err != nil && line == "" && !field.Optional {
+		return "", fmt.Errorf("%s needs a value: %w", textsafe.Clean(field.Key), err)
 	}
-	return v, nil
+	return strings.TrimRight(line, "\r\n"), nil
 }

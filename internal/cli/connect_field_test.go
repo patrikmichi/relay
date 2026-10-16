@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,43 @@ func TestResolveFieldValue(t *testing.T) {
 	big := strings.Repeat("x", maxFieldBytes+1)
 	if _, _, err := resolveFieldValue("-", strings.NewReader(big), new(bool)); err == nil {
 		t.Error("oversized stdin accepted")
+	}
+}
+
+func TestConnectPromptsThroughTheCommandsInput(t *testing.T) {
+	g := newConnectorGateway(t)
+	var stdout, stderr bytes.Buffer
+	cmd := ConnectCmd()
+	cmd.SetIn(strings.NewReader("typed-key\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"clockify", "--reconnect"})
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v\n%s%s", err, stdout.String(), stderr.String())
+	}
+	if n := len(g.saved); n != 1 || g.saved[0]["fields"].(map[string]any)["CLOCKIFY_API_KEY"] != "typed-key" {
+		t.Fatalf("gateway received %v", g.saved)
+	}
+	if !strings.HasSuffix(stderr.String(), ": ") {
+		t.Errorf("the prompt should be on stderr, got %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), ": ") || strings.Contains(stdout.String(), "typed-key") {
+		t.Errorf("a prompt or the value reached stdout: %q", stdout.String())
+	}
+
+	// With no answer at all a required field fails instead of saving nothing.
+	cmd = ConnectCmd()
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"clockify", "--reconnect"})
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	if err := cmd.Execute(); err == nil {
+		t.Error("an empty answer for a required field was accepted")
+	}
+	if len(g.saved) != 1 {
+		t.Errorf("a failed prompt saved credentials: %v", g.saved)
 	}
 }
 
