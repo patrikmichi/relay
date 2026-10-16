@@ -391,6 +391,21 @@ func TestEval_WaitPrintsScores(t *testing.T) {
 	}
 }
 
+func TestEval_WaitFollowsQueuedAndRetryingAndStopsOnDead(t *testing.T) {
+	g := newEvalGateway(t)
+	g.runStates = []string{"queued", "retrying", "running", "dead"}
+	out, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--run", "evr_1", "--wait")
+	if got := ExitCode(err); got != exitEvalFailed {
+		t.Fatalf("exit = %d (%v), want %d\n%s", got, err, exitEvalFailed, out)
+	}
+	if g.runPolls < 4 {
+		t.Errorf("polled %d times: queued and retrying are not the end", g.runPolls)
+	}
+	if err == nil || !strings.Contains(err.Error(), "dead") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestEval_WaitJSONPrintsOnlyTheFinalDocument(t *testing.T) {
 	g := newEvalGateway(t)
 	out, err := evalCmd(t, g, SkillEvalCmd(), "evskill", "--wait", "--json")

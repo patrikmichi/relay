@@ -180,7 +180,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			if s := doc.Job.Status; s == "failed" || s == "cancelled" {
+			if s := doc.Job.Status; s == "failed" || s == "cancelled" || s == "dead" {
 				msg := fmt.Sprintf("optimization job %s %s", jobID, s)
 				if doc.Job.Error != nil && *doc.Job.Error != "" {
 					msg += ": " + *doc.Job.Error

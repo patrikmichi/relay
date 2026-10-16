@@ -221,18 +221,29 @@ func callToolWithContext(parent context.Context, c *client.Client, service, tool
 	if len(opts) > 0 {
 		o = opts[0]
 	}
-	pending, err := sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, o.wait, out)
-	if err != nil || pending == nil {
+	held, err := sendToolCall(parent, c, service, tool, rawArgs, o.jsonArgs, jsonOut, o.wait, out)
+	if err != nil || held == nil {
 		return err
 	}
-	return handlePending(parent, c, pending, jsonOut, o, out)
+	if held.job != nil {
+		return handleStartedJob(parent, c, held.job, jsonOut, o, out)
+	}
+	return handlePending(parent, c, held.approval, jsonOut, o, out)
+}
+
+// heldCall is a call the gateway did not finish: held for an approval, or
+// started as work that runs on after the answer.
+type heldCall struct {
+	approval *pendingApproval
+	job      *startedJob
 }
 
 // sendToolCall posts the tools/call request. It returns the pending approval
-// when the gateway held the call instead of running it. With jsonOut it
-// prints the raw JSON-RPC envelope, except for a held call that waiting will
-// replace with the final result.
-func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs, jsonArgs []string, jsonOut, waiting bool, out io.Writer) (pending *pendingApproval, err error) {
+// or started job when the gateway held the call or started it as background
+// work instead of running it to the end. With jsonOut it prints the raw
+// JSON-RPC envelope, except for a call that waiting will replace with the
+// final result.
+func sendToolCall(parent context.Context, c *client.Client, service, tool string, rawArgs, jsonArgs []string, jsonOut, waiting bool, out io.Writer) (unfinished *heldCall, err error) {
 	ctx, cancel, err := requestContext(parent, toolCallRequest)
 	if err != nil {
 		return nil, err
@@ -278,11 +289,21 @@ func sendToolCall(parent context.Context, c *client.Client, service, tool string
 	if held == nil && envErr == nil && env.Result != nil {
 		held = pendingFromResult(env.Result)
 	}
-	if jsonOut && (held == nil || !waiting) {
+	var started *startedJob
+	if held == nil {
+		started = jobFromREST(resp.StatusCode, respBody)
+		if started == nil && envErr == nil && env.Result != nil {
+			started = jobFromResult(env.Result)
+		}
+	}
+	if jsonOut && ((held == nil && started == nil) || !waiting) {
 		fmt.Fprintln(out, string(respBody))
 	}
 	if held != nil {
-		return held, nil
+		return &heldCall{approval: held}, nil
+	}
+	if started != nil {
+		return &heldCall{job: started}, nil
 	}
 	if refusal := policyRefusal(respBody, env); refusal != nil {
 		return nil, refusal

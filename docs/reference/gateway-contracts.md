@@ -89,6 +89,27 @@ Source: billing plan sections 5.1 (entitlement types), 3.1 (meter keys) and 9
 (what the commands print). The field layout is this client's reading of those
 types; `micros` are millionths of the currency unit.
 
+## Jobs and runs
+
+| Route | Response |
+|---|---|
+| `POST /api/runtime/run`, or a tool that starts background work | `202` `{"run_id", "job_id", "status": "queued"}`, or the same object as an MCP tool result's `structuredContent`. Fixture: `run-accepted.json` |
+| `GET /api/jobs?kind=&status=&cursor=` | `{"jobs": [JOB], "nextCursor": null\|text}`. Fixture: `jobs.json` |
+| `GET /api/jobs/{id}` | `{"job": JOB}`. Fixture: `job.json` |
+| `POST /api/jobs/{id}/cancel`, `POST /api/jobs/{id}/retry` | `{"job": JOB}`; retry is admin-only and for `failed` or `dead` jobs |
+| `GET /api/runtime/runs/{id}` | a run document that gains `job_status` (a top-level field, or under `run`); `POST /api/runtime/runs/{id}/cancel` is the existing cooperative cancel |
+
+```json
+JOB = {"id": "job_<ulid>", "kind", "status": "queued|running|retrying|succeeded|failed|cancelled|dead",
+       "attempts", "progress": {}, "error": null|text,
+       "created_at", "started_at": null|text, "finished_at": null|text}
+```
+
+Source: scalability plan sections 5.1, 5.3, 6, 7 and 8. The plan names the
+routes, the statuses and the table columns; the `{"job": ...}` wrapper and
+`snake_case` fields are this client's decision, following the approvals and
+runtime routes. relay treats an id that starts with `job_` as a job.
+
 ## Quota usage
 
 `GET /api/org/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` (Bearer). Fixture:

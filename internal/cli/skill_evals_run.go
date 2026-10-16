@@ -113,7 +113,9 @@ func (r evalRun) errorText() string {
 	return ""
 }
 
-func terminalStatus(s string) bool { return s == "succeeded" || s == "failed" || s == "cancelled" }
+// terminalStatus is true for a finished run or job. queued and retrying are
+// still going, and dead is a job that failed every retry.
+func terminalStatus(s string) bool { return jobTerminal(s) }
 
 // waitFor calls check every evalPollInterval until it reports done, the
 // timeout passes or ctx ends. status is shown on stderr unless quiet.
@@ -449,7 +451,7 @@ func runEval(cmd *cobra.Command, f evalFlags, skillRef string, o runOptions, com
 // runExit maps a finished run to the process status.
 func runExit(r evalRun, failOnRegression bool) error {
 	switch r.Status {
-	case "failed", "cancelled":
+	case "failed", "cancelled", "dead":
 		msg := fmt.Sprintf("run %s %s", r.ID, r.Status)
 		if e := r.errorText(); e != "" {
 			msg += ": " + e

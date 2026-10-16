@@ -370,7 +370,7 @@ Every `relay` command falls into exactly one of two buckets:
 |---|---|---|
 | Touches | Only files on this machine (`~/.claude/`, `~/.claude.json`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, `~/.codeium/windsurf/`, `~/.cline/`, project config in the current directory, and relay's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `relay login` or `GATEWAY_API_KEY` |
-| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay skill info`, `relay skill eval`/`compare`/`optimize`/`drafts`/`quality`/`evals`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay approvals`, `relay billing`, `relay usage`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay skill info`, `relay skill eval`/`compare`/`optimize`/`drafts`/`quality`/`evals`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay approvals`, `relay billing`, `relay usage`, `relay runs`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -419,6 +419,7 @@ a gateway.
 | `relay approvals list\|show\|approve\|deny\|wait` | gateway | List held calls, open the page where one is approved or denied with a passkey (`--no-browser` prints a link and QR code), or wait for one's result (exit 0, 10 denied, 11 expired, 12 pending) |
 | `relay billing status\|usage\|open` | gateway | Show the plan, seats and spend cap, metered usage against allowances (`--meter`, `--period`, `--by`), or open the billing page; a request the plan refuses exits 30 to 33 with the upgrade link ([docs/reference/billing.md](docs/reference/billing.md)) |
 | `relay usage [--from] [--to]` | gateway | Show each quota metric against its soft and hard limit; a used-up quota exits 13 |
+| `relay runs list\|show\|wait\|cancel\|retry` | gateway | Follow the gateway's background jobs (agent runs, evals, deliveries); a call that starts one prints its id, and `--wait` follows it ([docs/reference/runs.md](docs/reference/runs.md)) |
 
 ### Syncing coding agents
 
