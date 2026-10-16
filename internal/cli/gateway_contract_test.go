@@ -13,34 +13,12 @@ import (
 	"github.com/patrikmichi/zuano/internal/signing"
 )
 
-// These bodies have the shapes the gateway routes build, so a drift between a
-// route and the client shows up here rather than against a live gateway.
-const (
-	// app/api/approvals/[id]/route.ts, default and ?full=1.
-	contractApprovalPreview = `{"approval":{"approval_id":"apr_1","status":"pending","service":"stripe","tool":"create_refund","risk":"destructive","args_digest":"9b2e","requester":"dev@example.com","reason":"destructive tool","created_at":"2026-10-16T12:00:00.000Z","expires_at":"2026-10-16T12:15:00.000Z"},"args_preview":{"charge":"ch_1"},"truncated":false,"args_digest":"9b2e"}`
-	contractApprovalFull    = `{"approval":{"approval_id":"apr_1","status":"pending","service":"stripe","tool":"create_refund","risk":"destructive","args_digest":"9b2e","requester":"dev@example.com","reason":"destructive tool","created_at":"2026-10-16T12:00:00.000Z","expires_at":"2026-10-16T12:15:00.000Z"},"args":{"charge":"ch_1","memo":"full text"},"truncated":false}`
-	contractApprovalGone    = `{"approval":{"approval_id":"apr_1","status":"pending","service":"stripe","tool":"create_refund","risk":"destructive","args_digest":"9b2e","requester":"dev@example.com","reason":"destructive tool","created_at":"2026-10-16T12:00:00.000Z","expires_at":"2026-10-16T12:15:00.000Z"},"args_preview":null,"truncated":false}`
-
-	// lib/approvals/result.ts pendingMcpResult.
-	contractPendingMCP = `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\n  \"status\": \"pending_approval\",\n  \"approval_id\": \"apr_1\",\n  \"service\": \"stripe\",\n  \"tool\": \"create_refund\",\n  \"risk\": \"destructive\",\n  \"args_digest\": \"9b2e\",\n  \"expires_at\": \"2026-10-16T12:15:00.000Z\",\n  \"next\": \"A human has to approve this call.\"\n}"}],"structuredContent":{"status":"pending_approval","approval_id":"apr_1","service":"stripe","tool":"create_refund","risk":"destructive","args_digest":"9b2e","expires_at":"2026-10-16T12:15:00.000Z"},"isError":false}}`
-
-	// app/api/marketplace/skills/[id]/requirements/route.ts.
-	contractRequirements = `{"requirements":[{"slug":"fakturoid","tools":["list_invoices"],"connected":true},{"slug":"slack","connected":false}],"satisfied":false,"missing":["slack"],"skillId":"res_1","version":"1.2.0"}`
-
-	// app/api/marketplace/skills/[id]/evals/runs/[runId]: run, results and progress.
-	contractEvalRun = `{"run":{"id":"evr_1","setId":"evs_1","kind":"trigger","status":"succeeded","repeats":3,"splits":["train","validation"],"model":"anthropic/claude-sonnet-5.5","judgeModel":"anthropic/claude-sonnet-5.5","variants":[{"label":"1.1.0","versionId":"rev_1"},{"label":"1.2.0","versionId":"rev_2"}],"maxTokens":200000,"inputTokens":1200,"outputTokens":300,"costUsd":0.01,"error":null,"summary":{"total":30,"completed":30,"variants":[{"label":"1.1.0","versionId":"rev_1","trigger":{"train":{"precision":{"mean":1,"stddev":0,"n":3},"recall":{"mean":1,"stddev":0,"n":3},"f1":{"mean":1,"stddev":0,"n":3},"cases":5},"validation":{"precision":{"mean":0.8,"stddev":0,"n":3},"recall":{"mean":0.8,"stddev":0,"n":3},"f1":{"mean":0.8,"stddev":0,"n":3},"cases":3}},"inputTokens":600,"outputTokens":150,"costUsd":0.005,"latencyMs":{"mean":420,"stddev":80,"n":30},"errors":0,"skipped":0},{"label":"1.2.0","versionId":"rev_2","trigger":{"validation":{"precision":{"mean":0.5,"stddev":0,"n":3},"recall":{"mean":0.5,"stddev":0,"n":3},"f1":{"mean":0.5,"stddev":0,"n":3},"cases":3}},"inputTokens":600,"outputTokens":150,"costUsd":0.005,"latencyMs":{"mean":400,"stddev":70,"n":30},"errors":0,"skipped":0}],"comparisons":[{"baseline":"1.1.0","variant":"1.2.0","deltas":[{"caseId":"evc_1","caseName":"asks","split":"validation","baseline":1,"variant":0,"delta":-1}],"winLoss":{"all":{"wins":0,"losses":1,"ties":4},"validation":{"wins":0,"losses":1,"ties":2}},"significance":{"all":{"meanDelta":-0.2,"ciLow":-0.4,"ciHigh":0,"pValue":0.04,"significant":true},"validation":{"meanDelta":-0.3,"ciLow":-0.5,"ciHigh":-0.1,"pValue":0.01,"significant":true}}}],"regressions":[{"versionId":"rev_2","previousVersionId":"rev_1","kind":"trigger","score":0.5,"previous":0.8}]},"createdAt":"2026-10-16T12:00:00.000Z","startedAt":"2026-10-16T12:00:01.000Z","finishedAt":"2026-10-16T12:00:30.000Z"},"results":[{"id":"evr_x","runId":"evr_1","caseId":"evc_1","caseName":"asks","variant":"1.2.0","repeat":0,"split":"validation","outcome":"fail","score":0,"detail":{},"inputTokens":10,"outputTokens":3,"latencyMs":400,"agentRunId":null}],"progress":{"done":30,"total":30}}`
-
-	// GET /evals/sets/{setId}.
-	contractEvalSet = `{"set":{"id":"evs_1","skillId":"res_1","name":"smoke","description":"","versionId":"rev_1","trainPercent":70,"counts":{"trigger":8,"task":0,"train":5,"validation":3},"cases":[{"id":"evc_1","kind":"trigger","name":"asks","input":"invoice Acme","shouldTrigger":true,"split":"train","requiredConnectors":[]}]}}`
-)
-
-// lib/marketplace/generate-manifest.ts MarketplaceManifestSchema output: the
-// owner is an object, not a string.
-const contractMarketplaceManifest = `{"name":"org-abc123-marketplace","owner":{"name":"org_abc123","email":"admin@example.com"},"plugins":[{"name":"searcher","source":"./plugins/res_abc123","version":"1.2.3","description":"Search","displayName":"Searcher"}],"description":"Plugins","version":"2026.10.1"}`
+// The documents these tests decode are the ones the gateway's route tests
+// write; see contract_fixtures_test.go for where they are read from.
 
 func TestContract_MarketplaceManifestDecodes(t *testing.T) {
 	var m marketplaceManifest
-	if err := json.Unmarshal([]byte(contractMarketplaceManifest), &m); err != nil {
+	if err := json.Unmarshal([]byte(contractFixture(t, "marketplace-manifest.json")), &m); err != nil {
 		t.Fatalf("the gateway's manifest does not decode: %v", err)
 	}
 	if m.Owner.Name != "org_abc123" || m.Owner.Email != "admin@example.com" || len(m.Plugins) != 1 || m.Plugins[0].Source != "./plugins/res_abc123" {
@@ -54,7 +32,7 @@ func TestContract_MarketplaceManifestDecodes(t *testing.T) {
 
 func TestContract_ApprovalShowReadsArgsPreview(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/approvals/apr_1": reply(200, contractApprovalPreview),
+		"GET /api/approvals/apr_1": reply(200, contractFixture(t, "approval-preview.json")),
 	})
 	out, err := runCommand(t, ApprovalsCmd(), "show", "apr_1")
 	if err != nil || !strings.Contains(out, `"charge": "ch_1"`) {
@@ -63,11 +41,11 @@ func TestContract_ApprovalShowReadsArgsPreview(t *testing.T) {
 }
 
 func TestContract_ApprovalBodiesDecodeToTheSameRecord(t *testing.T) {
-	for name, body := range map[string]string{"preview": contractApprovalPreview, "full": contractApprovalFull, "args gone": contractApprovalGone} {
+	for name, file := range map[string]string{"preview": "approval-preview.json", "full": "approval-full.json", "args gone": "approval-args-gone.json"} {
 		var doc struct {
 			Approval approvalRecord `json:"approval"`
 		}
-		if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		if err := json.Unmarshal([]byte(contractFixture(t, file)), &doc); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if a := doc.Approval; a.ApprovalID != "apr_1" || a.Status != "pending" || a.Service != "stripe" || a.Risk != "destructive" {
@@ -78,7 +56,7 @@ func TestContract_ApprovalBodiesDecodeToTheSameRecord(t *testing.T) {
 
 func TestContract_ApproveOpensThePageForAnApprovalTheGatewayReturns(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/approvals/apr_1": reply(200, contractApprovalPreview),
+		"GET /api/approvals/apr_1": reply(200, contractFixture(t, "approval-preview.json")),
 	})
 	stubBrowserWith(t, nil)
 	out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--no-browser")
@@ -88,7 +66,7 @@ func TestContract_ApproveOpensThePageForAnApprovalTheGatewayReturns(t *testing.T
 }
 
 func TestContract_PendingMCPResult(t *testing.T) {
-	env, err := decodeMCPEnvelope([]byte(contractPendingMCP))
+	env, err := decodeMCPEnvelope([]byte(contractFixture(t, "mcp-pending-approval.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +78,7 @@ func TestContract_PendingMCPResult(t *testing.T) {
 
 func TestContract_Requirements(t *testing.T) {
 	var r skillRequirements
-	if err := json.Unmarshal([]byte(contractRequirements), &r); err != nil {
+	if err := json.Unmarshal([]byte(contractFixture(t, "skill-requirements.json")), &r); err != nil {
 		t.Fatal(err)
 	}
 	if r.Satisfied || r.SkillID != "res_1" || r.Version != "1.2.0" || len(r.Missing) != 1 || r.Missing[0] != "slack" {
@@ -113,7 +91,7 @@ func TestContract_Requirements(t *testing.T) {
 
 func TestContract_EvalRunAndSet(t *testing.T) {
 	var d runDoc
-	if err := json.Unmarshal([]byte(contractEvalRun), &d); err != nil {
+	if err := json.Unmarshal([]byte(contractFixture(t, "eval-run.json")), &d); err != nil {
 		t.Fatal(err)
 	}
 	s := d.Run.Summary
@@ -130,7 +108,7 @@ func TestContract_EvalRunAndSet(t *testing.T) {
 	var set struct {
 		Set evalSet `json:"set"`
 	}
-	if err := json.Unmarshal([]byte(contractEvalSet), &set); err != nil {
+	if err := json.Unmarshal([]byte(contractFixture(t, "eval-set.json")), &set); err != nil {
 		t.Fatal(err)
 	}
 	if set.Set.Counts.Trigger != 8 || set.Set.Cases[0].ShouldTrigger == nil || !*set.Set.Cases[0].ShouldTrigger {

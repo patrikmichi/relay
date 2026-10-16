@@ -6,6 +6,25 @@ does not serve all of them yet; each section says where its shape comes from
 The gateway's contract tests should produce the documents in
 `internal/cli/testdata/contracts/`, which zuano's own tests read.
 
+## Contract fixtures
+
+zuano's tests read each gateway document from a file. By default that is the
+vendored copy in `internal/cli/testdata/contracts/`. Set
+`ZUANO_CONTRACT_FIXTURES` to a directory of the gateway's own fixtures
+(`gateway/contract-fixtures`) and the tests read every file from there
+instead; a file missing from that directory fails the test. The CI job
+`gateway-contract` runs the `Contract` tests that way against the gateway's
+`main` branch.
+
+The documents the contract tests read: `approval-preview.json`,
+`approval-full.json`, `approval-args-gone.json`, `mcp-pending-approval.json`,
+`skill-requirements.json`, `eval-run.json`, `eval-set.json` and
+`marketplace-manifest.json`. Ids and timestamps are stable placeholders, so a
+fixture changes only when a route's shape does.
+
+`zuano docs gen --out DIR` (hidden) writes one Markdown page per command, for
+the gateway's docs site to pull in.
+
 Conventions: a field name in `snake_case` follows the approvals and runtime
 routes, `camelCase` follows the billing, evals and entitlement types. A field
 zuano does not read may be added at any time; a field zuano reads must not

@@ -4,23 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// contractFixture reads a gateway response shape recorded from the billing
-// and scalability specs. The gateway's own contract tests must produce the
-// same documents.
-func contractFixture(t *testing.T, name string) string {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "contracts", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(raw)
-}
 
 func TestBillingStatus_PrintsThePlanSeatsAndBillingLink(t *testing.T) {
 	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){

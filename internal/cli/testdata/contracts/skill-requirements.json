@@ -1,0 +1,1 @@
+{"requirements":[{"slug":"fakturoid","tools":["list_invoices"],"connected":true},{"slug":"slack","connected":false}],"satisfied":false,"missing":["slack"],"skillId":"res_1","version":"1.2.0"}

@@ -1,0 +1,1 @@
+{"name":"org-abc123-marketplace","owner":{"name":"org_abc123","email":"admin@example.com"},"plugins":[{"name":"searcher","source":"./plugins/res_abc123","version":"1.2.3","description":"Search","displayName":"Searcher"}],"description":"Plugins","version":"2026.10.1"}
