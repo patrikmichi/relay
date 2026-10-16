@@ -8,7 +8,7 @@ module github.com/patrikmichi/zuano
 // Go version from this file (go-version-file) so they can't drift apart.
 go 1.26.0
 
-toolchain go1.26.8
+toolchain go1.26.9
 
 require (
 	github.com/pelletier/go-toml/v2 v2.4.3
