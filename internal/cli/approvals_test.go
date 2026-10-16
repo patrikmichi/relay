@@ -121,12 +121,26 @@ func TestApprovalsShow_PrintsTheApprovalAndArgumentPreview(t *testing.T) {
 	}
 }
 
-func TestApprovalsApprove_SendsGrantAndNote(t *testing.T) {
-	_, bodies := approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"POST /api/approvals/apr_1/approve": reply(200, `{"ok":true,"approval":`+approvedJSON+`}`),
-	})
+const fullCallJSON = `{"approval":` + pendingApprovalJSON + `,"args_preview":{"charge":"ch_1","amount":4200,"memo":"refund the whole order"}}`
 
-	out, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1", "--grant", "30", "--note", "checked the invoice")
+// reviewable adds the full-call fetch every decision makes before asking.
+func reviewable(handlers map[string]func(http.ResponseWriter, map[string]any)) map[string]func(http.ResponseWriter, map[string]any) {
+	handlers["GET /api/approvals/apr_1?full=1"] = reply(200, fullCallJSON)
+	return handlers
+}
+
+// decide runs a decision with the person's answer typed on stdin.
+func decide(t *testing.T, answer string, args ...string) (string, error) {
+	t.Helper()
+	return runWithInput(t, ApprovalsCmd(), answer, args...)
+}
+
+func TestApprovalsApprove_SendsGrantAndNote(t *testing.T) {
+	_, bodies := approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
+		"POST /api/approvals/apr_1/approve": reply(200, `{"ok":true,"approval":`+approvedJSON+`}`),
+	}))
+
+	out, err := decide(t, "y\n", "approve", "apr_1", "--grant", "30", "--note", "checked the invoice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +152,7 @@ func TestApprovalsApprove_SendsGrantAndNote(t *testing.T) {
 		t.Errorf("output = %q", out)
 	}
 
-	if _, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1"); err != nil {
+	if _, err := decide(t, "y\n", "approve", "apr_1"); err != nil {
 		t.Fatal(err)
 	}
 	if len((*bodies)[1]) != 0 {
@@ -164,10 +178,10 @@ func TestApprovalsApprove_RejectsBadGrantAndLongNoteWithoutDialing(t *testing.T)
 }
 
 func TestApprovalsDeny_SendsNote(t *testing.T) {
-	_, bodies := approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
+	_, bodies := approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
 		"POST /api/approvals/apr_1/deny": reply(200, `{"ok":true,"approval":{"approval_id":"apr_1","status":"denied","service":"stripe","tool":"create_refund","risk":"destructive"}}`),
-	})
-	out, err := runCommand(t, ApprovalsCmd(), "deny", "apr_1", "--note", "no")
+	}))
+	out, err := decide(t, "y\n", "deny", "apr_1", "--note", "no")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,10 +218,10 @@ func TestApprovalsDecide_MapsGatewayRefusals(t *testing.T) {
 		{410, `{"error":"Approval has expired","reason":"expired"}`, "Approval has expired (HTTP 410)"},
 		{401, `{"error":"Unauthorized"}`, "relay login"},
 	} {
-		approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
+		approvalsGateway(t, reviewable(map[string]func(http.ResponseWriter, map[string]any){
 			"POST /api/approvals/apr_1/approve": reply(tc.status, tc.body),
-		})
-		if _, err := runCommand(t, ApprovalsCmd(), "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), tc.want) {
+		}))
+		if _, err := decide(t, "y\n", "approve", "apr_1"); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("HTTP %d: err = %v, want %q", tc.status, err, tc.want)
 		}
 	}

@@ -289,7 +289,7 @@ RELAY_AGENT=1 relay stripe create_refund --arg charge=ch_1 --wait=120
 
 # What you do, with your own session (no RELAY_AGENT):
 relay approvals list
-relay approvals approve apr_3f9c4e --grant 30
+relay approvals approve apr_3f9c4e --grant 30   # shows the whole call, asks y/N
 ```
 
 `relay login` says which kind of session it asked for, because the kind is
@@ -305,10 +305,14 @@ destructive and outward tools, `grant` for writes. Exit statuses, the profiles
 and what `relay sync` sets are in
 [docs/reference/approvals.md](docs/reference/approvals.md).
 
-**Security note.** The agent marker is chosen when a session is issued. An
-unmarked `relay login` on the same machine is still unrestricted, so anything
-that can run it, or read your keychain, can act without approval. The agent
-profile makes the default safe; it is not a sandbox. keylatch RH-7 is the fix.
+**Security note.** `RELAY_AGENT` is a selector, not a security boundary. The
+agent marker is chosen when a session is issued; an unmarked `relay login` on
+the same machine is still unrestricted, and a process that unsets `RELAY_AGENT`
+or reads your keychain acts as you. The agent profile makes the default safe;
+it is not a sandbox. keylatch is the fix for processes that run as the same
+user. As a minimum, `relay approvals approve` and `deny` need an interactive
+terminal and show the whole call before they ask; they refuse when stdin is not
+a terminal.
 
 ## The offline-vs-gateway model
 

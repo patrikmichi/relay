@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/keychain"
+	"github.com/patrikmichi/relay/internal/textsafe"
 )
 
 // Exit statuses of `relay approvals wait` and of a call run with --wait.
@@ -58,6 +60,15 @@ type approvalRecord struct {
 	GrantMinutes int    `json:"grant_minutes"`
 	Note         string `json:"note"`
 	ExecutedAt   string `json:"executed_at"`
+}
+
+// sanitized returns the record with control characters removed from every
+// text field, since the gateway's values are printed on a terminal.
+func (a approvalRecord) sanitized() approvalRecord {
+	for _, f := range []*string{&a.ApprovalID, &a.Status, &a.Service, &a.Tool, &a.Risk, &a.ArgsDigest, &a.Requester, &a.Client, &a.Reason, &a.RuleID, &a.CreatedAt, &a.ExpiresAt, &a.DecidedAt, &a.Approver, &a.Note, &a.ExecutedAt} {
+		*f = textsafe.Clean(*f)
+	}
+	return a
 }
 
 // awaitOutcome mirrors the body of POST /api/approvals/{id}/await.
@@ -211,6 +222,7 @@ func approvalsListCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 			fmt.Fprintln(tw, "ID\tSTATUS\tCALL\tRISK\tREQUESTER\tEXPIRES")
 			for _, a := range list.Approvals {
+				a = a.sanitized()
 				fmt.Fprintf(tw, "%s\t%s\t%s.%s\t%s\t%s\t%s\n", a.ApprovalID, a.Status, a.Service, a.Tool, a.Risk, a.Requester, a.ExpiresAt)
 			}
 			return tw.Flush()
@@ -265,6 +277,7 @@ func approvalsShowCmd() *cobra.Command {
 }
 
 func printApproval(out io.Writer, a approvalRecord) {
+	a = a.sanitized()
 	fmt.Fprintf(out, "Approval:  %s (%s)\n", a.ApprovalID, a.Status)
 	fmt.Fprintf(out, "Call:      %s %s\n", a.Service, a.Tool)
 	reason := a.Reason
@@ -296,9 +309,53 @@ func printApproval(out io.Writer, a approvalRecord) {
 func indentJSON(raw []byte) string {
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, raw, "", "  "); err != nil {
-		return string(raw)
+		return textsafe.Block(string(raw))
 	}
-	return buf.String()
+	return textsafe.Block(buf.String())
+}
+
+// confirmDecision shows the person the whole call the gateway holds, fetched
+// without truncation, and asks before a decision is sent. It is the check
+// that a human, not a process running as the same user, decided: the agent
+// profile check alone is only a selector.
+func confirmDecision(cmd *cobra.Command, c *client.Client, id string, approve bool, body map[string]any) error {
+	code, raw, err := approvalsDo(cmd.Context(), c, controlRequest, http.MethodGet, "/api/approvals/"+url.PathEscape(id)+"?full=1", nil)
+	if err != nil {
+		return err
+	}
+	if code != http.StatusOK {
+		return approvalError(code, raw)
+	}
+	var doc struct {
+		Approval    approvalRecord  `json:"approval"`
+		ArgsPreview json.RawMessage `json:"args_preview"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("decode approval: %w", err)
+	}
+	hasArgs := len(doc.ArgsPreview) > 0 && string(doc.ArgsPreview) != "null"
+	if approve && !hasArgs {
+		return errors.New("the gateway no longer has this call's arguments, so relay cannot show what would run: refusing to approve it blind. Deny it, or ask the agent to repeat the call")
+	}
+
+	out := cmd.ErrOrStderr()
+	printApproval(out, doc.Approval)
+	if hasArgs {
+		fmt.Fprintf(out, "Arguments: %s\n", indentJSON(doc.ArgsPreview))
+	} else {
+		fmt.Fprintln(out, "Arguments: no longer available")
+	}
+	if g, ok := body["grant_minutes"].(int); ok {
+		fmt.Fprintf(out, "This also lets the agent session write to %s for %d minutes.\n", textsafe.Clean(doc.Approval.Service), g)
+	}
+	verb := "Deny"
+	if approve {
+		verb = "Approve"
+	}
+	if !askNo(bufio.NewReader(cmd.InOrStdin()), out, "\n"+verb+" this call?") {
+		return errors.New("not confirmed; nothing was decided")
+	}
+	return nil
 }
 
 func approvalsDecideCmd(approve bool) *cobra.Command {
@@ -332,8 +389,14 @@ func approvalsDecideCmd(approve bool) *cobra.Command {
 				}
 				body["grant_minutes"] = grant
 			}
+			if !canPrompt(cmd.InOrStdin()) {
+				return fmt.Errorf("relay approvals %s needs an interactive terminal: it shows you the whole call and asks before deciding", action)
+			}
 			c, err := approvalsClient(f.gatewayURL)
 			if err != nil {
+				return err
+			}
+			if err := confirmDecision(cmd, c, args[0], approve, body); err != nil {
 				return err
 			}
 			code, raw, err := approvalsDo(cmd.Context(), c, controlRequest, http.MethodPost, "/api/approvals/"+url.PathEscape(args[0])+"/"+action, body)
@@ -354,7 +417,7 @@ func approvalsDecideCmd(approve bool) *cobra.Command {
 			if err := json.Unmarshal(raw, &doc); err != nil {
 				return fmt.Errorf("decode approval: %w", err)
 			}
-			a := doc.Approval
+			a := doc.Approval.sanitized()
 			fmt.Fprintf(out, "%s %s: %s %s (%s)\n", past, a.ApprovalID, a.Service, a.Tool, a.Risk)
 			if a.GrantMinutes > 0 {
 				fmt.Fprintf(out, "Writes to %s are allowed for this agent session for %d minutes\n", a.Service, a.GrantMinutes)
@@ -487,6 +550,7 @@ func waitForApproval(parent context.Context, c *client.Client, id string, total 
 
 func reportOutcome(out io.Writer, jsonOut bool, id string, raw []byte, o awaitOutcome) error {
 	code := o.exitCode()
+	o.Error, o.Message, o.Approver, o.Note, o.ExpiresAt = textsafe.Clean(o.Error), textsafe.Clean(o.Message), textsafe.Clean(o.Approver), textsafe.Clean(o.Note), textsafe.Clean(o.ExpiresAt)
 	if jsonOut {
 		printRaw(out, raw)
 		if code == 0 {

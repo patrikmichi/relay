@@ -53,12 +53,22 @@ approves the call.
 
 ## What the profile does not do
 
-The marker is chosen when the session is issued. It is not proof of who holds
-it. A process that can run `relay login` without `--agent` as the same user on
-the same machine gets an unrestricted session, and one that can read the OS
-keychain can read your own. The agent profile and `relay sync` below make the
-default path safe, but they are not a sandbox. Closing the gap needs the human
-session to live where the agent cannot reach it; keylatch RH-7 is the fix.
+`RELAY_AGENT` is a selector, not a security boundary. The marker is chosen
+when the session is issued, and the variable only picks which stored session
+relay uses. It is not proof of who holds it. A process that can run `relay
+login` without `--agent` as the same user on the same machine gets an
+unrestricted session, a process that unsets `RELAY_AGENT` runs as you, and one
+that can read the OS keychain can read your own session. The agent profile and
+`relay sync` below make the default path safe, but they are not a sandbox.
+Closing the gap needs the human session to live where the agent cannot reach
+it: keylatch is the fix for processes that run as the same user.
+
+The one check relay can add on its own is a person at the keyboard. `relay
+approvals approve` and `deny` therefore refuse to run without an interactive
+terminal on stdin, show the whole call and ask before deciding (see below).
+That stops an unattended script or agent harness from approving its own calls
+through the CLI; it does not stop a process that talks to the gateway directly
+with your session.
 
 ## Held calls
 
@@ -102,8 +112,8 @@ with `--wait`. An outcome that was printed adds no error message of its own.
 |---|---|
 | `relay approvals list [--status S] [--json]` | `GET /api/approvals?status=S`; `S` is `pending` (default), `approved`, `denied`, `executed`, `failed`, `expired` or `all` |
 | `relay approvals show <id> [--json]` | `GET /api/approvals/{id}`: the approval and a preview of its arguments |
-| `relay approvals approve <id> [--grant MINUTES] [--note TEXT] [--json]` | `POST /api/approvals/{id}/approve` |
-| `relay approvals deny <id> [--note TEXT] [--json]` | `POST /api/approvals/{id}/deny` |
+| `relay approvals approve <id> [--grant MINUTES] [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/approve` |
+| `relay approvals deny <id> [--note TEXT] [--json]` | `GET /api/approvals/{id}?full=1`, then `POST /api/approvals/{id}/deny` |
 | `relay approvals wait <id> [--timeout SECONDS] [--json]` | `POST /api/approvals/{id}/await`, repeated while the status is `pending` |
 
 `--json` prints the response body unchanged. `--grant` (1 to 480) applies to a
@@ -117,6 +127,15 @@ session. `approve` and `deny` refuse the agent profile before sending anything,
 as the gateway does, so run them without `RELAY_AGENT`. `wait` is the other
 way round: only the session that made the call can collect it, so run it with
 the same `RELAY_AGENT` setting.
+
+`approve` and `deny` also need an interactive terminal. They fetch the call
+with `GET /api/approvals/{id}?full=1`, print the approval and every argument
+untruncated (control characters removed), and ask `Approve this call? [y/N]`.
+Only `y` or `yes` sends the decision; anything else, and end of input, sends
+nothing. With no terminal on stdin they refuse before contacting the gateway.
+`approve` also refuses when the gateway no longer has the arguments, because a
+call that cannot be shown must not be approved; `deny` still works. The review
+goes to stderr, so `--json` output stays machine-readable.
 
 ## relay explain
 
