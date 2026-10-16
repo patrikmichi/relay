@@ -1,0 +1,1 @@
+{"triggers":[{"id":"wtr_a1b2c3d4e5","name":"triage pushes","enabled":true,"action":{"kind":"agent_run","prompt":"Summarize the push"}}]}

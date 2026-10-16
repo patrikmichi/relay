@@ -1,0 +1,1 @@
+{"subscriptions":[{"id":"whs_p9o8i7u6y5","url":"https://example.com/hooks","event_types":["approval.*","run.finished"],"status":"active","description":"ops channel"}]}

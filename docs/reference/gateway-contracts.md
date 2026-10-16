@@ -119,6 +119,40 @@ changes". The plan names the routes, the upload target and the result blocks;
 the `{"file": ...}` and `{"files": ...}` wrappers and the `snake_case` fields
 of FILE are this client's decisions, following the table columns.
 
+## Webhooks
+
+All under `/api/webhooks/`, bearer auth, organisation from the credential. A
+write by an agent session may answer `202` with the held-call document (exit
+12). Fixtures: `webhooks-endpoints.json`, `webhooks-endpoint-create.json`,
+`webhooks-triggers.json`, `webhooks-subscriptions.json`,
+`webhooks-deliveries.json`, `webhooks-events.json`.
+
+| Route | Request and response |
+|---|---|
+| `GET endpoints`, `GET triggers`, `GET subscriptions` | `{"endpoints": [ROW]}`, `{"triggers": [ROW]}`, `{"subscriptions": [ROW]}` |
+| `POST endpoints` | `{"source_kind": "connector", "service", "description"}` or `{"source_kind": "generic", "signature": {"scheme": "hmac", "algorithm", "header", "encoding", "timestampHeader"?, "timestampFormat"?}, "description"}` answers `{"endpoint": ROW with "url", "secret": "whsec_..."}` |
+| `POST subscriptions` | `{"url", "event_types": [text], "description"}` answers `{"subscription": ROW, "secret"}` |
+| `POST triggers` | the definition file as given (source, filter, action, run-as) answers `{"trigger": ROW}` |
+| `POST endpoints/{id}/test`, `POST subscriptions/{id}/test` | `{}`; any `2xx` JSON |
+| `POST endpoints/{id}/rotate-secret`, `POST subscriptions/{id}/rotate-secret` | `{}` answers `{"secret"}` |
+| `GET subscriptions/{id}/deliveries?status=` | `{"deliveries": [DELIVERY], "next_cursor"}` |
+| `POST deliveries/{id}/redeliver` | `{}`; any `2xx` JSON |
+| `GET endpoints/{id}/events` | `{"events": [EVENT], "next_cursor"}` |
+
+```json
+ROW      = {"id": "whe_|wtr_|whs_...", "status"?, "enabled"?, "service"?, "source_kind"?, "url"?,
+            "event_types"?: [text], "name"?, "description"?, "action"?: {"kind"}}
+DELIVERY = {"id": "whd_...", "subscription_id", "event_id", "event_type", "attempt",
+            "status": "pending|succeeded|failed|dead", "response_status": null|int,
+            "response_ms", "response_excerpt", "last_error", "next_attempt_at", "created_at"}
+EVENT    = {"id": "wev_...", "endpoint_id", "delivery_id", "event_type", "received_at",
+            "verify": "ok|fail", "status": "received|processed|partially_failed|failed|dropped_quota"}
+```
+
+Source: file store and webhooks plan, "API" and "relay CLI changes (E)". The
+plan names the routes and ids; the wrapper keys, the `snake_case` row fields
+and the request bodies of the two create routes are this client's decisions.
+
 ## Approvals
 
 | Route | Use |
