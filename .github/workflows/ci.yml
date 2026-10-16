@@ -68,27 +68,52 @@ jobs:
   # Runs the contract tests against the documents the gateway's own route
   # tests write on its main branch, so a gateway change that the client does
   # not understand fails here. Repository secret GATEWAY_REPO_READ_TOKEN is a
-  # fine-grained read-only token for patrikmichi/relay-hub; fork PRs have no
-  # secrets and use the vendored fixtures through build-test instead.
+  # fine-grained read-only token for patrikmichi/zuano-hub. The job is skipped
+  # with a notice, not failed, while the secret is missing (fork PRs have none),
+  # the repository cannot be checked out (it is not renamed yet) or it has no
+  # gateway/contract-fixtures directory yet. The vendored fixtures run in
+  # build-test either way.
   gateway-contract:
     name: gateway-contract
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      HAS_GATEWAY_TOKEN: ${{ secrets.GATEWAY_REPO_READ_TOKEN != '' }}
     steps:
+      - name: Skip without the gateway token
+        if: ${{ env.HAS_GATEWAY_TOKEN != 'true' }}
+        run: echo "::notice title=gateway-contract skipped::GATEWAY_REPO_READ_TOKEN is not available (fork pull request or secret not set), so the gateway's fixtures were not checked."
+
       - name: Checkout
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Checkout the gateway's fixtures
+        id: fixtures
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
+        continue-on-error: true
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          repository: patrikmichi/relay-hub
+          repository: patrikmichi/zuano-hub
           ref: main
           token: ${{ secrets.GATEWAY_REPO_READ_TOKEN }}
           path: gateway-src
           sparse-checkout: gateway/contract-fixtures
           persist-credentials: false
 
+      - name: Look for the fixtures
+        id: found
+        if: ${{ env.HAS_GATEWAY_TOKEN == 'true' }}
+        run: |
+          if [ "${{ steps.fixtures.outcome }}" != "success" ]; then
+            echo "::notice title=gateway-contract skipped::patrikmichi/zuano-hub could not be checked out (not renamed yet, or the token cannot read it)."
+          elif [ ! -d gateway-src/gateway/contract-fixtures ]; then
+            echo "::notice title=gateway-contract skipped::patrikmichi/zuano-hub has no gateway/contract-fixtures directory yet."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Go
+        if: ${{ steps.found.outputs.present == 'true' }}
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
@@ -96,6 +121,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Contract tests
+        if: ${{ steps.found.outputs.present == 'true' }}
         env:
           ZUANO_CONTRACT_FIXTURES: ${{ github.workspace }}/gateway-src/gateway/contract-fixtures
         run: go test -count=1 -run Contract ./internal/cli/
