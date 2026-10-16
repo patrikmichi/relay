@@ -120,6 +120,11 @@ type skillInstallOpts struct {
 }
 
 func runSkillInstall(cmd *cobra.Command, arg string, opts skillInstallOpts) error {
+	if !opts.dryRun {
+		if err := refuseInAgentMode("relay skill install"); err != nil {
+			return err
+		}
+	}
 	scope, err := parseScope(opts.scope)
 	if err != nil {
 		return err

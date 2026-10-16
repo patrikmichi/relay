@@ -53,7 +53,7 @@ func TestSyncDetectsAgentsWritesAndIsIdempotent(t *testing.T) {
 	home := syncHome(t)
 	t.Setenv("GATEWAY_URL", "https://gateway.example.com")
 
-	out, err := runCommand(t, SyncCmd())
+	out, err := runCommand(t, SyncCmd(), "--yes")
 	if err != nil {
 		t.Fatalf("sync: %v\n%s", err, out)
 	}

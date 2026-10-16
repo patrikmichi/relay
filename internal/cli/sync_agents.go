@@ -31,6 +31,7 @@ type agentSyncOpts struct {
 	mcpAuth    string
 	dryRun     bool
 	force      bool
+	yes        bool
 	acceptLoss bool
 	jsonOut    bool
 	// mcpOverride replaces the saved MCP source for a scope, so install and
@@ -224,6 +225,8 @@ type agentSyncRun struct {
 	writes []func() error
 	warns  []string
 	agents []agentsync.AgentID
+	// stdio names the servers that run a local command.
+	stdio map[string]bool
 }
 
 func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
@@ -260,6 +263,14 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	}
 	warns = append(warns, agentProfileWarnings(bundles[agentsync.ScopeUser], kinds)...)
 	run.warns = warns
+	run.stdio = map[string]bool{}
+	for _, b := range bundles {
+		for _, s := range b.MCP {
+			if s.Command != "" {
+				run.stdio[s.Name] = true
+			}
+		}
+	}
 	if len(kinds.file) > 0 {
 		run.plan, err = agentsync.Build(env, bundles, agentsync.Options{Agents: agents, Scopes: scopes, Kinds: kinds.file, Force: o.force})
 		if err != nil {

@@ -68,10 +68,10 @@ func TestSync_OtherKindsLeaveTheEnvironmentAlone(t *testing.T) {
 
 func TestSync_MarksStdioRelayServersWithoutChangingTheSavedSource(t *testing.T) {
 	home := syncHome(t)
-	if _, err := runCommand(t, McpInstallCmd(), "bridge", "--command", "/usr/local/bin/relay", "--arg", "mcp", "--to", "claude"); err != nil {
+	if _, err := runCommand(t, McpInstallCmd(), "bridge", "--command", "/usr/local/bin/relay", "--arg", "mcp", "--to", "claude", "--yes"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runCommand(t, McpInstallCmd(), "files", "--command", "npx", "--arg", "-y", "--to", "claude"); err != nil {
+	if _, err := runCommand(t, McpInstallCmd(), "files", "--command", "npx", "--arg", "-y", "--to", "claude", "--yes"); err != nil {
 		t.Fatal(err)
 	}
 

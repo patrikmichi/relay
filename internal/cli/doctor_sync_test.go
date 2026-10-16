@@ -63,7 +63,7 @@ func TestDoctorReportsEveryArtifactKindPerAgent(t *testing.T) {
 		t.Errorf("detail = %q", checks["sync:user:claude:rules"].Detail)
 	}
 
-	if _, err := runCommand(t, SyncCmd()); err != nil {
+	if _, err := runCommand(t, SyncCmd(), "--yes"); err != nil {
 		t.Fatal(err)
 	}
 	checks, err = doctorChecksByName(t)
@@ -81,7 +81,7 @@ func TestDoctorFlagsDriftEditedEntriesAndBrokenConfigs(t *testing.T) {
 	t.Setenv("GATEWAY_API_KEY", "")
 	SetOffline(true)
 	t.Cleanup(func() { SetOffline(false) })
-	if _, err := runCommand(t, SyncCmd(), "--mcp-auth", "oauth"); err != nil {
+	if _, err := runCommand(t, SyncCmd(), "--mcp-auth", "oauth", "--yes"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -122,6 +122,11 @@ Examples:
 			if matrix {
 				return printSyncMatrix(out)
 			}
+			if !o.dryRun {
+				if err := refuseInAgentMode("relay sync"); err != nil {
+					return err
+				}
+			}
 			wantMarketplace := marketplace || customDir != ""
 			o.optionalAgents = wantMarketplace
 			run, err := planAgentSync(o)
@@ -133,6 +138,9 @@ Examples:
 					return err
 				}
 				if !o.dryRun {
+					if err := confirmAgentWrite(cmd, run, "relay sync", o.yes); err != nil {
+						return err
+					}
 					if err := run.apply(cmd.Context()); err != nil {
 						return err
 					}
@@ -160,6 +168,7 @@ Examples:
 	f.StringVar(&o.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (the agent signs in with OAuth, which the gateway marks as an agent's), or api-key (references $GATEWAY_API_KEY, which is not marked and bypasses approvals)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show what would change as a diff and write nothing")
 	f.BoolVar(&o.force, "force", false, "Replace same-named entries relay does not manage")
+	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when RELAY_AGENT is set)")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")

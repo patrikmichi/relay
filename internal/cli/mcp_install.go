@@ -22,6 +22,7 @@ type mcpInstallFlags struct {
 	gatewayURL string
 	dryRun     bool
 	force      bool
+	yes        bool
 }
 
 func McpInstallCmd() *cobra.Command {
@@ -51,7 +52,7 @@ agent is updated.`,
 			return runMcpInstall(cmd, args[0], f)
 		},
 	}
-	addMcpSyncFlags(cmd, &f.to, &f.scope, &f.dryRun, &f.force, &f.mcpAuth)
+	addMcpSyncFlags(cmd, &f)
 	fl := cmd.Flags()
 	fl.StringVar(&f.url, "url", "", "Remote MCP server URL (streamable HTTP)")
 	fl.StringVar(&f.command, "command", "", "Local stdio server command")
@@ -76,17 +77,18 @@ wrote it to. Entries you edited or created yourself are left in place.
 			return runMcpRemove(cmd, args[0], f)
 		},
 	}
-	addMcpSyncFlags(cmd, &f.to, &f.scope, &f.dryRun, &f.force, &f.mcpAuth)
+	addMcpSyncFlags(cmd, &f)
 	return cmd
 }
 
-func addMcpSyncFlags(cmd *cobra.Command, to *[]string, scope *string, dryRun, force *bool, auth *string) {
+func addMcpSyncFlags(cmd *cobra.Command, f *mcpInstallFlags) {
 	fl := cmd.Flags()
-	fl.StringSliceVar(to, "to", nil, "Agents to update (default: detected agents; all for every supported agent)")
-	fl.StringVar(scope, "scope", "user", "user or project")
-	fl.BoolVar(dryRun, "dry-run", false, "Show the diff and write nothing")
-	fl.BoolVar(force, "force", false, "Replace same-named entries relay does not manage")
-	fl.StringVar(auth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
+	fl.StringSliceVar(&f.to, "to", nil, "Agents to update (default: detected agents; all for every supported agent)")
+	fl.StringVar(&f.scope, "scope", "user", "user or project")
+	fl.BoolVar(&f.dryRun, "dry-run", false, "Show the diff and write nothing")
+	fl.BoolVar(&f.force, "force", false, "Replace same-named entries relay does not manage")
+	fl.BoolVar(&f.yes, "yes", false, "Write without asking when a local command is added (review with --dry-run first; refused when RELAY_AGENT is set)")
+	fl.StringVar(&f.mcpAuth, "mcp-auth", "auto", "Gateway MCP credentials: auto and oauth (OAuth, marked as an agent's) or api-key (unmarked, bypasses approvals)")
 }
 
 func parseSingleScope(s string) (agentsync.Scope, error) {
@@ -115,6 +117,11 @@ func parseEnvPairs(pairs []string) (map[string]string, error) {
 }
 
 func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
+	if !f.dryRun {
+		if err := refuseInAgentMode("relay mcp install"); err != nil {
+			return err
+		}
+	}
 	scope, err := parseSingleScope(f.scope)
 	if err != nil {
 		return err
@@ -171,6 +178,11 @@ func runMcpInstall(cmd *cobra.Command, name string, f mcpInstallFlags) error {
 }
 
 func runMcpRemove(cmd *cobra.Command, name string, f mcpInstallFlags) error {
+	if !f.dryRun {
+		if err := refuseInAgentMode("relay mcp remove"); err != nil {
+			return err
+		}
+	}
 	scope, err := parseSingleScope(f.scope)
 	if err != nil {
 		return err
@@ -216,6 +228,9 @@ func syncMCPSource(cmd *cobra.Command, env agentsync.Env, scope agentsync.Scope,
 	}
 	if f.dryRun {
 		return nil
+	}
+	if err := confirmAgentWrite(cmd, run, "relay mcp install", f.yes); err != nil {
+		return err
 	}
 	if err := run.apply(cmd.Context()); err != nil {
 		return err

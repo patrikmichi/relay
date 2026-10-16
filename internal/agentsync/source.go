@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,7 +78,32 @@ func (s MCPServer) Validate() error {
 	if (s.URL == "") == (s.Command == "") {
 		return fmt.Errorf("MCP server %q needs exactly one of url or command", s.Name)
 	}
+	if s.URL != "" {
+		if err := checkRemoteURL(s.URL); err != nil {
+			return fmt.Errorf("MCP server %q: %w", s.Name, err)
+		}
+	}
 	return nil
+}
+
+// checkRemoteURL accepts https, or http for a loopback host, so a synced
+// server never sends its credentials in clear text over a network.
+func checkRemoteURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("invalid url %q", raw)
+	}
+	if u.User != nil {
+		return fmt.Errorf("url %q must not contain credentials", raw)
+	}
+	host := u.Hostname()
+	switch {
+	case u.Scheme == "https":
+		return nil
+	case u.Scheme == "http" && (host == "localhost" || net.ParseIP(host).IsLoopback()):
+		return nil
+	}
+	return fmt.Errorf("url %q must use https (http is allowed only for localhost)", raw)
 }
 
 // LoadBundle reads rules, commands and hooks from dir. Problems with one
