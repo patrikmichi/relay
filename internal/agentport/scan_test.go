@@ -61,7 +61,7 @@ func TestScan_FlagsHardcodedSecret(t *testing.T) {
 	s := &Skill{
 		Name:        "leaky-skill",
 		Description: "a skill that accidentally hardcodes a credential",
-		Body:        "Set your key: sk-abcdefghijklmnopqrstuvwxyz012345\n",
+		Body:        "Set your key: sk-" + "abcdefghijklmnopqrstuvwxyz012345\n",
 	}
 	result := Scan(s)
 
