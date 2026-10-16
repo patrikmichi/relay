@@ -12,12 +12,13 @@ import (
 func isolatedTempDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if runtime.GOOS == "windows" {
-		t.Setenv("TMP", dir)
-	} else {
-		t.Setenv("TMPDIR", dir)
-	}
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	return dir
+}
+
+func lockDirOf(home string) string {
+	return filepath.Join(home, ".config", "relay", "session-locks")
 }
 
 func TestLockPath_StablePerPairAndPrivate(t *testing.T) {
@@ -37,8 +38,8 @@ func TestLockPath_StablePerPairAndPrivate(t *testing.T) {
 	if a1 == b || a1 == c {
 		t.Error("distinct pairs share a lock file")
 	}
-	if filepath.Dir(a1) != filepath.Join(dir, "relay-cli-locks") {
-		t.Errorf("lock file %s outside the temp lock dir", a1)
+	if filepath.Dir(a1) != lockDirOf(dir) {
+		t.Errorf("lock file %s outside the config lock dir", a1)
 	}
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(filepath.Dir(a1))
@@ -53,7 +54,10 @@ func TestLockPath_StablePerPairAndPrivate(t *testing.T) {
 
 func TestAcquire_UncreatableLockDir(t *testing.T) {
 	dir := isolatedTempDir(t)
-	if err := os.WriteFile(filepath.Join(dir, "relay-cli-locks"), nil, 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Dir(lockDirOf(dir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockDirOf(dir), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Acquire(context.Background(), "https://gw.example.invalid", "a@example.invalid"); err == nil {
@@ -72,6 +76,50 @@ func TestAcquire_UnopenableLockFile(t *testing.T) {
 	}
 	if _, err := Acquire(context.Background(), "https://gw.example.invalid", "a@example.invalid"); err == nil {
 		t.Fatal("expected Acquire to fail when the lock path is a directory")
+	}
+}
+
+func TestAcquire_RefusesASymlinkAtTheLockPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir := isolatedTempDir(t)
+	path, err := lockPath("https://gw.example.invalid", "a@example.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "victim")
+	if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Acquire(context.Background(), "https://gw.example.invalid", "a@example.invalid"); err == nil {
+		t.Fatal("Acquire followed a symlink at the lock path")
+	}
+	if got, _ := os.ReadFile(target); string(got) != "keep" {
+		t.Errorf("the symlink target was modified: %q", got)
+	}
+}
+
+func TestLockPath_TightensALooseLockDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("modes do not apply on Windows")
+	}
+	dir := isolatedTempDir(t)
+	if err := os.MkdirAll(lockDirOf(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lockPath("https://gw.example.invalid", "a@example.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(lockDirOf(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("lock dir mode %o, want 700", perm)
 	}
 }
 

@@ -17,7 +17,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
+
+	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/nofollow"
 )
 
 // pollInterval is how often Acquire retries a non-blocking lock attempt
@@ -39,7 +43,11 @@ func Acquire(ctx context.Context, gatewayOrigin, account string) (*Lock, error) 
 	if err != nil {
 		return nil, fmt.Errorf("session lock: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	// A symlink left at the lock path is refused rather than followed.
+	if info, statErr := os.Lstat(path); statErr == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("session lock: %s is not a regular file", path)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|nofollow.NoFollow, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("session lock: open %s: %w", path, err)
 	}
@@ -75,12 +83,30 @@ func (l *Lock) Unlock() error {
 }
 
 // lockPath derives a stable per-(gatewayOrigin, account) lock file path
-// under the OS temp directory — content-addressed so it never collides
-// with, or needs to parse, another pair's lock file.
+// under the user's config directory — content-addressed so it never collides
+// with, or needs to parse, another pair's lock file. A shared temp directory
+// is not used: another local user could pre-create the lock path as a
+// symlink or hold the lock to stall every refresh.
 func lockPath(gatewayOrigin, account string) (string, error) {
-	dir := filepath.Join(os.TempDir(), "relay-cli-locks")
+	cfg, err := config.Dir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cfg, "session-locks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", dir)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return "", err
+		}
 	}
 	sum := sha256.Sum256([]byte(gatewayOrigin + "\x00" + account))
 	return filepath.Join(dir, hex.EncodeToString(sum[:])+".lock"), nil

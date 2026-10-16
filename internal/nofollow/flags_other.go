@@ -9,3 +9,6 @@ import "os"
 // ReadFlags is plain read-only where the OS has no O_NOFOLLOW. Callers
 // Lstat the path first and check the opened file is regular.
 const ReadFlags = os.O_RDONLY
+
+// NoFollow is zero where the OS has no O_NOFOLLOW; callers Lstat the path.
+const NoFollow = 0
