@@ -45,8 +45,9 @@ const (
 	Copilot  AgentID = "copilot"
 )
 
-// Marker identifies files and blocks relay wrote. It must appear in the
-// first kilobyte of an owned file.
+// Marker labels the files and blocks relay writes, and delimits a block. It
+// does not decide ownership: the hash ledger does, so a file or block is
+// relay's only while it still holds the bytes the ledger recorded.
 const Marker = "relay-managed"
 
 // Status values reported per managed entry.

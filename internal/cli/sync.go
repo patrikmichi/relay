@@ -114,8 +114,9 @@ Agent profile
   anything that can run it: this narrows what agents do by default, it is not
   a sandbox. Leave the env kind out (--kind mcp,rules) to keep the old behaviour.
 
-Entries relay writes are marked (a hash ledger for JSON, comment markers for
-TOML, Markdown and owned files) so a later sync can update or remove them.
+What relay writes is recorded in a hash ledger (comment markers only show
+where a TOML or Markdown block begins and ends) so a later sync can update or
+remove it, and notices when you edited it.
 Entries you wrote are never replaced unless --force is given. Every write
 is one transaction: a failure restores the files already changed.
 

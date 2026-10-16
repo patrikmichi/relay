@@ -16,11 +16,11 @@ project directory (the current directory when `--scope project` is used).
 |---|---|---|
 | JSON object keys (`mcpServers`, `mcp`, `servers`) | hash ledger in `~/.config/relay/sync-ledger.json` | Updated or removed only while the on-disk value still matches what relay wrote |
 | JSON hook arrays (`hooks.<Event>[]`) | hash ledger, per item | A hook you already wrote with the same matcher and command is not duplicated |
-| Codex `config.toml` | `# >>> relay-managed:begin mcp >>>` ... `# <<< relay-managed:end mcp <<<` | A table you defined outside the block wins and is reported as a conflict |
-| Codex `config.toml`, environment | `# >>> relay-managed:begin env >>>` ... `# <<< relay-managed:end env <<<` | A `[shell_environment_policy.set]` table you defined outside the block wins and is reported as a conflict |
+| Codex `config.toml` | block delimited by `# >>> relay-managed:begin mcp >>>` ... `# <<< relay-managed:end mcp <<<`, text hash in the ledger | A table you defined outside the block wins and is reported as a conflict, even under `--force`; a block you edited is a conflict until `--force` |
+| Codex `config.toml`, environment | block delimited by `# >>> relay-managed:begin env >>>` ... `# <<< relay-managed:end env <<<`, text hash in the ledger | A `[shell_environment_policy.set]` table you defined outside the block wins and is reported as a conflict, even under `--force` |
 | Claude Code `settings.json` `env` | hash ledger, per variable | A variable you set to another value is a conflict; others are untouched |
-| Shared Markdown (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...) | `<!-- relay-managed:begin rules -->` ... `<!-- relay-managed:end rules -->` | Text outside the block is never touched |
-| Whole files (`.mdc`, command and workflow files, the OpenCode plugin) | `relay-managed` in the first kilobyte | A same-named file without the marker is yours and is left alone |
+| Shared Markdown (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...) | block delimited by `<!-- relay-managed:begin rules -->` ... `<!-- relay-managed:end rules -->`, text hash in the ledger | Text outside the block is never touched; the file's line endings are kept; a block you edited is a conflict until `--force`; duplicate marker pairs are refused |
+| Whole files (`.mdc`, command and workflow files, the OpenCode plugin) | content hash in the ledger (the marker line is a label) | A same-named file the ledger does not know, or one you edited, is yours and is left alone until `--force` |
 | Skills and subagents | the agentport manifest (`relay history`) | Unmodified relay installs are updated when the source changes; user-owned or edited ones are conflicts until `--force` |
 
 Files are edited in place: JSON keeps key order, indentation and unrelated

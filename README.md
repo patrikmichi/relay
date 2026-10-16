@@ -219,9 +219,10 @@ agents through the same engine as `relay skill migrate` and
 `~/.claude/settings.json`, `~/.codex/config.toml`, `.cursor/mcp.json`,
 `opencode.json` and `~/.gemini/settings.json` are merged, not rewritten: key
 order and formatting are kept, and relay changes only what it wrote.
-Relay-managed entries are recorded (a hash ledger for JSON, comment markers
-for TOML and Markdown, a marker line inside owned files), so a later sync can
-update them and remove the ones you dropped from the source. An entry with
+What relay wrote is recorded in a hash ledger (`~/.config/relay/sync-ledger.json`):
+the entry, hook, block or file as written. Comment markers only show where a
+TOML or Markdown block starts and ends. A later sync updates what still matches
+the ledger and removes the ones you dropped from the source. An entry with
 the same name that you created, or one you edited after relay wrote it, is
 reported as a `conflict` and left alone; `--force` replaces it. A config file
 relay cannot parse (for example JSON with comments) is skipped and reported.
