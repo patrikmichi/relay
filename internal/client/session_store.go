@@ -17,14 +17,14 @@ type SessionStore interface {
 	Write(gatewayOrigin, email string, data keychain.TokenData) error
 }
 
-type keychainSessionStore struct{}
+type keychainSessionStore struct{ profile keychain.Profile }
 
-func (keychainSessionStore) Read(gatewayOrigin, email string) (keychain.TokenData, error) {
-	return keychain.ReadToken(gatewayOrigin, email)
+func (s keychainSessionStore) Read(gatewayOrigin, email string) (keychain.TokenData, error) {
+	return keychain.ReadProfileToken(s.profile, gatewayOrigin, email)
 }
 
-func (keychainSessionStore) Write(gatewayOrigin, email string, data keychain.TokenData) error {
-	return keychain.WriteToken(gatewayOrigin, email, data)
+func (s keychainSessionStore) Write(gatewayOrigin, email string, data keychain.TokenData) error {
+	return keychain.WriteProfileToken(s.profile, gatewayOrigin, email, data)
 }
 
 // SessionUnlocker releases a lock acquired via SessionLocker.Lock.

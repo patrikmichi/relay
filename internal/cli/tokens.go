@@ -133,7 +133,7 @@ func tokensRevokeCmd() *cobra.Command {
 			}
 
 			if Offline() {
-				if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
+				if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())

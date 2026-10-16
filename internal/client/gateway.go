@@ -27,6 +27,20 @@ var ErrNotLoggedIn = errors.New("not logged in — run `relay login` first, or s
 // an older relay version exists but cannot be moved to the selected gateway.
 var ErrSessionMigration = errors.New("relay now keeps one session per gateway. Run `relay login` once to continue")
 
+// ErrAgentNotLoggedIn is returned by Resolve when RELAY_AGENT selects the
+// agent profile and no agent session is stored. It never falls back to the
+// human session: that session is not held to approvals.
+var ErrAgentNotLoggedIn = errors.New("no agent session. Run `relay login --agent` (RELAY_AGENT=1 selects the agent profile), or unset RELAY_AGENT to use your own session")
+
+// ActiveProfile is the keychain profile this process uses: the agent
+// profile when RELAY_AGENT is set, the human one otherwise.
+func ActiveProfile() keychain.Profile {
+	if config.AgentMode() {
+		return keychain.ProfileAgent
+	}
+	return keychain.ProfileHuman
+}
+
 // migrationNotice receives the one-line notice printed after a session move.
 var migrationNotice io.Writer = os.Stderr
 
@@ -78,6 +92,7 @@ type Client struct {
 
 	// Refresh context — populated only by Resolve for a keychain-backed OAuth session.
 	mu            sync.Mutex
+	profile       keychain.Profile
 	email         string
 	gatewayOrigin string
 	refreshToken  string
@@ -152,7 +167,8 @@ func New(gatewayURL, accessToken string) *Client {
 		GatewayURL:  strings.TrimRight(gatewayURL, "/"),
 		AccessToken: accessToken,
 		httpClient:  gatewayHTTPClient(),
-		store:       keychainSessionStore{},
+		profile:     keychain.ProfileHuman,
+		store:       keychainSessionStore{profile: keychain.ProfileHuman},
 		locker:      flockSessionLocker{},
 	}
 }
@@ -164,21 +180,35 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		return nil, err
 	}
 
+	profile := ActiveProfile()
 	if apiKey := os.Getenv("GATEWAY_API_KEY"); apiKey != "" {
 		c := New(origin, apiKey)
+		c.profile = profile
 		for _, opt := range opts {
 			opt(c)
 		}
 		return c, nil
 	}
 
-	email, err := config.ResolveEmail()
+	agent := profile == keychain.ProfileAgent
+	var email string
+	if agent {
+		email, err = config.ResolveAgentEmail()
+	} else {
+		email, err = config.ResolveEmail()
+	}
 	if err != nil {
+		if agent {
+			return nil, ErrAgentNotLoggedIn
+		}
 		return nil, ErrNotLoggedIn
 	}
 
-	tokenData, err := keychain.ReadToken(origin, email)
+	tokenData, err := keychain.ReadProfileToken(profile, origin, email)
 	if errors.Is(err, keychain.ErrNotFound) {
+		if agent {
+			return nil, ErrAgentNotLoggedIn
+		}
 		tokenData, err = migrateLegacySession(origin, email)
 	}
 	if err != nil {
@@ -194,6 +224,8 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 	}
 
 	c := New(origin, tokenData.AccessToken)
+	c.profile = profile
+	c.store = keychainSessionStore{profile: profile}
 	c.email = email
 	c.gatewayOrigin = origin
 	c.refreshToken = tokenData.RefreshToken
@@ -204,6 +236,18 @@ func Resolve(gatewayURL string, opts ...ClientOption) (*Client, error) {
 		opt(c)
 	}
 	return c, nil
+}
+
+// Profile returns the keychain profile this Client was resolved for.
+func (c *Client) Profile() keychain.Profile { return c.profile }
+
+// lockAccount names the refresh lock so the human and agent sessions of one
+// account never wait on each other.
+func (c *Client) lockAccount() string {
+	if c.profile == keychain.ProfileAgent {
+		return "agent:" + c.email
+	}
+	return c.email
 }
 
 // Email returns the identity this Client was resolved for, or "" for a
@@ -233,7 +277,7 @@ func (c *Client) bearerSnapshot() string {
 }
 
 func (c *Client) refreshLocked(ctx context.Context) error {
-	unlock, err := c.locker.Lock(ctx, c.gatewayOrigin, c.email)
+	unlock, err := c.locker.Lock(ctx, c.gatewayOrigin, c.lockAccount())
 	if err != nil {
 		return fmt.Errorf("acquire cross-process refresh lock: %w", err)
 	}

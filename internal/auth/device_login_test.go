@@ -58,7 +58,7 @@ func TestDeviceLogin_PromptsAndStoresSession(t *testing.T) {
 	})
 
 	var out bytes.Buffer
-	result, err := DeviceLogin(context.Background(), srv.URL+"/", &out)
+	result, err := DeviceLogin(context.Background(), srv.URL+"/", keychain.ProfileHuman, &out)
 	if err != nil {
 		t.Fatalf("DeviceLogin: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestDeviceLogin_CodeRequestFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			withTempHome(t)
 			srv := deviceGateway(t, tc.status, tc.body, nil)
-			_, err := DeviceLogin(context.Background(), srv.URL, &bytes.Buffer{})
+			_, err := DeviceLogin(context.Background(), srv.URL, keychain.ProfileHuman, &bytes.Buffer{})
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("got %v, want error containing %q", err, tc.wantErr)
 			}
@@ -108,7 +108,7 @@ func TestDeviceLogin_CodeRequestFailures(t *testing.T) {
 
 func TestDeviceLogin_RejectsInsecureGatewayBeforeAnyRequest(t *testing.T) {
 	withTempHome(t)
-	if _, err := DeviceLogin(context.Background(), "http://gw.example.com", &bytes.Buffer{}); err == nil {
+	if _, err := DeviceLogin(context.Background(), "http://gw.example.com", keychain.ProfileHuman, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected plain HTTP to a remote host to be rejected")
 	}
 }
@@ -119,7 +119,7 @@ func TestDeviceLogin_UnreachableGateway(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 
-	_, err := DeviceLogin(context.Background(), url, &bytes.Buffer{})
+	_, err := DeviceLogin(context.Background(), url, keychain.ProfileHuman, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "request device code") {
 		t.Fatalf("got %v, want a request-device-code error", err)
 	}
@@ -137,7 +137,7 @@ func TestDeviceLogin_ExpiresInBoundsThePollLoop(t *testing.T) {
 		})
 
 	start := time.Now()
-	_, err := DeviceLogin(context.Background(), srv.URL, &bytes.Buffer{})
+	_, err := DeviceLogin(context.Background(), srv.URL, keychain.ProfileHuman, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("got %v, want a timeout", err)
 	}

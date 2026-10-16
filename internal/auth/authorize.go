@@ -12,6 +12,7 @@ import (
 
 	"github.com/patrikmichi/relay/internal/client"
 	"github.com/patrikmichi/relay/internal/config"
+	"github.com/patrikmichi/relay/internal/keychain"
 )
 
 const maxAuthResponseBytes = 1 << 20 // 1 MiB
@@ -71,7 +72,9 @@ func decodeJSONCapped(body io.Reader, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func DeviceLogin(ctx context.Context, gatewayURL string, writers ...io.Writer) (*LoginResult, error) {
+// DeviceLogin performs the device-code flow. With the agent profile the
+// token request carries agent: true, like Login's agent=1.
+func DeviceLogin(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var out io.Writer = os.Stdout
 	if len(writers) > 0 && writers[0] != nil {
 		out = writers[0]
@@ -125,16 +128,16 @@ func DeviceLogin(ctx context.Context, gatewayURL string, writers ...io.Writer) (
 	if interval < 5 {
 		interval = 5
 	}
-	return pollDeviceToken(pollCtx, origin, dc.DeviceCode, interval)
+	return pollDeviceTokenProfile(pollCtx, origin, dc.DeviceCode, interval, profile)
 }
 
-// pollDeviceToken polls the device token endpoint until authorized,
+// pollDeviceTokenProfile polls the device token endpoint until authorized,
 // rejected, expired, or ctx is done — whichever comes first. Every
 // individual HTTP request is bound by the SAME ctx as the loop itself, so
 // one stalled request cannot outlive — and therefore cannot defeat — the
 // poll loop's own deadline. gatewayURL must already be a normalized origin
 // (see DeviceLogin).
-func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int) (*LoginResult, error) {
+func pollDeviceTokenProfile(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int, profile keychain.Profile) (*LoginResult, error) {
 	tokenEndpoint := fmt.Sprintf("%s/api/cli/device/token", strings.TrimRight(gatewayURL, "/"))
 
 	for {
@@ -144,7 +147,11 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 		default:
 		}
 
-		reqBody, err := json.Marshal(map[string]string{"device_code": deviceCode})
+		pollBody := map[string]any{"device_code": deviceCode}
+		if profile == keychain.ProfileAgent {
+			pollBody["agent"] = true
+		}
+		reqBody, err := json.Marshal(pollBody)
 		if err != nil {
 			return nil, fmt.Errorf("encode poll request: %w", err)
 		}
@@ -179,7 +186,7 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 				expiresIn = 3600
 			}
 
-			if err := writeKeychainToken(gatewayURL, dtr.Email, dtr.AccessToken, dtr.RefreshToken, expiresIn); err != nil {
+			if err := writeToken(profile, gatewayURL, dtr.Email, dtr.AccessToken, dtr.RefreshToken, expiresIn); err != nil {
 				return nil, err
 			}
 
@@ -215,10 +222,6 @@ func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, interva
 			return nil, fmt.Errorf("unexpected status %d from device token endpoint", resp.StatusCode)
 		}
 	}
-}
-
-func writeKeychainToken(gatewayOrigin, email, accessToken, refreshToken string, expiresIn int) error {
-	return writeToken(gatewayOrigin, email, accessToken, refreshToken, expiresIn)
 }
 
 // waitOrDone blocks for n seconds or until ctx is done, whichever comes

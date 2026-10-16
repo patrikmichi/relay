@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Config holds all persisted CLI settings.
@@ -22,6 +23,20 @@ type Config struct {
 	// ResolveEmail — so multi-account users can override without
 	// re-running `relay login`.
 	Email string `json:"email,omitempty"`
+	// AgentEmail is the identity of the last `relay login --agent`, kept apart
+	// from Email so an agent login never changes which person's session the
+	// unmarked commands use.
+	AgentEmail string `json:"agentEmail,omitempty"`
+}
+
+// AgentMode reports whether RELAY_AGENT selects the agent profile, the
+// session marked as an autonomous agent's, for this process.
+func AgentMode() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("RELAY_AGENT"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // configDir returns ~/.config/relay, creating it if necessary.
@@ -187,6 +202,37 @@ func SetEmail(email string) error {
 	}
 	cfg.Email = email
 	return Save(cfg)
+}
+
+// SetAgentEmail persists the identity of the agent profile, leaving Email
+// alone.
+func SetAgentEmail(email string) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.AgentEmail = email
+	return Save(cfg)
+}
+
+// ResolveAgentEmail resolves the identity of the agent profile: RELAY_EMAIL,
+// then the last `relay login --agent`, then the human identity, since an
+// agent normally acts for the person who is signed in.
+func ResolveAgentEmail() (string, error) {
+	if v := os.Getenv("RELAY_EMAIL"); v != "" {
+		return v, nil
+	}
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
+	if cfg.AgentEmail != "" {
+		return cfg.AgentEmail, nil
+	}
+	if cfg.Email != "" {
+		return cfg.Email, nil
+	}
+	return "", errors.New("no agent session — run `relay login --agent`, or set RELAY_EMAIL")
 }
 
 // ResolveEmail resolves the current CLI identity used to look up the

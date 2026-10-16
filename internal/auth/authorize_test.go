@@ -13,6 +13,10 @@ import (
 	"github.com/patrikmichi/relay/internal/keychain"
 )
 
+func pollDeviceToken(ctx context.Context, gatewayURL, deviceCode string, intervalSecs int) (*LoginResult, error) {
+	return pollDeviceTokenProfile(ctx, gatewayURL, deviceCode, intervalSecs, keychain.ProfileHuman)
+}
+
 func TestPollDeviceToken_SuccessOnFirstPoll(t *testing.T) {
 	withTempHome(t)
 

@@ -11,14 +11,13 @@ import (
 )
 
 // writeToken is a shared helper to write a token to the OS keychain — bound
-// to both gatewayOrigin and email — and persist the logged-in email
-// (config.SetEmail) so subsequent commands don't require
-// RELAY_EMAIL to be set. Callers should propagate a non-nil return as a
-// user-visible abort — the keychain write is the one that matters; a
-// config-persist failure is logged but non-fatal (mirrors Login's same
-// best-effort treatment in login.go).
-func writeToken(gatewayOrigin, email, accessToken, refreshToken string, expiresIn int) error {
-	if err := keychain.WriteToken(gatewayOrigin, email, keychain.TokenData{
+// to profile, gatewayOrigin and email — and persist the logged-in email
+// (persistLogin) so subsequent commands don't require RELAY_EMAIL to be set.
+// Callers should propagate a non-nil return as a user-visible abort — the
+// keychain write is the one that matters; a config-persist failure is logged
+// but non-fatal (mirrors Login's same best-effort treatment in login.go).
+func writeToken(profile keychain.Profile, gatewayOrigin, email, accessToken, refreshToken string, expiresIn int) error {
+	if err := keychain.WriteProfileToken(profile, gatewayOrigin, email, keychain.TokenData{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
@@ -26,12 +25,25 @@ func writeToken(gatewayOrigin, email, accessToken, refreshToken string, expiresI
 	}); err != nil {
 		return err
 	}
-	removeLegacySession(email, os.Stderr)
-
-	if err := config.SetEmail(email); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not persist login email to config: %v\n", err)
-	}
+	persistLogin(profile, email, os.Stderr)
 	return nil
+}
+
+// persistLogin records who logged in so later commands find the session
+// without RELAY_EMAIL: the human identity for a human login, a separate
+// agent identity for an agent login, which must not change what the unmarked
+// commands use. Failure only warns: the session is already stored.
+func persistLogin(profile keychain.Profile, email string, diagnostic io.Writer) {
+	if profile == keychain.ProfileAgent {
+		if err := config.SetAgentEmail(email); err != nil {
+			fmt.Fprintf(diagnostic, "Warning: could not persist login email to config: %v\n", err)
+		}
+		return
+	}
+	removeLegacySession(email, diagnostic)
+	if err := config.SetEmail(email); err != nil {
+		fmt.Fprintf(diagnostic, "Warning: could not persist login email to config: %v\n", err)
+	}
 }
 
 // removeLegacySession deletes the email-only session an older relay version

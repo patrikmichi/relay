@@ -251,7 +251,7 @@ func TestLogin_HappyPath(t *testing.T) {
 	restore := driveCallback(t, map[string]string{"code": "fake-code"})
 	defer restore()
 
-	result, err := Login(context.Background(), srv.URL)
+	result, err := Login(context.Background(), srv.URL, keychain.ProfileHuman)
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestLogin_OAuthErrorFromCallback(t *testing.T) {
 	})
 	defer restore()
 
-	_, err := Login(context.Background(), "https://gw.example.com")
+	_, err := Login(context.Background(), "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -305,7 +305,7 @@ func TestLogin_StateMismatchFromCallback(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := Login(ctx, "https://gw.example.com")
+	_, err := Login(ctx, "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -325,7 +325,7 @@ func TestLogin_TimesOutWithNoCallback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := Login(ctx, "https://gw.example.com")
+	_, err := Login(ctx, "https://gw.example.com", keychain.ProfileHuman)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}

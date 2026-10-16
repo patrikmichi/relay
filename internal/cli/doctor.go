@@ -153,12 +153,16 @@ func doctorChecks(ctx context.Context) []doctorCheck {
 		add("token", true, "bearer token accepted; expiry not supplied by gateway")
 		return checks
 	}
+	profile := client.ActiveProfile()
 	email, err := config.ResolveEmail()
+	if profile == keychain.ProfileAgent {
+		email, err = config.ResolveAgentEmail()
+	}
 	if err != nil {
 		add("token", false, "session identity unavailable")
 		return checks
 	}
-	token, err := keychain.ReadToken(gateway, email)
+	token, err := keychain.ReadProfileToken(profile, gateway, email)
 	if err != nil {
 		add("token", false, "keychain session unavailable")
 		return checks

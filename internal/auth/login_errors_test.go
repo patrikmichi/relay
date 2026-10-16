@@ -65,7 +65,7 @@ func TestLogin_RejectsInsecureGatewayWithoutOpeningBrowser(t *testing.T) {
 	opened := false
 	openBrowser = func(string) error { opened = true; return nil }
 
-	if _, err := Login(context.Background(), "http://gw.example.com"); err == nil {
+	if _, err := Login(context.Background(), "http://gw.example.com", keychain.ProfileHuman); err == nil {
 		t.Fatal("expected a remote plain-HTTP gateway to be rejected")
 	}
 	if opened {
@@ -79,7 +79,7 @@ func TestLogin_BrowserFailurePrintsURLAndContinues(t *testing.T) {
 	stubBrowser(t, errors.New("no display"))
 
 	var diag bytes.Buffer
-	result, err := Login(context.Background(), srv.URL, &diag)
+	result, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &diag)
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLogin_TokenExchangeFailure(t *testing.T) {
 	srv := tokenServer(t, http.StatusUnauthorized)
 	stubBrowser(t, nil)
 
-	_, err := Login(context.Background(), srv.URL, &bytes.Buffer{})
+	_, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "exchange code") {
 		t.Fatalf("got %v, want an exchange error", err)
 	}
@@ -109,7 +109,7 @@ func TestLogin_KeychainWriteFailureAborts(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain locked"))
 	defer keyring.MockInit()
 
-	if _, err := Login(context.Background(), srv.URL, &bytes.Buffer{}); err == nil {
+	if _, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected a keychain failure to abort login")
 	}
 	t.Setenv("RELAY_EMAIL", "")
@@ -133,7 +133,7 @@ func TestLogin_ConfigPersistFailureOnlyWarns(t *testing.T) {
 	stubBrowser(t, nil)
 
 	var diag bytes.Buffer
-	if _, err := Login(context.Background(), srv.URL, &diag); err != nil {
+	if _, err := Login(context.Background(), srv.URL, keychain.ProfileHuman, &diag); err != nil {
 		t.Fatalf("Login must succeed once the session is stored: %v", err)
 	}
 	if !strings.Contains(diag.String(), "could not persist login email") {
@@ -198,7 +198,7 @@ func TestWriteToken_ConfigPersistFailureIsNotFatal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".config"), []byte("not a dir"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeToken("https://gw.example.com", "user@example.com", "access-1", "refresh-1", 60); err != nil {
+	if err := writeToken(keychain.ProfileHuman, "https://gw.example.com", "user@example.com", "access-1", "refresh-1", 60); err != nil {
 		t.Fatalf("writeToken: %v", err)
 	}
 	if _, err := keychain.ReadToken("https://gw.example.com", "user@example.com"); err != nil {

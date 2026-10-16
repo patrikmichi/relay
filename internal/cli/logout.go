@@ -49,7 +49,7 @@ func LogoutCmd() *cobra.Command {
 			}
 
 			if Offline() {
-				if err := keychain.DeleteToken(c.GatewayOrigin(), c.Email()); err != nil {
+				if err := keychain.DeleteProfileToken(c.Profile(), c.GatewayOrigin(), c.Email()); err != nil {
 					return fmt.Errorf("delete keychain entry: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Offline — skipped server-side session revoke. Removed local session for %s\n", c.Email())
@@ -70,7 +70,11 @@ func LogoutCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RemoteWarning)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Logged out %s\n", result.Email)
+			suffix := ""
+			if c.Profile() == keychain.ProfileAgent {
+				suffix = " (agent profile)"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged out %s%s\n", result.Email, suffix)
 			return nil
 		},
 	}

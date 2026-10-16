@@ -56,7 +56,11 @@ type tokenResponse struct {
 //  4. Wait for callback (max 120s)
 //  5. Exchange code at /api/cli/token
 //  6. Store token in OS keychain
-func Login(ctx context.Context, gatewayURL string, writers ...io.Writer) (*LoginResult, error) {
+//
+// With the agent profile the token request carries agent=1, so the gateway
+// marks the session as an agent's and holds its writes for approval; the
+// session is stored apart from the human one.
+func Login(ctx context.Context, gatewayURL string, profile keychain.Profile, writers ...io.Writer) (*LoginResult, error) {
 	var diagnostic io.Writer = os.Stderr
 	if len(writers) > 0 && writers[0] != nil {
 		diagnostic = writers[0]
@@ -127,12 +131,12 @@ func Login(ctx context.Context, gatewayURL string, writers ...io.Writer) (*Login
 		return nil, fmt.Errorf("login timed out after %s", loginTimeout)
 	}
 
-	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI)
+	resp, err := exchangeCodeContext(ctx, origin, authCode, verifier, redirectURI, profile)
 	if err != nil {
 		return nil, fmt.Errorf("exchange code: %w", err)
 	}
 
-	if err := keychain.WriteToken(origin, resp.Email, keychain.TokenData{
+	if err := keychain.WriteProfileToken(profile, origin, resp.Email, keychain.TokenData{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
 		ExpiresIn:    resp.ExpiresIn,
@@ -140,16 +144,7 @@ func Login(ctx context.Context, gatewayURL string, writers ...io.Writer) (*Login
 	}); err != nil {
 		return nil, err // keychain error is user-visible, caller exits 1
 	}
-	removeLegacySession(resp.Email, diagnostic)
-
-	// Persist the logged-in email so subsequent commands don't require
-	// RELAY_EMAIL to be set (client.Resolve / config.ResolveEmail). Best
-	// effort — a failure here doesn't invalidate the login itself (the
-	// keychain write above already succeeded); RELAY_EMAIL remains an
-	// explicit fallback for the user.
-	if err := config.SetEmail(resp.Email); err != nil {
-		fmt.Fprintf(diagnostic, "Warning: could not persist login email to config: %v\n", err)
-	}
+	persistLogin(profile, resp.Email, diagnostic)
 
 	return &LoginResult{
 		Email:        resp.Email,
@@ -196,16 +191,19 @@ func buildAuthorizeURL(gatewayURL, clientID, redirectURI, state, challenge strin
 
 // exchangeCode exchanges an authorization code for a token pair.
 func exchangeCode(gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
-	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI)
+	return exchangeCodeContext(context.Background(), gatewayURL, code, verifier, redirectURI, keychain.ProfileHuman)
 }
 
-func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string) (*tokenResponse, error) {
+func exchangeCodeContext(ctx context.Context, gatewayURL, code, verifier, redirectURI string, profile keychain.Profile) (*tokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/cli/token", strings.TrimRight(gatewayURL, "/"))
 
 	data := url.Values{
 		"code":          {code},
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
+	}
+	if profile == keychain.ProfileAgent {
+		data.Set("agent", "1")
 	}
 
 	// Token exchange must never follow a redirect — a compromised or

@@ -7,7 +7,21 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/relay/internal/auth"
+	"github.com/patrikmichi/relay/internal/client"
+	"github.com/patrikmichi/relay/internal/keychain"
 )
+
+// profileLabel says which session a command ran as, and why.
+func profileLabel(c *client.Client) string {
+	label := "human (your own session; set RELAY_AGENT=1 for the agent profile)"
+	if c.Profile() == keychain.ProfileAgent {
+		label = "agent (RELAY_AGENT=1; writes wait for approval)"
+	}
+	if c.Email() == "" {
+		label += ", API key from GATEWAY_API_KEY"
+	}
+	return label
+}
 
 // WhoamiCmd returns the `relay whoami` cobra command.
 func WhoamiCmd() *cobra.Command {
@@ -40,6 +54,7 @@ func WhoamiCmd() *cobra.Command {
 				return fmt.Errorf("whoami failed: %w", err)
 			}
 
+			fmt.Fprintf(cmd.OutOrStdout(), "Profile:  %s\n", profileLabel(c))
 			fmt.Fprintf(cmd.OutOrStdout(), "Email:    %s\n", info.Email)
 			if info.GoogleSub != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "Sub:      %s\n", info.GoogleSub)

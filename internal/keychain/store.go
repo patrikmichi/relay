@@ -53,6 +53,20 @@ type TokenData struct {
 // keychain is unavailable. The caller MUST abort with a user-visible error —
 // no disk fallback is permitted.
 func WriteToken(gatewayOrigin, email string, data TokenData) error {
+	return WriteProfileToken(ProfileHuman, gatewayOrigin, email, data)
+}
+
+// Profile separates the sessions of a person and of the coding agents acting
+// for them, so both can be signed in to the same gateway and account at once.
+type Profile string
+
+const (
+	ProfileHuman Profile = "human"
+	ProfileAgent Profile = "agent"
+)
+
+// WriteProfileToken is WriteToken for an explicit profile.
+func WriteProfileToken(profile Profile, gatewayOrigin, email string, data TokenData) error {
 	if gatewayOrigin == "" {
 		return fmt.Errorf("write token: gateway identity is required")
 	}
@@ -67,7 +81,7 @@ func WriteToken(gatewayOrigin, email string, data TokenData) error {
 	if err != nil {
 		return fmt.Errorf("marshal token: %w", err)
 	}
-	if err := keyring.Set(serviceName, accountKey(gatewayOrigin, email), string(raw)); err != nil {
+	if err := keyring.Set(serviceName, accountKey(profile, gatewayOrigin, email), string(raw)); err != nil {
 		return fmt.Errorf(
 			"could not store token in system keychain for %s@%s: %w\n"+
 				"On Linux, ensure a D-Bus session and gnome-keyring or kwallet is running",
@@ -83,10 +97,15 @@ func WriteToken(gatewayOrigin, email string, data TokenData) error {
 // falls back to a legacy or differently-scoped entry; see HasLegacyToken for
 // detecting one to report to the user.
 func ReadToken(gatewayOrigin, email string) (TokenData, error) {
+	return ReadProfileToken(ProfileHuman, gatewayOrigin, email)
+}
+
+// ReadProfileToken is ReadToken for an explicit profile.
+func ReadProfileToken(profile Profile, gatewayOrigin, email string) (TokenData, error) {
 	if gatewayOrigin == "" {
 		return TokenData{}, fmt.Errorf("read token: gateway identity is required")
 	}
-	raw, err := keyringGet(accountKey(gatewayOrigin, email))
+	raw, err := keyringGet(accountKey(profile, gatewayOrigin, email))
 	if err != nil {
 		return TokenData{}, fmt.Errorf("read token for %s@%s: %w", email, gatewayOrigin, err)
 	}
@@ -100,7 +119,12 @@ func ReadToken(gatewayOrigin, email string) (TokenData, error) {
 // DeleteToken removes the stored token for the given gateway identity and
 // email address. Returns nil if no token exists (idempotent).
 func DeleteToken(gatewayOrigin, email string) error {
-	err := keyring.Delete(serviceName, accountKey(gatewayOrigin, email))
+	return DeleteProfileToken(ProfileHuman, gatewayOrigin, email)
+}
+
+// DeleteProfileToken is DeleteToken for an explicit profile.
+func DeleteProfileToken(profile Profile, gatewayOrigin, email string) error {
+	err := keyring.Delete(serviceName, accountKey(profile, gatewayOrigin, email))
 	if err == keyring.ErrNotFound {
 		return nil
 	}
@@ -110,8 +134,14 @@ func DeleteToken(gatewayOrigin, email string) error {
 	return nil
 }
 
-// accountKey returns the keychain account name for a (gateway, email) pair.
-func accountKey(gatewayOrigin, email string) string {
+// accountKey returns the keychain account name for a (profile, gateway,
+// email) triple. The human profile keeps the original name so existing
+// sessions stay valid; a gateway origin always starts with a scheme, so the
+// "agent:" prefix cannot collide with it.
+func accountKey(profile Profile, gatewayOrigin, email string) string {
+	if profile == ProfileAgent {
+		return "oauth-refresh-token:agent:" + gatewayOrigin + ":" + email
+	}
 	return "oauth-refresh-token:" + gatewayOrigin + ":" + email
 }
 
