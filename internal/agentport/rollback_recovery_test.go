@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +98,58 @@ func TestRollback_RestoresPriorBytesAndModeFromLinkedTransaction(t *testing.T) {
 	}
 	if len(m.Entries) != 0 {
 		t.Fatalf("entry should be dropped after rollback, got %#v", m.Entries)
+	}
+}
+
+// The check that a file is still the one the entry wrote runs under the
+// transaction lock, so an edit made while the rollback waits for it is seen.
+func TestRollback_ChecksForEditsOnlyAfterTakingTheLock(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	src, err := NewClaudeAdapter().Load(filepath.Join("testdata", "claude", "git-helper"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := Migrate(src, NewCodexAdapter(), ScopeUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(plan); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, _ := LastEntry(m)
+
+	holder, err := txn.Begin(context.Background(), "other writer", []string{rollbackLockKey(entry)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { result <- Rollback(entry, false) }()
+
+	select {
+	case err := <-result:
+		t.Fatalf("Rollback returned while another writer held the lock: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	skill := filepath.Join(plan.TargetPaths, "SKILL.md")
+	if err := os.WriteFile(skill, []byte("edited while the rollback waited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = holder.Discard(nil)
+
+	select {
+	case err := <-result:
+		if err == nil || !strings.Contains(err.Error(), "has changed") {
+			t.Fatalf("Rollback = %v, want a refusal because the file changed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Rollback never acquired the lock")
+	}
+	if got, _ := os.ReadFile(skill); !strings.Contains(string(got), "edited while the rollback waited") {
+		t.Errorf("the edited file was removed or replaced: %q", got)
 	}
 }
 

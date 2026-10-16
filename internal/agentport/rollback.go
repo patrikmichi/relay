@@ -70,21 +70,6 @@ func Rollback(entry ManifestEntry, force bool) error {
 		}
 	}
 
-	for rel, wantHash := range entry.TargetPaths {
-		abs := filepath.Join(dir, filepath.FromSlash(rel))
-		data, err := os.ReadFile(abs)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("read %s: %w", abs, err)
-		}
-		sum := sha256.Sum256(data)
-		if hex.EncodeToString(sum[:]) != wantHash && !force {
-			return fmt.Errorf("file %s has changed since it was written by this entry — refusing to delete without --force", abs)
-		}
-	}
-
 	priorJournal, err := loadPriorJournal(entry)
 	if err != nil {
 		return fmt.Errorf("rollback %s: %w", entry.ID, err)
@@ -111,14 +96,31 @@ func Rollback(entry ManifestEntry, force bool) error {
 		return err
 	}
 
-	for rel := range entry.TargetPaths {
-		if r, ok := restores[rel]; ok {
-			if serr := tx.Stage(dir, rel, r.data, r.mode); serr != nil {
-				return tx.Discard(serr)
+	// The changed-file check runs under the lock, and what it read is what
+	// staging is held to: a write after the check makes the stage fail as a
+	// conflict instead of being rolled over.
+	for rel, wantHash := range entry.TargetPaths {
+		abs := filepath.Join(dir, filepath.FromSlash(rel))
+		data, rerr := os.ReadFile(abs)
+		before := txn.Before{Data: data, Existed: true}
+		switch {
+		case errors.Is(rerr, os.ErrNotExist):
+			before = txn.Before{}
+		case rerr != nil:
+			return tx.Discard(fmt.Errorf("read %s: %w", abs, rerr))
+		default:
+			sum := sha256.Sum256(data)
+			if hex.EncodeToString(sum[:]) != wantHash && !force {
+				return tx.Discard(fmt.Errorf("file %s has changed since it was written by this entry — refusing to delete without --force", abs))
 			}
-			continue
 		}
-		if serr := tx.StageRemoval(dir, rel); serr != nil {
+		var serr error
+		if r, ok := restores[rel]; ok {
+			serr = tx.StageFrom(dir, rel, r.data, r.mode, before)
+		} else {
+			serr = tx.StageRemovalFrom(dir, rel, before)
+		}
+		if serr != nil {
 			return tx.Discard(serr)
 		}
 	}
