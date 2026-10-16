@@ -395,3 +395,62 @@ runtime routes. zuano treats an id that starts with `job_` as a job.
 
 Source: scalability plan sections 5.9 and 7 ("per-metric daily usage, current
 window counters, limits"). The layout is this client's decision.
+
+## Signed documents
+
+A document zuano acts on without a person reading it first carries an ed25519
+signature, checked against the keys pinned for the gateway (the same keys as
+signed downloads). The headers are `X-Content-Signature` (base64) and
+`X-Content-Signature-Key-Id`; the signature covers the canonical JSON of the
+response body (keys sorted at every depth, no whitespace). A body that is
+unsigned, signed by an unpinned key or altered ends the command with exit 4
+and nothing is used. Fixtures: none yet (the tests sign with a generated key).
+
+## Starter packs
+
+Admin routes need an owner or admin session and refuse the agent profile; a
+refusal by the plan is a `402` as described above. Responses marked *signed*
+carry the signature headers.
+
+| Route | Request and response |
+|---|---|
+| `GET /api/packs?category=&source=installed` | `{"packs": [{"slug", "displayName", "version", "category", "source": "platform\|org", "summary", "installed", "fit"}]}` |
+| `GET /api/packs/{slug}?version=` | `{"pack": {"slug", "displayName", "version", "summary", "category", "versions": [text], "connectors": [{"slug", "required", "credentialScope", "why"}], "skills": [name], "bundles": [name], "rules": [name], "readme"}}` |
+| `POST /api/packs/{slug}/plans` | `{"version"?, "params": {}, "mode": "install\|update"}` answers a *signed* PLAN |
+| `POST /api/packs/installs/{id}/plans` | `{"mode": "uninstall\|rollback", "toVersion"?, "disableConnectors"?}` answers a *signed* PLAN |
+| `POST /api/packs/plans/{planId}/apply` | `{"planHash", "decisions": {"<seq>": "keep\|take"}}` answers `202` `{"installId", "jobId"}`; `409` `{"error": "plan_stale"}` when the organisation changed since the plan; `401 step_up_required` when the plan loosens a control |
+| `GET /api/packs/installs`, `GET /api/packs/installs/{id}` | `{"installs": [INSTALL]}`, `{"install": INSTALL}` |
+| `POST /api/packs/validate` | `{"manifest"}` answers `{"errors": [{"path", "message"}]}`, empty when every reference resolves |
+| `POST /api/packs`, `POST /api/packs/{slug}/publish` | `{"manifest"}` answers `{"pack": {"slug"}}`; `{"version", "channel"}` publishes it |
+| `GET /api/cli/sync/assignments` | the member's ASSIGNMENTS, *signed*, with `ETag: "<revision>"`; `If-None-Match` answers `304` |
+
+```json
+PLAN = {"planId", "planHash", "mode", "pack": {"slug", "version", "name"}, "params": {},
+        "ops": [{"seq", "kind", "target": {}, "before", "after",
+                 "status": "apply|noop|conflict|skipped_plan|skipped_platform|skipped_missing",
+                 "loosens", "requires"?: {"feature"?, "limit"?, "requiredPlan"?}, "reason"?}],
+        "credentialPrompts": [{"slug", "name", "scope": "org|personal", "status": "connected|missing|expired",
+                               "neededBy": [text], "cliCommand", "connectUrl"}],
+        "summary": {"apply", "noop", "conflict", "skipped", "loosening"}, "expiresAt"}
+INSTALL = {"id", "status", "channel", "installedAt", "updateAvailable"?, "pack": {"slug", "version"},
+           "ops": [{"applySeq", "seq", "kind", "target", "status", "reason"?}]}
+ASSIGNMENTS = {"revision", "profiles": [{"id", "source": "pack", "name", "pack": {"slug", "version"},
+               "rules": [{"name", "description"?, "alwaysApply", "globs"?, "agents": ["all"|agent], "body", "sha256"}],
+               "skills": [{"resourceId", "versionId", "name", "version"}],
+               "bundles": [{"name", "version", "channel"}]}],
+               "connectRequired": [{"slug", "scope", "reason"}]}
+```
+
+Operation kinds: `connector.enable`, `connector.prompt`, `group.create`,
+`group.map`, `resource.enable`, `resource.assign`, `risk.cell`,
+`risk.override`, `approvals.approver_group`, `approvals.grant_max`,
+`automation.create`, `sync_profile.upsert`. A plan is applied only with the
+`planHash` of the plan the person was shown.
+
+Source: starter packs plan (manifest, planner, apply, member delivery and CLI
+sections). The plan names the routes, the plan and assignments documents and
+the exit statuses; the `{"pack": ...}`, `{"installs": ...}` wrappers, the
+`validate` route, the `version` field of a delivered skill (the CLI installs
+by version) and the signature headers are this client's decisions. The plan
+asks for exit 20 on `plan_stale`; 20 is taken by a failed eval, so a stale
+plan exits 1 with the message to run `zuano pack plan` again.

@@ -46,6 +46,9 @@ type agentSyncOpts struct {
 	// optionalAgents lets a run with no detectable agents succeed quietly,
 	// used when the caller has other work (the marketplace pull) to do.
 	optionalAgents bool
+	// extraRules are rules the gateway assigns, written to every synced scope
+	// next to the ones from the sync directory.
+	extraRules []agentsync.Rule
 }
 
 type syncKinds struct {
@@ -307,6 +310,12 @@ func planAgentSync(o agentSyncOpts) (*agentSyncRun, error) {
 	bundles, warns, gw, err := loadBundles(env, scopes, o.mcpAuth, o.gatewayURL, o.mcpOverride)
 	if err != nil {
 		return nil, err
+	}
+	if o.settingsFrom == "" && len(o.extraRules) > 0 {
+		for scope, b := range bundles {
+			b.Rules = append(b.Rules, o.extraRules...)
+			bundles[scope] = b
+		}
 	}
 	if o.settingsFrom != "" {
 		from, err := agentsync.ParseAgents([]string{o.settingsFrom})

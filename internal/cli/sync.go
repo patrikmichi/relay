@@ -14,8 +14,9 @@ const maxResponseBytes = 10 << 20
 // SyncCmd returns the `zuano sync` cobra command.
 func SyncCmd() *cobra.Command {
 	var (
-		o      agentSyncOpts
-		matrix bool
+		o       agentSyncOpts
+		matrix  bool
+		noPacks bool
 	)
 
 	cmd := &cobra.Command{
@@ -56,6 +57,14 @@ Without --to, every agent detected on this machine is synced. Kinds an agent
 has no format for are reported as unsupported, never skipped silently; see
 'zuano sync --matrix'.
 
+Starter packs
+  When a gateway is configured and you are signed in, the sync also fetches
+  what your organisation's installed packs assign you: their rules are written
+  with the others, and their skills and plugin bundles are installed. The list
+  is signed by the gateway and checked first. Without a gateway, or with
+  --no-packs, nothing is fetched. A pack that needs a connection you have not
+  made is listed with the command that makes it.
+
 Plugin bundles from the gateway are installed with 'zuano plugin install'.
 
 Examples:
@@ -72,6 +81,16 @@ Examples:
 					return err
 				}
 			}
+			var ps *packSync
+			if !noPacks {
+				var err error
+				if ps, err = packSyncLoader(cmd, o.gatewayURL); err != nil {
+					return err
+				}
+				if ps != nil {
+					o.extraRules = ps.rules
+				}
+			}
 			run, err := planSync(cmd, o)
 			if err != nil {
 				return err
@@ -83,12 +102,21 @@ Examples:
 				return err
 			}
 			if o.dryRun {
+				if ps != nil && !o.jsonOut {
+					ps.preview(out)
+				}
 				return nil
 			}
 			if err := confirmAgentWrite(cmd, run, brand.Cmd("sync"), o.yes); err != nil {
 				return err
 			}
-			return run.apply(cmd.Context())
+			if err := run.apply(cmd.Context()); err != nil {
+				return err
+			}
+			if ps != nil {
+				return ps.apply(cmd)
+			}
+			return nil
 		},
 	}
 
@@ -103,6 +131,7 @@ Examples:
 	f.BoolVar(&o.yes, "yes", false, "Write without asking when hooks or local commands change (review with --dry-run first; refused when ZUANO_AGENT is set)")
 	f.BoolVar(&o.acceptLoss, "accept-loss", false, "Copy skills and subagents even when a target drops non-security fields")
 	f.BoolVar(&o.jsonOut, "json", false, "Print the report as JSON")
+	f.BoolVar(&noPacks, "no-packs", false, "Do not fetch or write the rules, skills and bundles your organisation's starter packs assign")
 	f.BoolVar(&matrix, "matrix", false, "Print the agent by artifact support matrix and exit")
 	f.StringVar(&o.gatewayURL, "gateway-url", "", "Gateway URL for the gateway MCP server (default: $ZUANO_URL, then the config file)")
 	cmd.AddCommand(SyncRoutesCmd())

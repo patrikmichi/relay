@@ -3,6 +3,7 @@ package agentsync
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Options selects what Build plans.
@@ -58,7 +59,7 @@ func Build(env Env, bundles map[Scope]Bundle, opts Options) (*Plan, error) {
 				case KindHooks:
 					ops, why = runBuilder(a.Hooks, env, scope, b.Hooks)
 				case KindRules:
-					ops, why = runBuilder(a.Rules, env, scope, b.Rules)
+					ops, why = runBuilder(a.Rules, env, scope, slices.DeleteFunc(slices.Clone(b.Rules), func(r Rule) bool { return !r.appliesTo(id) }))
 				case KindCommands:
 					ops, why = runBuilder(a.Commands, env, scope, b.Commands)
 				default:

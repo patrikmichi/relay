@@ -5,6 +5,7 @@ package agentsync
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -153,6 +154,12 @@ type Rule struct {
 	Globs       []string
 	Always      bool
 	Body        string
+	// Agents limits the rule to the listed agents when non-empty.
+	Agents []AgentID
+}
+
+func (r Rule) appliesTo(a AgentID) bool {
+	return len(r.Agents) == 0 || slices.Contains(r.Agents, a)
 }
 
 // Command is a reusable slash command / prompt.
