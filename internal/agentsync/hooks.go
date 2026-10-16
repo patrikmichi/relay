@@ -74,7 +74,7 @@ func entrySignature(n *jnode) (string, []string) {
 }
 
 func hooksOps(m meta, path string, plan hookPlan, seed obj, sig func(*jnode) (string, []string)) []Op {
-	ops := []Op{&jsonItemsOp{meta: m, path: path, mode: 0o644, objPath: []string{"hooks"}, events: plan.events, signature: sig, seed: seed}}
+	ops := []Op{&jsonItemsOp{meta: m, path: path, mode: 0o600, objPath: []string{"hooks"}, events: plan.events, signature: sig, seed: seed}}
 	return append(ops, plan.notes...)
 }
 
