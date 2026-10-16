@@ -23,12 +23,16 @@ Both commands need an organisation admin.
 | Command | Request |
 |---|---|
 | `zuano audit verify [--from D] [--to D] [--json]` | `GET /api/admin/audit/verify?from=&to=` |
-| `zuano audit export [--format ndjson\|csv] [--from] [--to] [--q] [--actor] [--service] [--tool] [--outcome] [--output FILE]` | `GET /api/admin/audit/export?format=&...` |
+| `zuano audit export [--from D] [--to D] [--format jsonl\|csv] [--user EMAIL] [--service] [--tool] [--outcome] [-o FILE] [--resume] [--org ID]` | `GET /api/org/{org}/observability/audit?...&cursor=` |
 
 `verify` asks the gateway to recompute the hash chain and check the signed
 daily checkpoints. It exits 0 when the log verifies and 1 when it does not,
-naming the first broken event. `export` streams the response to stdout, or to
-`--output FILE`, which must not exist yet and is created with mode 0600.
+naming the first broken event. `export` pages through the events and writes
+them to stdout, or to `-o FILE`, which must not exist yet and is created with
+mode 0600. A file export keeps its position in `FILE.cursor`; if it stops,
+the same command with `--resume` continues and appends. CSV cells that start
+with `=`, `+`, `-` or `@` are prefixed with a quote so a spreadsheet does not
+run them. See [observability.md](observability.md).
 
 ## zuano policy
 

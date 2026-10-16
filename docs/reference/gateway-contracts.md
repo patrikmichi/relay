@@ -125,10 +125,37 @@ plan asks for, so the gateway must include them.
 | Route | Response |
 |---|---|
 | `GET /api/admin/audit/verify?from=&to=` | `{"ok", "from", "to", "events", "checkpoints", "firstBadSeq": null\|int, "reason": null\|text}`. Fixtures: `audit-verify-ok.json`, `audit-verify-broken.json` |
-| `GET /api/admin/audit/export?format=ndjson\|csv&from=&to=&q=&actor=&service=&tool=&outcome=` | the events, streamed, in the requested format |
 
-Source: risk policy plan 5.10 and 5.13 (routes, filters, NDJSON/CSV). The verify
-document and the `format` parameter are this client's decision.
+Source: risk policy plan 5.10 and 5.13. The verify document is this client's
+decision. Exporting events uses the paged route under Observability below;
+zuano no longer calls `/api/admin/audit/export`.
+
+## Observability
+
+In these routes `{org}` is an organisation id or the literal `current`, meaning
+the organisation the credential belongs to. All need an organisation admin or
+owner; a member gets `403`. Fixture: `trace-lookup.json`.
+
+| Route | Response |
+|---|---|
+| `GET /api/org/{org}/observability/lookup?id=` | `{"id", "matched": "request\|trace\|approval", "request_id", "trace_id", "spans": [SPAN], "audit": [EVENT], "errors": [ERROR]}`; `404` when the id is unknown or older than the retention |
+| `GET /api/org/{org}/observability/audit?from=&to=&user=&service=&tool=&outcome=&limit=&cursor=` | `{"events": [EVENT], "next_cursor": null\|text}`; `limit` is at most 200; events come in a stable order, so a saved `next_cursor` can be used later |
+| `GET /api/health` | public; `200` ready, optionally `{"degraded": [check names]}`; `503` not ready; `404` is read as "no health endpoint" |
+| `GET /api/version` | public; `{"version", "statusPageUrl"?: text}` |
+
+```json
+SPAN  = {"span_id", "parent_span_id": null|text, "kind", "name", "start_ts", "duration_ms",
+         "status", "service", "tool", "outcome"}
+EVENT = {"ts", "event", "user_email", "service", "tool", "outcome", "risk", "duration_ms",
+         "approval_id": null|text, "request_id", "trace_id"}   // other fields may be added
+ERROR = {"ts", "level", "route", "message", "exception_type", "fingerprint"}
+```
+
+Source: observability plan sections 4.16 and 6 name the routes, filters and
+cursor paging. The `current` organisation, the document layouts and paging the
+export through the search route (instead of the streamed export route, which
+cannot be resumed) are this client's decisions. zuano sends `X-Request-Id:
+cli_<ulid>` and reads the gateway's `X-Request-Id`.
 
 ## Risk policy preview
 

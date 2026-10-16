@@ -2,32 +2,25 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/patrikmichi/zuano/internal/textsafe"
 )
 
-var auditFormats = []string{"ndjson", "csv"}
-
 // auditFilter is the set of filters the audit routes share.
 type auditFilter struct {
-	from, to                         string
-	q, actor, service, tool, outcome string
+	from, to                     string
+	user, service, tool, outcome string
 }
 
 func (f *auditFilter) bind(cmd *cobra.Command, withSearch bool) {
 	cmd.Flags().StringVar(&f.from, "from", "", "First day, as YYYY-MM-DD")
 	cmd.Flags().StringVar(&f.to, "to", "", "Last day, as YYYY-MM-DD")
 	if withSearch {
-		cmd.Flags().StringVar(&f.q, "q", "", "Search text")
-		cmd.Flags().StringVar(&f.actor, "actor", "", "Only this actor")
+		cmd.Flags().StringVar(&f.user, "user", "", "Only this user (email)")
 		cmd.Flags().StringVar(&f.service, "service", "", "Only this service")
 		cmd.Flags().StringVar(&f.tool, "tool", "", "Only this tool")
 		cmd.Flags().StringVar(&f.outcome, "outcome", "", "Only this outcome")
@@ -45,7 +38,7 @@ func (f auditFilter) query(extra url.Values) (url.Values, error) {
 		}
 		q.Set(day.name, day.value)
 	}
-	for k, v := range map[string]string{"q": f.q, "actor": f.actor, "service": f.service, "tool": f.tool, "outcome": f.outcome} {
+	for k, v := range map[string]string{"user": f.user, "service": f.service, "tool": f.tool, "outcome": f.outcome} {
 		if v != "" {
 			q.Set(k, v)
 		}
@@ -65,7 +58,8 @@ func AuditCmd() *cobra.Command {
 		Long: `The gateway chains every audit event to the one before it and signs a daily
 checkpoint. 'verify' asks the gateway to recompute the chain and check the
 checkpoints; it exits 1 when the log does not verify, naming the first broken
-event. 'export' downloads the events, filtered, as NDJSON or CSV.`,
+event. 'export' downloads the events, filtered, as JSON lines or CSV, and an
+export to a file that stopped part way continues with --resume.`,
 	}
 	cmd.AddCommand(auditVerifyCmd(), auditExportCmd())
 	return cmd
@@ -133,65 +127,5 @@ func auditVerifyCmd() *cobra.Command {
 	}
 	f.bind(cmd, "Print the response body unchanged")
 	filter.bind(cmd, false)
-	return cmd
-}
-
-func auditExportCmd() *cobra.Command {
-	var f approvalFlags
-	var filter auditFilter
-	var format, output string
-	cmd := &cobra.Command{
-		Use:   "export",
-		Short: "Download audit events as NDJSON or CSV",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !slices.Contains(auditFormats, format) {
-				return fmt.Errorf("invalid --format %q: use one of %s", format, strings.Join(auditFormats, ", "))
-			}
-			q, err := filter.query(url.Values{"format": {format}})
-			if err != nil {
-				return err
-			}
-			dest := cmd.OutOrStdout()
-			if output != "" {
-				file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-				if err != nil {
-					return fmt.Errorf("create %s (it must not exist yet): %w", output, err)
-				}
-				defer file.Close()
-				dest = file
-			}
-			c, err := approvalsClient(f.gatewayURL)
-			if err != nil {
-				return err
-			}
-			ctx, cancel, err := requestContext(cmd.Context(), transferRequest)
-			if err != nil {
-				return err
-			}
-			defer cancel()
-			resp, err := c.GetContext(ctx, "/api/admin/audit/export?"+q.Encode())
-			if err != nil {
-				return timeoutCause(ctx, fmt.Errorf("GET /api/admin/audit/export: %w", err))
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				raw, _ := readLimitedResponse(resp.Body, maxApprovalBody)
-				return gatewayStatusError(resp.StatusCode, raw)
-			}
-			n, err := io.Copy(dest, resp.Body)
-			if err != nil {
-				return timeoutCause(ctx, fmt.Errorf("download the export: %w", err))
-			}
-			if output != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Wrote %d bytes to %s\n", n, output)
-			}
-			return nil
-		},
-	}
-	cmd.Flags().StringVar(&f.gatewayURL, "gateway-url", "", "Gateway URL (default: $ZUANO_URL, then the config file)")
-	filter.bind(cmd, true)
-	cmd.Flags().StringVar(&format, "format", "ndjson", "Export format: "+strings.Join(auditFormats, " or "))
-	cmd.Flags().StringVar(&output, "output", "", "Write to this new file (mode 0600) instead of stdout")
 	return cmd
 }

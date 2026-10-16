@@ -425,7 +425,8 @@ a gateway.
 | `zuano billing status\|usage\|open` | gateway | Show the plan, seats and spend cap, metered usage against allowances (`--meter`, `--period`, `--by`), or open the billing page; a request the plan refuses exits 30 to 33 with the upgrade link ([docs/reference/billing.md](docs/reference/billing.md)) |
 | `zuano usage [--from] [--to]` | gateway | Show each quota metric against its soft and hard limit; a used-up quota exits 13 |
 | `zuano sessions list\|revoke\|revoke-all` | gateway | List your browser and CLI sessions on the gateway, revoke one, or sign out everywhere (a passkey step-up); see [docs/reference/security-commands.md](docs/reference/security-commands.md) |
-| `zuano audit verify\|export` | gateway | Verify the audit log's hash chain and checkpoints, or export events as NDJSON or CSV (org admins) |
+| `zuano audit verify\|export` | gateway | Verify the audit log's hash chain and checkpoints, or export events as JSON lines or CSV, resumable with `--resume` (org admins; [docs/reference/observability.md](docs/reference/observability.md)) |
+| `zuano trace <request_id\|trace_id\|approval_id>` | gateway | Show the spans, audit entries and errors the gateway recorded for a request (org admins) |
 | `zuano policy explain <service> <tool> [--arg k=v]` | gateway | Show whether the organisation's risk policy turns a call off, needs an approval, or lets it run, and who can change that |
 | `zuano runs list\|show\|wait\|cancel\|retry` | gateway | Follow the gateway's background jobs (agent runs, evals, deliveries); a call that starts one prints its id, and `--wait` follows it ([docs/reference/runs.md](docs/reference/runs.md)) |
 

@@ -1,12 +1,9 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -101,46 +98,6 @@ func TestAudit_VerifyReportsAGoodAndABrokenLog(t *testing.T) {
 	}
 	if _, err := runCommand(t, AuditCmd(), "verify", "--from", "soon"); err == nil || !strings.Contains(err.Error(), "invalid --from") {
 		t.Errorf("err = %v", err)
-	}
-}
-
-func TestAudit_ExportStreamsToStdoutAndToANewFile(t *testing.T) {
-	events := `{"seq":1,"action":"tool_call"}` + "\n" + `{"seq":2,"action":"approval_decided"}` + "\n"
-	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/admin/audit/export?actor=boss&format=csv&service=stripe": reply(200, events),
-		"GET /api/admin/audit/export?format=ndjson":                        reply(200, events),
-	})
-	out, err := runCommand(t, AuditCmd(), "export")
-	if err != nil || out != events {
-		t.Fatalf("stdout export: %q, %v", out, err)
-	}
-
-	path := filepath.Join(t.TempDir(), "audit.csv")
-	out, err = runCommand(t, AuditCmd(), "export", "--format", "csv", "--actor", "boss", "--service", "stripe", "--output", path)
-	if err != nil || !strings.Contains(out, fmt.Sprintf("Wrote %d bytes", len(events))) {
-		t.Fatalf("file export: %q, %v", out, err)
-	}
-	got, err := os.ReadFile(path)
-	if err != nil || string(got) != events {
-		t.Fatalf("file = %q, %v", got, err)
-	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
-	}
-	if _, err := runCommand(t, AuditCmd(), "export", "--output", path); err == nil {
-		t.Error("an existing file was overwritten")
-	}
-	if _, err := runCommand(t, AuditCmd(), "export", "--format", "xml"); err == nil || !strings.Contains(err.Error(), "invalid --format") {
-		t.Errorf("err = %v", err)
-	}
-}
-
-func TestAudit_ExportRefusalCarriesTheGatewaysSentence(t *testing.T) {
-	approvalsGateway(t, map[string]func(http.ResponseWriter, map[string]any){
-		"GET /api/admin/audit/export?format=ndjson": reply(403, `{"error":"forbidden","message":"audit export needs the Business plan"}`),
-	})
-	if _, err := runCommand(t, AuditCmd(), "export"); err == nil || !strings.Contains(err.Error(), "audit export needs the Business plan (HTTP 403)") {
-		t.Fatalf("err = %v", err)
 	}
 }
 
