@@ -2,8 +2,9 @@ package agentsync
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -236,9 +237,10 @@ type ownedFile struct {
 }
 
 // ownedFilesOp manages whole files in a directory that relay owns by name.
-// A file is relay's only if it carries the marker; a same-named file
-// without it belongs to the user and is never overwritten. Marked files that
-// are no longer desired are removed.
+// A file is relay's only while the ledger says relay wrote it and it still
+// holds those bytes: a same-named file the ledger does not know, or one the
+// user edited since, is never overwritten or removed, whatever text it
+// contains. Ledgered files that are no longer desired are removed.
 type ownedFilesOp struct {
 	meta
 	dir   string
@@ -247,8 +249,13 @@ type ownedFilesOp struct {
 	mode  fs.FileMode
 }
 
-func isManaged(data []byte) bool {
-	return bytes.Contains(data[:min(len(data), 1024)], []byte(Marker))
+// ledgerFileID keys a whole file in the ledger; the value is the sha256 of
+// the bytes relay wrote.
+const ledgerFileID = "file"
+
+func contentHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
@@ -266,14 +273,22 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 			return nil, err
 		}
 		keep[filepath.Base(path)] = true
+		prev, ledgered := c.Ledger.entries(real)[ledgerFileID]
+		want := contentHash(f.data)
 		switch {
 		case !exists:
 			items = append(items, o.item(f.name, real, StatusAdded, ""))
-		case !isManaged(data) && !c.Force:
+		case bytes.Equal(data, f.data):
+			c.Ledger.set(real, ledgerFileID, want)
+			items = append(items, o.item(f.name, real, StatusUnchanged, ""))
+			continue
+		case c.Force:
+			items = append(items, o.item(f.name, real, StatusUpdated, ""))
+		case !ledgered:
 			items = append(items, o.item(f.name, real, StatusConflict, "file exists and is not managed by relay; --force overwrites"))
 			continue
-		case bytes.Equal(data, f.data):
-			items = append(items, o.item(f.name, real, StatusUnchanged, ""))
+		case contentHash(data) != prev:
+			items = append(items, o.item(f.name, real, StatusConflict, "edited since relay wrote it; --force overwrites"))
 			continue
 		default:
 			items = append(items, o.item(f.name, real, StatusUpdated, ""))
@@ -281,29 +296,40 @@ func (o *ownedFilesOp) Run(c *Ctx) ([]Item, error) {
 		if err := c.write(real, o.mode, f.data); err != nil {
 			return nil, err
 		}
+		c.Ledger.set(real, ledgerFileID, want)
 	}
 
 	dir, err := c.guard(o.scope, o.dir)
 	if err != nil {
 		return items, nil
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return items, nil
+	var stale []string
+	for file, entries := range c.Ledger.Files {
+		_, ledgered := entries[ledgerFileID]
+		if ledgered && filepath.Dir(file) == dir && strings.HasSuffix(file, o.ext) && !keep[filepath.Base(file)] {
+			stale = append(stale, file)
+		}
 	}
-	for _, e := range entries {
-		if e.IsDir() || keep[e.Name()] || !strings.HasSuffix(e.Name(), o.ext) {
+	sort.Strings(stale)
+	for _, file := range stale {
+		name := strings.TrimSuffix(filepath.Base(file), o.ext)
+		data, exists, real, err := c.read(o.scope, file)
+		if err != nil {
 			continue
 		}
-		path := filepath.Join(o.dir, e.Name())
-		data, exists, real, err := c.read(o.scope, path)
-		if err != nil || !exists || !isManaged(data) {
+		if !exists {
+			c.Ledger.drop(real, ledgerFileID)
+			continue
+		}
+		if contentHash(data) != c.Ledger.entries(real)[ledgerFileID] {
+			items = append(items, o.item(name, real, StatusConflict, "edited since relay wrote it; left in place"))
 			continue
 		}
 		if err := c.remove(real); err != nil {
 			return nil, err
 		}
-		items = append(items, o.item(strings.TrimSuffix(e.Name(), o.ext), real, StatusRemoved, ""))
+		c.Ledger.drop(real, ledgerFileID)
+		items = append(items, o.item(name, real, StatusRemoved, ""))
 	}
 	return items, nil
 }
