@@ -27,6 +27,39 @@ type Config struct {
 	// from Email so an agent login never changes which person's session the
 	// unmarked commands use.
 	AgentEmail string `json:"agentEmail,omitempty"`
+	// SigningKeys are the gateway's content-signing public keys, pinned per
+	// gateway origin the first time they are seen (see `relay config
+	// trust-key`).
+	SigningKeys map[string][]SigningKey `json:"signingKeys,omitempty"`
+}
+
+// SigningKey is one ed25519 public key a gateway signs downloads with.
+type SigningKey struct {
+	KID       string `json:"kid"`
+	Alg       string `json:"alg"`
+	PublicKey string `json:"publicKey"`
+}
+
+// PinnedSigningKeys returns the keys pinned for a gateway origin.
+func PinnedSigningKeys(origin string) ([]SigningKey, error) {
+	cfg, err := Load()
+	if err != nil {
+		return nil, err
+	}
+	return cfg.SigningKeys[origin], nil
+}
+
+// PinSigningKeys replaces the keys pinned for a gateway origin.
+func PinSigningKeys(origin string, keys []SigningKey) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	if cfg.SigningKeys == nil {
+		cfg.SigningKeys = map[string][]SigningKey{}
+	}
+	cfg.SigningKeys[origin] = keys
+	return Save(cfg)
 }
 
 // AgentMode reports whether RELAY_AGENT selects the agent profile, the

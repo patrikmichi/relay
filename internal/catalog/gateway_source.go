@@ -115,7 +115,7 @@ var (
 //
 // The returned Skill's Provenance is
 // {SourceProvider: "gateway", CatalogID: id, Version: <resolved version>}.
-func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error) {
+func FetchSkill(doer Doer, id, version, channel string, opts ...Option) (*agentport.Skill, error) {
 	if doer == nil {
 		return nil, fmt.Errorf("catalog: no gateway client configured")
 	}
@@ -146,6 +146,9 @@ func FetchSkill(doer Doer, id, version, channel string) (*agentport.Skill, error
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
 	if err := verifyScanVerdict(resp.Header.Get(headerScanVerdict)); err != nil {
+		return nil, fmt.Errorf("catalog: %s: %w", id, err)
+	}
+	if err := newFetchOptions(opts).verify(resp.Header, body, id, version); err != nil {
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
 

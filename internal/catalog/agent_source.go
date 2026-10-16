@@ -60,7 +60,7 @@ const agentClaudeAdapterID = agentport.ProviderID("claude")
 //
 // The returned Agent's Provenance is {SourceProvider: "claude" (the format
 // the bundle was loaded as), CatalogID, Version: <resolved version>}.
-func FetchAgent(doer Doer, id, version, channel string) (*agentport.Agent, error) {
+func FetchAgent(doer Doer, id, version, channel string, opts ...Option) (*agentport.Agent, error) {
 	if doer == nil {
 		return nil, fmt.Errorf("catalog: no gateway client configured")
 	}
@@ -95,6 +95,9 @@ func FetchAgent(doer Doer, id, version, channel string) (*agentport.Agent, error
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
 	if err := verifyScanVerdict(resp.Header.Get(headerScanVerdict)); err != nil {
+		return nil, fmt.Errorf("catalog: %s: %w", id, err)
+	}
+	if err := newFetchOptions(opts).verify(resp.Header, body, id, version); err != nil {
 		return nil, fmt.Errorf("catalog: %s: %w", id, err)
 	}
 
