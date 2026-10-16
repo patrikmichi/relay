@@ -38,6 +38,33 @@ builds:
         - cmd: bash .github/scripts/scan-denylist.sh "{{ .Path }}"
           output: true
 
+  # The connector agent: static, minimal, built apart from the CLI so a customer
+  # reviews only what runs in their network. The update keys are compiled in
+  # from the release environment; without them the binary never self-updates.
+  - id: zuano-connector
+    main: ./cmd/zuano-connector
+    binary: zuano-connector
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .CommitDate }}
+      - -X github.com/patrikmichi/zuano/internal/tunnel.UpdateKeyHex1={{ envOrDefault "CONNECTOR_UPDATE_KEY_1" "" }}
+      - -X github.com/patrikmichi/zuano/internal/tunnel.UpdateKeyHex2={{ envOrDefault "CONNECTOR_UPDATE_KEY_2" "" }}
+    hooks:
+      post:
+        - cmd: bash .github/scripts/scan-denylist.sh "{{ .Path }}"
+          output: true
+
 archives:
   - id: zuano
     ids:
@@ -53,6 +80,29 @@ archives:
       - README.md
       - LICENSE
       - completions/*
+
+  - id: zuano-connector
+    ids:
+      - zuano-connector
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "zuano-connector-{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+      - packaging/config.example.yaml
+      - packaging/systemd/zuano-connector.service
+
+  # The bare binaries are what the signed update manifest points at.
+  - id: zuano-connector-binary
+    ids:
+      - zuano-connector
+    formats:
+      - binary
+    name_template: "zuano-connector_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "SHA256SUMS.txt"
@@ -135,3 +185,68 @@ scoops:
     description: "Manage AI agent skills and agents across providers"
     license: "Apache-2.0"
     skip_upload: auto
+
+# Packages for servers: the connector runs as an unprivileged service user.
+nfpms:
+  - id: zuano-connector
+    package_name: zuano-connector
+    ids:
+      - zuano-connector
+    formats:
+      - deb
+      - rpm
+    vendor: Loopmatic
+    homepage: "https://github.com/patrikmichi/zuano"
+    maintainer: "patrikmichi <yay@patrikmichalicka.com>"
+    description: "Connector agent: serves the HTTP and MCP targets named in its local config to the gateway"
+    license: "Apache-2.0"
+    bindir: /usr/bin
+    file_name_template: "zuano-connector_{{ .Version }}_{{ .Arch }}"
+    contents:
+      - src: packaging/systemd/zuano-connector.service
+        dst: /lib/systemd/system/zuano-connector.service
+      - src: packaging/config.example.yaml
+        dst: /etc/zuano-connector/config.example.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0644
+      - dst: /var/lib/zuano-connector
+        type: dir
+        file_info:
+          mode: 0750
+          owner: zuano-connector
+          group: zuano-connector
+    scripts:
+      preinstall: packaging/nfpm/preinstall.sh
+      postinstall: packaging/nfpm/postinstall.sh
+      preremove: packaging/nfpm/preremove.sh
+
+# The image holds the static binary and nothing else; it never updates itself.
+dockers_v2:
+  - id: zuano-connector
+    ids:
+      - zuano-connector
+    images:
+      - "ghcr.io/patrikmichi/zuano-connector"
+    tags:
+      - "{{ .Version }}"
+      - latest
+    dockerfile: packaging/docker/Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "zuano-connector"
+      org.opencontainers.image.source: "https://github.com/patrikmichi/zuano"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: "Apache-2.0"
+    sbom: true
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes

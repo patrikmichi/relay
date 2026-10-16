@@ -743,6 +743,84 @@ Source: private networking plan (8.2 routes, 8.3 commands, 6.5 errors). The
 response wrappers, the token and binding request fields and the bindings
 `DELETE` query are this client's decisions.
 
+## Connector agent
+
+`zuano-connector` speaks to the gateway's agent-facing routes and to the
+broker. The plan leaves the byte-level choices below to the protocol document;
+these are the ones this client implements, so the gateway and broker must
+match them.
+
+Gateway routes (the agent authenticates with a 60-second Ed25519 JWT it signs
+itself: header `{alg: EdDSA, kid}`, claims `iss` agent id, `aud` the address
+called, `net`, `iat`, `exp`, `jti`):
+
+| Request | Carries / answers |
+|---|---|
+| `POST /api/networks/enroll` | `{token, sign_pub, enc_pub, name, version, os, arch, proto: [1], proof}` (keys are base64; `proof` is Ed25519 over `SHA-256("ctun.v1 enroll" ‖ the request without proof ‖ SHA-256(token))`); answers `{agent_id, network_id, org_id, org_slug, broker_url, gateway_jwks, gateway_kids, key_not_after}` |
+| `GET /api/networks/agents/rotate/challenge` | bearer JWT; answers `{nonce}` |
+| `POST /api/networks/agents/rotate` | bearer JWT; `{agent_id, new_sign_pub, new_enc_pub, nonce, old_kid, signature}`; the signature is the old key's over `SHA-256("ctun.v1 rotate" ‖ nonce ‖ new_sign_pub ‖ new_enc_pub)`; answers `{key_not_after}` |
+| `GET /.well-known/<brand>/ctun-gateway-keys` | a JWK set of `OKP`/`Ed25519` keys with `kid` |
+| `GET /api/networks/agents/config-hints` | bearer JWT; answers `{targets: [name]}` |
+
+The release host serves `<update.url>/connector/<channel>/manifest.json` and
+`manifest.json.sig` (base64 Ed25519 over the manifest bytes): `{version,
+published_at, min_proto, artifacts: [{os, arch, url, sha256, size}]}` pointing at
+bare binaries.
+
+Broker connection: `GET <broker>/v1/agent/connect` upgraded to WebSocket with
+subprotocol `ctun.v1`, `Authorization: Bearer <JWT>` (`aud` is the broker's
+origin) and `X-Agent-Id`. A refusal is an HTTP status with `{"error": CODE}`, or
+a close frame whose text is CODE: `agent_revoked`, `agent_unknown`, `key_expired`
+(the agent exits 3), `version_unsupported` (retried hourly), `network_disabled`
+(every 10 minutes).
+
+Frames are binary messages: `ver u8 | type u8 | flags u8 | reserved u8 |
+stream_id u32 | length u32 | payload`, big-endian, length at most 262144. Types:
+HELLO 1, HELLO_ACK 2, OPEN 3, DATA 4, END 5, CANCEL 6, ERROR 7, STATUS 8, DRAIN 9,
+WINDOW 10. Stream 0 carries HELLO, HELLO_ACK, STATUS and DRAIN.
+
+* `HELLO` (JSON): `{agent_id, network_id, name, proto, version, os, arch,
+  allowlist: {hash, targets: [{name, kind, methods?, path_globs?, mcp_tools?}]},
+  max_concurrency}`. `HELLO_ACK`: `{server_time (ms or RFC 3339), min_version,
+  heartbeat_s, drain, auto_update: off|patch|minor}`.
+* `OPEN` (JSON): `{routing, keys, gateway_kid, sealed_header, header_sig}` where
+  `routing` is `{request_id, target, kind, deadline_ms}` and `keys` is a list of
+  `{kid, enc, ct}`: the content key wrapped with HPKE (base mode, DHKEM X25519
+  and HKDF-SHA256, AES-256-GCM, `info` `"ctun.v1 request key " + request_id`) to
+  each agent key (`kid` is the first 8 bytes of SHA-256 of the signing key, in
+  hex). The sealed header is the request header JSON (fields in the plan's 5.4,
+  plus `spill {upload_url, file_id, max_bytes, expires_at_ms}` and `file_refs`)
+  under AES-256-GCM chunk 0. `header_sig` is Ed25519 by the gateway key over
+  `SHA-256("ctun.v1 header" ‖ SHA-256(len-prefixed routing ‖ keys ‖ sealed_header))`.
+* Chunks use the STREAM construction: nonce is a 4-byte prefix (the first four
+  bytes of `SHA-256(content key ‖ "request")`) and an 8-byte counter, and the
+  chunk kind (`H` header, `D` data, `F` final) is the associated data. `DATA`
+  frames carry data chunks; `END` carries the final chunk, a JSON trailer
+  `{sig}`: Ed25519 over `SHA-256("ctun.v1 end" ‖ the header digest ‖ rolling
+  digest)`, where the rolling digest starts at `SHA-256("ctun.v1 stream")` and
+  chains `SHA-256(previous ‖ chunk)` over the data chunks. A stream cut short, reordered or altered fails.
+* Responses start with a `DATA` frame flagged `0x01`: the encapsulated key (32
+  bytes, HPKE to `resp_pub`, `info` `"ctun.v1 response " + request_id`) followed
+  by the sealed response header `{request_id, status, headers, spilled?}`. The
+  response content key is the HPKE exporter `"ctun.v1 response key"` (32 bytes,
+  stream label `response`). `END` carries the final chunk, a trailer
+  `{agent_kid, sig, upstream_ms, agent_ms, bytes}`; `sig` is the agent's Ed25519
+  over `SHA-256("ctun.v1 response" ‖ request_id ‖ encapsulated key ‖ sealed
+  header ‖ rolling digest)`.
+* `WINDOW` (JSON `{credit_bytes}`) grants credit for DATA frames of a stream;
+  the initial window is 1 MiB each way, and the agent returns credit as it
+  consumes request chunks.
+* `ERROR` (JSON): `{code, retryable, dispatched, request_id?, message?}` with the
+  codes of the plan (4.6) plus `agent_busy` (retryable, not dispatched),
+  `body_too_large`, `file_fetch_failed`, `file_ref_unsupported` and
+  `spill_unavailable`.
+* `STATUS` every 60 seconds and on change: `{in_flight, paused, config_hash,
+  uptime_s, last_upstream_error?, version, allowlist, list_changed?: [target],
+  spill_unavailable?, policy_violations, logs?: [log lines]}`.
+* A `DRAIN` from the broker makes the agent reconnect after 0 to 5 seconds. On
+  shutdown the agent sends `DRAIN`, finishes running exchanges within
+  `shutdown_grace` and answers the rest with `agent_shutdown`.
+
 ## MCP firewall
 
 Bearer auth. The session document is signed (`X-Content-Signature`) and checked

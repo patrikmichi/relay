@@ -489,6 +489,9 @@ a gateway.
 | `zuano agent diff <name>` | local | Diff an agent's projection across providers |
 | `zuano agent scan <name>` | local | Inspect an agent for dangerous shell patterns/hardcoded secrets |
 | `zuano agent uninstall <name>` | local | Remove an installed agent |
+| `zuano networks list\|show\|create\|delete\|token create\|agents\|approve\|rotate\|revoke\|allowlist\|logs\|bind\|unbind\|test` | gateway | Administer private networks: enrollment tokens, connector agents, what each agent allows, and which connectors and MCP servers are routed through a network ([gateway-contracts.md](docs/reference/gateway-contracts.md#private-networks)); a call to an offline network exits 34 |
+| `zuano-connector enroll\|run\|status\|check\|rotate\|pause\|resume\|update\|version` | gateway | The agent that runs inside your network and serves the targets its local config names; a separate binary ([docs/reference/connector.md](docs/reference/connector.md)) |
+| `zuano firewall …`, `zuano mcp wrap\|pins\|changes`, `zuano sync --firewall` | gateway or local | Route MCP servers through the firewall ([docs/reference/firewall.md](docs/reference/firewall.md)) |
 | `zuano agent rollback [manifest-entry-id]` | local | Revert to a prior agent manifest entry |
 
 ### Diagnostics and recovery

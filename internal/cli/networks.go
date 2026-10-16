@@ -488,7 +488,7 @@ func networksLogsCmd() *cobra.Command {
 func bindingTarget(arg string) (key, value string, err error) {
 	if server, ok := strings.CutPrefix(arg, "mcp:"); ok {
 		if server == "" {
-			return "", "", errors.New("name the MCP server after mcp:")
+			return "", "", errors.New("name the MCP server after the mcp: prefix")
 		}
 		return "mcp_server", server, nil
 	}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: zuano-connector
+description: Connector agent that serves the HTTP and MCP targets named in its config to the gateway, from inside your cluster.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/patrikmichi/zuano
+sources:
+  - https://github.com/patrikmichi/zuano

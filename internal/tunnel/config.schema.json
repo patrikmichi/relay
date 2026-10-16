@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zuano.invalid/schema/connector-config-v1.json",
+  "title": "zuano-connector config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "network", "targets"],
+  "properties": {
+    "version": { "const": 1 },
+    "network": { "type": "string", "pattern": "^net_[A-Za-z0-9]+$", "description": "The network id the agent enrolled in; a mismatch ends the agent with exit 2." },
+    "name": { "type": "string", "maxLength": 64, "description": "Label shown in the dashboard; defaults to the host name." },
+    "state_dir": { "type": "string", "minLength": 1 },
+    "broker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "description": "Pins the broker address (staging, private CA). Normally it comes from enrollment." },
+        "ca_file": { "type": "string" },
+        "proxy": { "type": "string" }
+      }
+    },
+    "max_concurrency": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "shutdown_grace": { "$ref": "#/$defs/duration" },
+    "allowed_gateway_kids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Pins the gateway signing keys the agent accepts." },
+    "spill_threshold": { "type": "integer", "minimum": 1, "description": "Response size in bytes above which a response is streamed to the file store." },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["json", "text"] },
+        "file": { "type": "string" },
+        "max_size_mb": { "type": "integer", "minimum": 1 },
+        "max_files": { "type": "integer", "minimum": 1 },
+        "upload": { "enum": ["off", "errors", "metadata"] }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "listen": { "type": "string" } }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto": { "type": "boolean" },
+        "channel": { "type": "string", "minLength": 1 },
+        "window": { "type": "string" },
+        "method": { "enum": ["binary", "package"] },
+        "url": { "type": "string", "description": "Address of the releases host; the manifest is read from <url>/connector/<channel>/manifest.json." }
+      }
+    },
+    "targets": {
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/target" }
+    }
+  },
+  "$defs": {
+    "duration": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$" },
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["http", "mcp_http", "mcp_stdio"] },
+        "url": { "type": "string" },
+        "cidrs": { "$ref": "#/$defs/stringList" },
+        "methods": { "$ref": "#/$defs/stringList" },
+        "paths": { "$ref": "#/$defs/stringList" },
+        "timeout": { "$ref": "#/$defs/duration" },
+        "allow_loopback": { "type": "boolean" },
+        "allow_insecure": { "type": "boolean" },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ca_file": { "type": "string" },
+            "server_name": { "type": "string" },
+            "client_cert": { "type": "string" },
+            "client_key": { "type": "string" },
+            "insecure_skip_verify": { "type": "boolean" }
+          }
+        },
+        "follow_same_origin_redirects": { "type": "boolean" },
+        "strip_request_headers": { "$ref": "#/$defs/stringList" },
+        "strip_response_headers": { "$ref": "#/$defs/stringList" },
+        "buffer_unsafe_bodies": { "type": "boolean" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "header": { "type": "string" },
+            "value": { "type": "string" },
+            "bearer": { "type": "string" },
+            "basic": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["username", "password"],
+              "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+            }
+          }
+        },
+        "scrub_credentials_in_response": { "type": "boolean" },
+        "rate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["per_second", "burst"],
+          "properties": { "per_second": { "type": "number", "exclusiveMinimum": 0 }, "burst": { "type": "integer", "minimum": 1 } }
+        },
+        "command": { "type": "string" },
+        "args": { "$ref": "#/$defs/stringList" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "cwd": { "type": "string" },
+        "env_inherit": { "type": "boolean" },
+        "idle_timeout": { "$ref": "#/$defs/duration" },
+        "run_as_user": { "type": "string" },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "methods": { "$ref": "#/$defs/stringList" }, "tools": { "$ref": "#/$defs/stringList" } }
+        }
+      }
+    }
+  }
+}

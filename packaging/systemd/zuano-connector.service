@@ -1,0 +1,38 @@
+[Unit]
+Description=zuano-connector: serves the targets named in /etc/zuano-connector/config.yaml
+Documentation=https://github.com/patrikmichi/zuano/blob/main/docs/reference/connector.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zuano-connector
+Group=zuano-connector
+ExecStart=/usr/bin/zuano-connector run --config /etc/zuano-connector/config.yaml --state-dir /var/lib/zuano-connector
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+# An invalid config (2) and a revoked agent (3) will not get better by trying again.
+RestartPreventExitStatus=2 3
+# Running exchanges get this long to finish after a stop.
+TimeoutStopSec=45
+KillSignal=SIGTERM
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/zuano-connector /var/log/zuano-connector
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

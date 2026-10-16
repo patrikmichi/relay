@@ -1,0 +1,14 @@
+{{- $cfg := dict "version" 1 "network" (required "config.network is required: the network id the enrollment printed" .Values.config.network) "state_dir" "/var/lib/zuano-connector" -}}
+{{- if .Values.config.name }}{{ $_ := set $cfg "name" .Values.config.name }}{{ end -}}
+{{- $_ := set $cfg "targets" (.Values.config.targets | default list) -}}
+{{- $_ := set $cfg "health" (dict "listen" (printf "0.0.0.0:%d" (int .Values.metrics.port))) -}}
+{{- range $k, $v := .Values.config.extra }}{{ $_ := set $cfg $k $v }}{{ end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zuano-connector.fullname" . }}
+  labels:
+    {{- include "zuano-connector.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
