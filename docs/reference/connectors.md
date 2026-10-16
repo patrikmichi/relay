@@ -59,6 +59,48 @@ drives the `already connected` check and the status columns.
 `RELAY_CONNECT_<KEY>` supply values non-interactively; without a terminal and
 without values a required field is an error rather than a hang.
 
+## Skills that need connectors
+
+A catalog skill can declare the connectors it works with in its manifest
+(`requires.connectors`, each with a `slug` and optionally `tools` and `scopes`).
+`relay skill install` and `relay skill info` read them from
+`GET /api/marketplace/skills/{id}/requirements`, which answers for the calling
+user: each requirement with `connected`, plus `satisfied` and `missing`.
+
+```
+relay skill info weekly-timesheet
+relay skill install weekly-timesheet --to claude
+```
+
+`install` lists the missing connectors, then for each one:
+
+| Option | Behavior |
+|---|---|
+| (default) | Asks `Connect <slug> now? [Y/n]` and runs `relay connect <slug>`. Without a terminal it does not ask, so a pipeline never waits |
+| `--yes` | Connects every missing connector without asking |
+| `--no-connect` | Only reports; nothing is connected |
+| `--ignore-requirements` | Installs even if some stay unmet, with a warning |
+
+It then asks the gateway again. If a connector is still missing the install
+fails before anything is written, naming the connectors and the two ways out.
+`--dry-run` reports the missing connectors and connects nothing. A gateway
+without the route, or one that fails to answer, only produces a warning: the
+check never blocks an install it could not make.
+
+`relay skill info <id|slug>` prints the version, whether and where the skill
+is installed on this machine, the requirements with `connected` or `missing`,
+and a ready or not-ready line. `--json` prints the same as one document.
+
+`relay sync` copies skills between agents without contacting the gateway, so
+it cannot know which connectors are linked. It reads each source skill's
+`SKILL.md` frontmatter and, for one that declares `requires.connectors`, prints
+a warning naming the skill and its connectors. Nothing is blocked or connected.
+
+A connection change from an agent session (`relay login --agent`) is refused by
+the gateway. relay prints its reason and tells you to run the command with your
+personal profile (unset `RELAY_AGENT`) or to use the MCP tools; see
+[approvals.md](approvals.md).
+
 ## Gateway MCP server
 
 `relay sync` and `relay mcp install <catalog-service>` register the gateway's

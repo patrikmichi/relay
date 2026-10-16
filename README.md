@@ -59,8 +59,10 @@ relay login
 # provider so it's also available to another.
 relay skill migrate my-skill --from claude --to codex
 
-# Requires a gateway: install a skill by catalog id/slug.
+# Requires a gateway: install a skill by catalog id/slug. If it needs
+# connectors you have not linked, relay offers `relay connect` for each.
 relay skill install pr-triage --to claude
+relay skill info pr-triage
 ```
 
 ```bash
@@ -240,6 +242,30 @@ relay services                            # tools per service, plus connected / 
 See [docs/reference/connectors.md](docs/reference/connectors.md) for the
 endpoints involved and what a gateway must allow.
 
+A catalog skill can declare the connectors it needs. `relay skill install`
+checks them with the gateway, offers `relay connect` for the missing ones
+(`--yes` to connect without asking, `--no-connect` to only report), checks again
+and fails while any are unmet unless `--ignore-requirements`. `relay skill info`
+shows the requirements and whether you can use the skill, and `relay sync`
+warns about local skills whose `SKILL.md` declares `requires.connectors`.
+
+### Skill evals
+
+```bash
+relay skill evals sets create pr-triage --name smoke
+relay skill evals case add pr-triage smoke --kind trigger --name "asks for a review" \
+  --input "Can you review this PR?" --should-trigger
+relay skill eval pr-triage --wait                          # score the current version
+relay skill compare pr-triage --versions 1.1.0,1.2.0 --wait
+relay skill optimize pr-triage --kind description --wait   # leaves a draft
+relay skill drafts promote pr-triage sdr_123               # through the publish pipeline
+relay skill quality pr-triage
+```
+
+`--json` works on every one of them, a failed run exits 20 and
+`--fail-on-regression` exits 21 when a score dropped, for CI. See
+[docs/reference/skill-evals.md](docs/reference/skill-evals.md).
+
 ### Claude Code plugin marketplace
 
 `relay sync --marketplace` (or `--dir <path>`) additionally pulls your
@@ -266,6 +292,14 @@ relay approvals list
 relay approvals approve apr_3f9c4e --grant 30
 ```
 
+`relay login` says which kind of session it asked for, because the kind is
+fixed when the login starts: `--agent` puts `agent=1` on the authorize request
+(or `{"agent":true}` on the device-code request), and the token requests carry
+no flag. An agent session reads connections, connectors and the marketplace but
+cannot change them: `relay connect`, `relay publish` and the skill eval,
+optimize and promote commands print the gateway's reason and tell you to use
+your personal profile (unset `RELAY_AGENT`) or the MCP tools.
+
 `relay explain call <service> <tool>` shows what a tool needs: `approval` for
 destructive and outward tools, `grant` for writes. Exit statuses, the profiles
 and what `relay sync` sets are in
@@ -284,7 +318,7 @@ Every `relay` command falls into exactly one of two buckets:
 |---|---|---|
 | Touches | Only files on this machine (`~/.claude/`, `~/.claude.json`, `~/.codex/`, `~/.cursor/`, `~/.config/opencode/`, `~/.gemini/`, `~/.codeium/windsurf/`, `~/.cline/`, project config in the current directory, and relay's own manifest) | A configured gateway over HTTP |
 | Needs auth | No | Yes — `relay login` or `GATEWAY_API_KEY` |
-| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay approvals`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
+| Examples | `relay sync`, `relay mcp install`/`remove`, `relay skill migrate`, `relay skill install <path>`, `relay skill list`, `relay skill diff`, `relay skill scan`, `relay skill uninstall`, `relay skill rollback`, `relay agent migrate`, `relay agent list`, `relay agent diff`, `relay agent scan`, `relay agent uninstall`, `relay agent rollback`, `relay providers`, `relay doctor` | `relay skill install <catalog-id>`, `relay skill search`, `relay skill info`, `relay skill eval`/`compare`/`optimize`/`drafts`/`quality`/`evals`, `relay agent install <catalog-id>`, `relay mcp list`, `relay connectors`, `relay connect`, `relay publish`, `relay sync --marketplace`, `relay services`, `relay call`, `relay help-tools`, `relay approvals`, `relay login`/`logout`/`whoami`/`authorize`/`tokens` |
 
 **Fail-closed guidance.** If a GATEWAY command can't resolve a gateway URL —
 none configured, `--offline` passed, or you're not authenticated — it refuses
@@ -332,7 +366,15 @@ scripts/CI that must never make a network call.
 | `relay mcp install <name> [--url\|--command] [--to <agents>]` | local/gateway | Register an MCP server in your coding agents; a bare catalog name enables the gateway server |
 | `relay mcp remove <name> [--to <agents>]` | local | Remove an MCP server relay registered |
 | `relay skill install <path>` | local | Install a skill from a local directory/file into one or more providers |
-| `relay skill install <catalog-id>` | gateway | Install a skill by catalog id/slug into one or more providers |
+| `relay skill install <catalog-id> [--yes\|--no-connect] [--ignore-requirements]` | gateway | Install a skill by catalog id/slug into one or more providers, after checking the connectors it needs |
+| `relay skill info <catalog-id\|slug>` | gateway | Show a catalog skill, the connectors it requires and whether you have connected them |
+| `relay skill evals sets list\|show\|create\|import\|export\|delete` | gateway | Manage a skill's eval sets |
+| `relay skill evals case add\|remove` | gateway | Add or remove a trigger or task case |
+| `relay skill eval <skill> [--set] [--version\|--draft] [--repeats] [--wait] [--fail-on-regression]` | gateway | Score a version or draft against an eval set (exit 20 failed run, 21 regression) |
+| `relay skill compare <skill> --versions a,b` | gateway | Score several versions or drafts side by side with significance tests |
+| `relay skill optimize <skill> --kind description\|instructions [--wait]` | gateway | Rewrite the description or instructions into a scored draft |
+| `relay skill drafts list\|show\|promote\|discard` | gateway | Review optimization drafts and publish one through the publish pipeline |
+| `relay skill quality <skill>` / `--all` | gateway | Quality score and history by version |
 | `relay agent install <path\|catalog-id> [--to <p>...]` | local/gateway | Install a local Claude Markdown agent or a governed catalog bundle into one or more agent providers; supports history and rollback |
 | `relay skill search [query]` | gateway | Search the catalog for installable skills |
 | `relay skill migrate <name> --from <p> [--to <p>...]` | local | Project an installed skill from one provider to another |
