@@ -32,6 +32,8 @@ var refusalCodes = map[string]int{
 	"connector_slug_taken":       exitConnectorClash,
 	"connector_version_conflict": exitConnectorClash,
 	"quality_gate_failed":        exitQualityGate,
+	"network_offline":            exitNetworkOffline,
+	"egress_unavailable":         exitNetworkOffline,
 	"spec_fetch_blocked":         1,
 	"federated_mode_unsupported": 1,
 }

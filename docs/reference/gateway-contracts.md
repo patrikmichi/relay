@@ -716,6 +716,33 @@ plan names the routes, ids and exit codes; the response wrappers, `seq`
 cursor, the `template`/`runAsEmail` request fields, `owner=me` and the browser
 page paths are this client's decisions.
 
+## Private networks
+
+`zuano networks` uses the administrator routes; mutations by an agent session
+are refused locally with exit 10, and a held write exits 12. A network is named
+by `name`, `slug` or `id`; the CLI lists networks and picks the id.
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/admin/networks` | `{"networks": [{"id", "name", "slug", "status": "online\|degraded\|offline\|disabled", "description"?, "data_class"?, "agents_online", "bindings", "last_seen_at"}]}` |
+| `POST /api/admin/networks` | `{"name", "description"?, "data_class"?}`; `201` `{"network": {...}}`; `402 plan_required` without the add-on |
+| `GET /api/admin/networks/{id}`, `DELETE /api/admin/networks/{id}` | `{"network": {...}}`; delete is a soft delete |
+| `POST /api/admin/networks/{id}/enrollment-tokens` | `{"mode": "single\|multi", "uses", "ttl_seconds", "require_approval"?}`; `201` `{"token": "nxt_...", "expires_at", "snippets": [{"title", "text"}]}`. The token is returned once and is not an MCP tool |
+| `GET /api/admin/networks/{id}/agents` | `{"agents": [{"id", "name", "status": "pending\|active\|revoked", "connection", "version", "platform", "last_seen_at", "key_age_days"}]}` |
+| `POST /api/admin/networks/{id}/agents/{agent}/approve`, `/rotate`, `/revoke` | `{}`; `200` |
+| `GET /api/admin/networks/{id}/allowlist` | `{"drift", "targets": [{"name", "kind", "methods"?, "path_globs"?, "tool_globs"?, "agents", "bound_to"}], "unserved_bindings": [name]}` |
+| `GET /api/admin/networks/{id}/logs?agent=&target=&outcome=&since=` | `{"logs": [{"ts", "agent", "target", "method", "status", "outcome", "duration_ms", "audit_ref"}]}` |
+| `POST /api/admin/networks/{id}/bindings` | `{"service" \| "mcp_server", "target", "credentials_mode": "agent\|gateway"}`; `201`. Built-in services are refused with `binding_not_supported` |
+| `DELETE /api/admin/networks/{id}/bindings?service=` or `?mcp_server=` | `200` |
+| `POST /api/admin/networks/{id}/test` | `{"results": [{"agent", "ok", "rtt_ms"?, "error"?}]}`; an empty list means no agent is online (exit 34) |
+
+A call whose body or MCP result carries `reason` `network_offline` or
+`egress_unavailable` exits 34.
+
+Source: private networking plan (8.2 routes, 8.3 commands, 6.5 errors). The
+response wrappers, the token and binding request fields and the bindings
+`DELETE` query are this client's decisions.
+
 ## MCP firewall
 
 Bearer auth. The session document is signed (`X-Content-Signature`) and checked
