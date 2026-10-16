@@ -54,8 +54,8 @@ func TestSessions_RevokeAllCompletesAStepUpAndRetries(t *testing.T) {
 	var posts atomic.Int32
 	var retryHeader atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/me/sessions/revoke-all":
+		switch r.URL.Path {
+		case "/api/me/sessions/revoke-all":
 			posts.Add(1)
 			if id := r.Header.Get("X-Step-Up"); id != "" {
 				retryHeader.Store(id)
@@ -64,7 +64,7 @@ func TestSessions_RevokeAllCompletesAStepUpAndRetries(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, `{"error":"step_up_required","step_up_id":"su_7","step_up_url":"http://`+r.Host+`/stepup/su_7"}`)
-		case r.URL.Path == "/api/stepup/su_7":
+		case "/api/stepup/su_7":
 			_, _ = io.WriteString(w, `{"status":"approved"}`)
 		default:
 			t.Errorf("unexpected %s", r.URL.Path)

@@ -152,7 +152,7 @@ func auditExportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var dest io.Writer = cmd.OutOrStdout()
+			dest := cmd.OutOrStdout()
 			if output != "" {
 				file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 				if err != nil {
