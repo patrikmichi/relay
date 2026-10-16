@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -78,7 +77,7 @@ func beginAction(cmd *cobra.Command, enabled bool, command string) (actionDoc, f
 		return nil, func(err error) error { return err }
 	}
 	doc := actionDoc{"command": command}
-	var out io.Writer = cmd.OutOrStdout()
+	out := cmd.OutOrStdout()
 	cmd.SetOut(cmd.ErrOrStderr())
 	return doc, func(err error) error {
 		if err != nil {
@@ -107,7 +106,7 @@ func beginJSON(cmd *cobra.Command, enabled bool, rep *artifactReport) (finish fu
 	if !enabled {
 		return func(err error) error { return err }, nil
 	}
-	var doc io.Writer = cmd.OutOrStdout()
+	doc := cmd.OutOrStdout()
 	cmd.SetOut(cmd.ErrOrStderr())
 	return func(err error) error {
 		if err != nil {

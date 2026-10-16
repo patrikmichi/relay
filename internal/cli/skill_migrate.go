@@ -115,10 +115,6 @@ func doSkillMigrate(cmd *cobra.Command, name string, opts skillMigrateOpts, rep 
 	return applyMigration(cmd.OutOrStdout(), rep, src, string(fromAdapter.ID()), targets, scope, opts.dryRun, opts.strict, opts.acceptLoss)
 }
 
-func applyMigrationToTargets(out io.Writer, src *agentport.Skill, fromLabel string, targets []agentport.Adapter, scope agentport.Scope, dryRun, strict, acceptLoss bool) error {
-	return applyMigration(out, nil, src, fromLabel, targets, scope, dryRun, strict, acceptLoss)
-}
-
 // applyMigration projects src to every target and writes what passes the
 // checks. rep, when not nil, collects the plan, fidelity and outcome of each
 // target for --json; the text on out is the same either way.
