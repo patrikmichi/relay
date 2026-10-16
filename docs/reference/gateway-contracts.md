@@ -930,3 +930,32 @@ COMPARISON = {"a", "b", "split", "pairs", "mean_delta", "ci_low", "ci_high", "p_
 Pages the CLI opens (no API call): `/evals/review/{queue id}`. The gateway
 removes the `/api/marketplace/skills/{id}/evals` routes and the skill eval
 tables; the CLI no longer calls them.
+
+## Triggers
+
+Bearer auth. The routes and the fields of a trigger type are the plan's; the
+wrappers and the way a list is filtered are this client's decisions. Lists
+take comma-separated values (`userIds=a,b`). A held write (an agent creating a
+trigger that sends data out) answers `202` with the held-call document (exit 12).
+
+| Request | Carries / answers |
+|---|---|
+| `GET /api/v1/trigger-types?service=&kind=&q=` | `{"types": [TYPE], "catalogVersion"}` |
+| `GET /api/v1/trigger-types/{slug}` | `{"type": TYPE}` |
+| `POST /api/v1/triggers` | `{"type", "config", "connectedAccountId"?, "userId"?, "binding": {"kind": "automation", "automationId"} \| {"kind": "subscription", "url", "description"?} \| {"kind": "agent_run", "prompt", "agentResourceId"?} \| {"kind": "deliver"}}`; `201` `{"triggerId", "registration": {"status": "active\|failed\|manual\|expired", "method", "manualSteps"?: [text]}}`; `409` `scope_missing` before anything is created |
+| `GET /api/v1/triggers?userIds=&connectedAccountIds=&types=&authConfigIds=&triggerIds=&showDisabled=&cursor=` | `{"triggers": [{"id", "type", "enabled", "connectedAccountId", "binding": {"kind"}, "registration": {"status"}}], "nextCursor"?}` |
+| `DELETE /api/v1/triggers/{id}`, `POST /api/v1/triggers/{id}/retry-registration` | `200`; retry answers `{"registration": {"status", "manualSteps"?}}` |
+| `GET /api/v1/triggers/stream?trigger_id=&type=&connected_account_id=&service=&user_id=` | `text/event-stream`; each message has `id: <event id>`, `event: <type>` and `data:` an envelope; `:` lines are heartbeats; `Last-Event-ID` resumes from the last 24 hours; `401` for a session without an API key, `429` `rate_limited` with `Retry-After` over 3 streams per key |
+
+```json
+TYPE = {"slug", "service", "title", "description", "kind": "webhook|poll", "latency": "realtime|polling", "pollIntervalSec"?,
+        "config": JSON_SCHEMA, "output": JSON_SCHEMA, "sample", "requiresEndpointSetup", "perRecipientAuthorization", "minRole",
+        "registration": {"method": "api|app_events|watch|poll|manual"}}
+ENVELOPE = {"id", "type", "version": 1, "timestamp", "metadata": {"trigger_id", "trigger_type", "connected_account_id",
+            "auth_config_id", "user_id", "org_id", "project_id", "trace_id"}, "data"}
+```
+
+Forwarded events are signed as Standard Webhooks: HMAC-SHA256 over
+`{webhook-id}.{webhook-timestamp}.{raw body}` with the key in `whsec_<base64>`,
+header `webhook-signature: v1,<base64>`, a 300 second tolerance. Tool inputs for
+`zuano generate` come from `GET /api/integrations` (each tool's `inputSchema`).
